@@ -653,6 +653,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **Commit:**
 - commit 9ef42ff
 
+### Fixed - 2026-01-27 (Player ID Foreign Key Constraint Violation)
+
+**Draft Picks Failing with Foreign Key Error - COMPLETE ✅**
+
+- Fixed foreign key constraint violation when inserting draft picks
+  - Issue: Draft picks failing with 409 Conflict error
+  - Error: "insert or update on table 'draft_picks' violates foreign key constraint 'draft_picks_player_id_fkey'"
+  - Error: "Key is not present in table 'players'"
+  - Root cause: Code was using `playerSeasonId` for both `player_id` and `player_season_id` fields
+  - `player_id` must reference `players.id` (the base player record)
+  - `player_season_id` must reference `player_seasons.id` (the specific season record)
+  - Code was passing the same value (player_season's ID) for both fields
+  - Database rejected insert because player_season_id doesn't exist in players table
+- Solution: Query player_seasons table to get correct player_id
+  - Added query to fetch `player_id` from `player_seasons` table before insert
+  - Use `player_seasons.player_id` (base player UUID) for `player_id` field
+  - Use `playerSeasonId` (season-specific UUID) for `player_season_id` field
+  - Added error handling if player_id fetch fails
+  - Both foreign keys now reference valid records in their respective tables
+
+**Technical Details:**
+- Database schema requires two separate foreign keys:
+  - `draft_picks.player_id` → `players.id` (base player record)
+  - `draft_picks.player_season_id` → `player_seasons.id` (season-specific record)
+- Previous code (broken):
+  ```typescript
+  player_id: playerSeasonId,        // Wrong table!
+  player_season_id: playerSeasonId, // Correct
+  ```
+- New code (fixed):
+  ```typescript
+  // Fetch player_id from player_seasons table
+  const { data } = await supabase
+    .from('player_seasons')
+    .select('player_id')
+    .eq('id', playerSeasonId)
+    .single()
+
+  // Insert with correct foreign keys
+  player_id: data.player_id,        // From players table
+  player_season_id: playerSeasonId, // From player_seasons table
+  ```
+- Error code 23503 = foreign key violation in PostgreSQL
+
+**Files Modified:**
+- src/stores/draftStore.ts (makePick - query player_id before insert)
+
+**Impact:**
+- Draft picks now save successfully to database
+- All foreign key constraints satisfied
+- Pick history persists correctly
+- Full draft flow works end-to-end
+- Database referential integrity maintained
+
+**Commit:**
+- commit [pending]
+
 ### Next Steps
 
 - Phase 1.5: Build Lahman CSV import pipeline (TypeScript)

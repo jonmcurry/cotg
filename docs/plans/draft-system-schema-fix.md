@@ -239,6 +239,29 @@ Draft system failing with 401 Unauthorized and 400 Bad Request errors when attem
 **Commit:**
 - commit 9ef42ff
 
+### Issue 14: Player ID Foreign Key Constraint Violation (2026-01-27)
+**Problem:** Draft picks failing with foreign key constraint violation
+- Error: `insert or update on table "draft_picks" violates foreign key constraint "draft_picks_player_id_fkey"`
+- Error: `Key is not present in table "players"`
+- HTTP 409 Conflict when inserting picks
+- Root cause: Code was using `playerSeasonId` for both `player_id` and `player_season_id` fields
+- `player_id` must reference `players.id` (base player record)
+- `player_season_id` must reference `player_seasons.id` (specific season record)
+- Code was passing the same value (player_season_id) for both fields
+
+**Solution:**
+- Query player_seasons table to get player_id before inserting pick
+- Use `player_seasons.player_id` for the `player_id` field
+- Use `playerSeasonId` for the `player_season_id` field
+- Added error handling for player_id fetch failure
+- Flow: Fetch player_id from player_seasons → Insert pick with correct foreign keys
+
+**Files Modified:**
+- src/stores/draftStore.ts (makePick - fetch player_id before insert)
+
+**Commit:**
+- commit [pending]
+
 ## Testing Checklist
 - [x] TypeScript compilation succeeds
 - [x] Production build succeeds

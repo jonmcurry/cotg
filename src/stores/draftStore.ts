@@ -367,13 +367,25 @@ export const useDraftStore = create<DraftState>()(
           pickTime: new Date(),
         }
 
+        // Fetch player_id from player_seasons table
+        const { data: playerSeasonData, error: fetchError } = await supabase
+          .from('player_seasons')
+          .select('player_id')
+          .eq('id', playerSeasonId)
+          .single()
+
+        if (fetchError || !playerSeasonData) {
+          console.error('[makePick] Error fetching player_id from player_seasons:', fetchError)
+          return
+        }
+
         // Save pick to Supabase
         const { error } = await supabase
           .from('draft_picks')
           .insert({
             draft_session_id: session.id,
             draft_team_id: team.id,
-            player_id: playerSeasonId, // Required by schema
+            player_id: playerSeasonData.player_id, // Get from player_seasons table
             player_season_id: playerSeasonId,
             pick_number: currentPick.pickNumber,
             round: currentPick.round,
@@ -382,6 +394,7 @@ export const useDraftStore = create<DraftState>()(
 
         if (error) {
           console.error('[makePick] Error saving pick to Supabase:', error)
+          return
         }
 
         // Advance to next pick
