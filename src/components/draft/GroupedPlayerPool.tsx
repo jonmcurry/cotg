@@ -5,6 +5,7 @@
 
 import { useState, useMemo } from 'react'
 import type { PlayerSeason } from '../../utils/cpuDraftLogic'
+import { getPitcherGrade } from '../../utils/apbaRating'
 
 interface Props {
   players: PlayerSeason[]
@@ -19,6 +20,24 @@ interface GroupedPlayer {
   availableSeasons: PlayerSeason[]
   bestRating: number
   bestPosition: string
+}
+
+/**
+ * Check if a position is a pitcher
+ */
+const isPitcherPosition = (position: string): boolean => {
+  return position === 'P' || position === 'SP' || position === 'RP' || position === 'CL'
+}
+
+/**
+ * Format rating for display - shows APBA grade for pitchers, numeric rating for batters
+ */
+const formatRating = (rating: number | null, position: string): string => {
+  if (rating === null) return 'Not Rated'
+  if (isPitcherPosition(position)) {
+    return `Grade ${getPitcherGrade(rating)}`
+  }
+  return rating.toFixed(1)
 }
 
 export default function GroupedPlayerPool({
@@ -156,10 +175,14 @@ export default function GroupedPlayerPool({
                       </div>
                       <div className="flex items-center gap-4">
                         <span className="text-xs text-charcoal/60">
-                          {hasMultipleSeasons ? `${group.availableSeasons.length} seasons` : group.availableSeasons[0].year}
+                          {hasMultipleSeasons ? (
+                            `${group.availableSeasons.length} seasons`
+                          ) : (
+                            `${group.availableSeasons[0].year} ${group.availableSeasons[0].team_id}`
+                          )}
                         </span>
                         <span className="text-sm font-medium text-burgundy">
-                          Rating {group.bestRating.toFixed(1)}
+                          {formatRating(group.bestRating, group.bestPosition)}
                         </span>
                       </div>
                     </div>
@@ -185,19 +208,29 @@ export default function GroupedPlayerPool({
                                 {season.year} {season.team_id}
                               </span>
                             </div>
-                            <div className="flex items-center gap-4 text-xs text-charcoal/60">
-                              {season.apba_rating !== null && (
-                                <span>Rating {season.apba_rating.toFixed(1)}</span>
-                              )}
-                              {season.batting_avg !== null && (
-                                <span>.{Math.floor(season.batting_avg * 1000)}</span>
-                              )}
-                              {season.home_runs !== null && (
-                                <span>{season.home_runs} HR</span>
-                              )}
-                              {season.era !== null && (
-                                <span>{season.era.toFixed(2)} ERA</span>
-                              )}
+                            <div className="flex items-center gap-4 text-xs">
+                              {/* Rating shown prominently first */}
+                              <span className="text-sm font-medium text-burgundy">
+                                {formatRating(season.apba_rating, season.primary_position)}
+                              </span>
+                              {/* Supporting stats */}
+                              <span className="text-charcoal/60">
+                                {season.batting_avg !== null && (
+                                  <span>.{Math.floor(season.batting_avg * 1000)}</span>
+                                )}
+                                {season.home_runs !== null && (
+                                  <span className="ml-2">{season.home_runs} HR</span>
+                                )}
+                                {season.era !== null && (
+                                  <span>{season.era.toFixed(2)} ERA</span>
+                                )}
+                                {season.wins !== null && isPitcherPosition(season.primary_position) && (
+                                  <span className="ml-2">{season.wins}W</span>
+                                )}
+                                {season.saves !== null && season.saves > 0 && isPitcherPosition(season.primary_position) && (
+                                  <span className="ml-1">{season.saves}SV</span>
+                                )}
+                              </span>
                             </div>
                           </div>
                         ))}

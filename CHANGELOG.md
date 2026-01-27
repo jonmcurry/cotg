@@ -76,6 +76,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 2. Run `npx tsx scripts/calculate-apba-ratings.ts` to populate ratings
 3. Ratings will display in draft interface instead of WAR 0.0
 
+### Fixed - 2026-01-27 (Draft UI Improvements)
+
+**Draft Player Pool UI/UX Enhancements - COMPLETE ✅**
+
+- Fixed player query limit issue (missing Babe Ruth and other legends)
+  - Issue: Supabase default 1000 row limit truncated player pool
+  - Solution: Added `.limit(10000)` to query to fetch all available players
+  - Impact: All legendary players now visible and draftable
+- Implemented APBA pitcher grade display
+  - Pitchers now show "Grade A/B/C/D" instead of numeric rating
+  - Uses authentic APBA grading system (A=Elite, B=Above Avg, C=Avg, D=Below Avg)
+  - Position players continue to show numeric rating (0-100)
+- Enhanced individual season ratings in expanded view
+  - Individual season ratings now displayed prominently first
+  - Pitchers show grade letter, position players show numeric rating
+  - Added W/SV stats for pitchers in expanded view
+  - Improved visual hierarchy with rating as primary metric
+- Improved single-season player display
+  - Single-season players now show year and team (e.g., "1927 NYA")
+  - Better visual consistency between single and multi-season players
+  - Clearer information density without expanding
+- Added graceful NULL rating handling
+  - Shows "Not Rated" instead of "0.0" for players without ratings
+  - Prevents confusing display before migration is applied
+  - Provides clear feedback to user about data state
+
+**UI Changes:**
+- Player name row: Shows "Grade A" for pitchers, "72.5" for position players
+- Expanded seasons: Rating displayed first and prominently
+- Single-season: Shows year/team inline for better context
+- NULL handling: Clear "Not Rated" message
+
+**Files Modified:**
+- src/components/draft/DraftBoard.tsx (added .limit(10000) to query)
+- src/components/draft/GroupedPlayerPool.tsx (APBA grades, rating display, NULL handling)
+
+**Files Created:**
+- docs/plans/draft-ui-improvements.md (implementation plan)
+
+**Impact:**
+- All players now visible (no 1000 player limit)
+- Authentic APBA baseball experience with pitcher grades
+- Clear rating information for informed draft decisions
+- Better UI consistency and visual hierarchy
+- Graceful degradation when ratings not yet calculated
+
 ### Added - 2026-01-27
 
 - Created comprehensive implementation plan document (`docs/IMPLEMENTATION_PLAN.md`)

@@ -49,6 +49,8 @@ export default function DraftBoard({ onExit }: Props) {
         const { supabase } = await import('../../lib/supabaseClient')
 
         // Build query to get players from selected seasons
+        // Note: Using .limit(10000) to override Supabase default 1000 row limit
+        // This ensures we get all players including legends like Babe Ruth
         const { data, error } = await supabase
           .from('player_seasons')
           .select(`
@@ -77,6 +79,7 @@ export default function DraftBoard({ onExit }: Props) {
           .in('year', session.selectedSeasons)
           .or('at_bats.gte.100,innings_pitched_outs.gte.60') // Minimum playing time
           .order('apba_rating', { ascending: false, nullsFirst: false })
+          .limit(10000)  // Override default 1000 limit to get all players
 
         if (error) {
           console.error('[Player Load] CRITICAL ERROR loading players:', error)
