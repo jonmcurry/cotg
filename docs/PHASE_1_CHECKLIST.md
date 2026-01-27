@@ -12,33 +12,33 @@
 
 ### Tasks
 
-- [ ] Parse APBA PLAYERS.DAT binary structure
-  - [ ] Determine record size and layout
-  - [ ] Extract player name fields
-  - [ ] Extract position and handedness
-  - [ ] Extract numerical ratings/grades
-  - [ ] Extract dice outcome arrays
-  - [ ] Document all field offsets and data types
-- [ ] Analyze multiple season files for consistency
-  - [ ] 1921 season (1921S.WDD)
-  - [ ] 1943 season (1943S.WDD)
-  - [ ] 1971 season (1971S.WDD)
+- [x] Parse APBA PLAYERS.DAT binary structure
+  - [x] Determine record size and layout (146 bytes)
+  - [x] Extract player name fields
+  - [x] Extract position and handedness
+  - [x] Extract numerical ratings/grades
+  - [x] Extract dice outcome arrays (raw bytes)
+  - [x] Document all field offsets and data types
+- [x] Analyze multiple season files for consistency
+  - [x] 1921 season (1921S.WDD) - 491 players
+  - [x] 1943 season (1943S.WDD) - 518 players
+  - [x] 1971 season (1971S.WDD) - 827 players
 - [ ] Parse APBA outcome tables (TABLES directory)
   - [ ] B3EHMSG.TBL - batting outcomes
   - [ ] B3EHNUM.TBL - numeric codes
   - [ ] Understand dice roll mappings
-- [ ] Document APBA game mechanics
-  - [ ] Dice roll system (2d6 = 36 outcomes)
-  - [ ] Outcome resolution
-  - [ ] Fielding mechanics
-  - [ ] Base running mechanics
-- [ ] Create Python script to extract all APBA data
-  - [ ] Parse binary files
-  - [ ] Export to JSON for analysis
-  - [ ] Validate against known players
-- [ ] Document findings in APBA_REVERSE_ENGINEERING.md
+- [x] Document APBA game mechanics (initial)
+  - [x] Dice roll system (2d6 = 36 outcomes)
+  - [x] Outcome resolution (overview)
+  - [x] Fielding grades system
+  - [ ] Base running mechanics (pending)
+- [x] Create Python script to extract all APBA data
+  - [x] Parse binary files
+  - [x] Export to JSON for analysis
+  - [x] Validate against known players
+- [x] Document findings in APBA_REVERSE_ENGINEERING.md
 
-**Deliverable:** Complete APBA mechanics documentation
+**Deliverable:** ✅ PARTIALLY COMPLETE - Player format documented, outcome tables pending
 
 ---
 
