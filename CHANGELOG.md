@@ -710,6 +710,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **Commit:**
 - commit 8578456
 
+### Added - 2026-01-27 (Player Grouping UI/UX)
+
+**Grouped Player-Season Display - COMPLETE ✅**
+
+- Implemented grouped player pool interface for better UX
+  - Issue: Players with multiple seasons displayed as flat list, causing confusion
+  - User feedback: "If a player has multiple seasons played then their seasons need to be grouped under the player name and have a mechanism to pick what season to draft"
+  - Example: Hank Aaron appeared twice (1959 MLB, 1971 ATL) as separate entries
+  - After drafting one season, other season still showed but wasn't visually connected
+- Solution: Created GroupedPlayerPool component with expandable seasons
+  - Players grouped by display_name with count of available seasons
+  - Collapsed view shows: Position, Name, Season count, Best WAR
+  - Click to expand: Shows all available seasons with detailed stats
+  - Each season shows: Year, Team, Position, WAR, BA, HR (batters) or ERA (pitchers)
+  - Visual hierarchy with indentation and expand/collapse arrows
+  - Search filters at player-name level (not season level)
+  - Single-season players can be drafted directly without expanding
+
+**UI Design Pattern:**
+```
+[▼] C  Hank Aaron          2 seasons | WAR 12.5
+    ├─ C  1959 MLI    WAR 10.6, .355, 39 HR
+    └─ 1B 1971 ATL    WAR 8.3, .327, 47 HR
+
+[▶] OF Babe Ruth           1 season  | WAR 14.2
+```
+
+**Features:**
+- Automatic grouping by player name
+- Best WAR displayed at player level (from best available season)
+- Available season count shown clearly
+- Expandable/collapsible for multi-season players
+- Direct click for single-season players
+- Indented season rows for visual hierarchy
+- Stat comparison across seasons
+- CPU drafting indicator when appropriate
+
+**Files Created:**
+- src/components/draft/GroupedPlayerPool.tsx (new component replacing PlayerPool)
+
+**Files Modified:**
+- src/components/draft/DraftBoard.tsx (switched to GroupedPlayerPool component)
+
+**Impact:**
+- Users can easily see which seasons of a player are available
+- Clear visual hierarchy makes draft decisions easier
+- Comparing multiple seasons of same player is straightforward
+- Reduces confusion about drafted vs available player-seasons
+- Better UX for navigating large player pool
+
+**Commit:**
+- commit [pending]
+
 ### Next Steps
 
 - Phase 1.5: Build Lahman CSV import pipeline (TypeScript)

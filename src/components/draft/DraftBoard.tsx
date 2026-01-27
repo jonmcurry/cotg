@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useDraftStore } from '../../stores/draftStore'
-import PlayerPool from './PlayerPool'
+import GroupedPlayerPool from './GroupedPlayerPool'
 import RosterView from './RosterView'
 import PositionAssignmentModal from './PositionAssignmentModal'
 import DraftControls from './DraftControls'
@@ -288,7 +288,7 @@ export default function DraftBoard({ onExit }: Props) {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
           {/* Left Column: Player Pool */}
           <div className="lg:col-span-2">
-            <PlayerPool
+            <GroupedPlayerPool
               players={players}
               draftedPlayerIds={draftedPlayerIds}
               onSelectPlayer={handlePlayerSelect}

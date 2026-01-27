@@ -262,6 +262,41 @@ Draft system failing with 401 Unauthorized and 400 Bad Request errors when attem
 **Commit:**
 - commit 8578456
 
+### Issue 15: Player Grouping UI/UX (2026-01-27)
+**Problem:** Players with multiple seasons displayed as flat list
+- Same player appears multiple times (e.g. Hank Aaron 1959, Hank Aaron 1971)
+- Confusing which seasons are available after one season is drafted
+- No visual grouping or hierarchy
+- Difficult to compare seasons for same player
+- User feedback: "If a player has multiple seasons played then their seasons need to be grouped under the player name"
+
+**Solution:** Created grouped player pool interface
+- Group all player-seasons by display_name
+- Show collapsed view: Player name + count of available seasons + best WAR
+- Click to expand: Shows all available seasons with stats
+- Each season row shows: Year, Team, Position, WAR, key stats
+- Click season to draft that specific season
+- Visual hierarchy: Player name (bold) > Season details (indented)
+- Expandable/collapsible arrows for multi-season players
+- Search filters at player-name level
+
+**UI Design:**
+```Player name (collapsed): [▶] Pos PlayerName          3 seasons | WAR 12.5
+Player name (expanded):  [▼] Pos PlayerName          3 seasons | WAR 12.5
+    Season 1:                Pos 1959 NYG     WAR 10.6, .345, 41 HR
+    Season 2:                Pos 1965 SFG     WAR 11.2, .317, 52 HR
+    Season 3:                Pos 1971 SFG     WAR 5.2, .271, 18 HR
+```
+
+**Files Created:**
+- src/components/draft/GroupedPlayerPool.tsx (new component)
+
+**Files Modified:**
+- src/components/draft/DraftBoard.tsx (use GroupedPlayerPool instead of PlayerPool)
+
+**Commit:**
+- commit [pending]
+
 ## Testing Checklist
 - [x] TypeScript compilation succeeds
 - [x] Production build succeeds
