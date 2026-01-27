@@ -325,10 +325,12 @@ export const useDraftStore = create<DraftState>()(
           .from('draft_picks')
           .insert({
             draft_session_id: session.id,
-            team_id: team.id,
+            draft_team_id: team.id,
+            player_id: playerSeasonId, // Required by schema
+            player_season_id: playerSeasonId,
             pick_number: currentPick.pickNumber,
             round: currentPick.round,
-            player_season_id: playerSeasonId,
+            pick_in_round: currentPick.pickInRound,
           })
 
         if (error) {

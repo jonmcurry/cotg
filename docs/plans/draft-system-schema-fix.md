@@ -196,6 +196,27 @@ Draft system failing with 401 Unauthorized and 400 Bad Request errors when attem
 **Commit:**
 - commit 20f0fa2
 
+### Issue 12: Draft Picks Schema Mismatch (2026-01-27)
+**Problem:** CPU draft making picks but failing to save to Supabase database
+- Error: `Could not find the 'team_id' column of 'draft_picks' in the schema cache`
+- HTTP 400 Bad Request when inserting into draft_picks table
+- Root causes:
+  1. Code used `team_id` but database schema has `draft_team_id`
+  2. Code missing required field `pick_in_round`
+  3. Code missing required field `player_id`
+
+**Solution:**
+- Updated draftStore.ts makePick() to match database schema
+- Changed `team_id` → `draft_team_id`
+- Added `pick_in_round: currentPick.pickInRound` (required by schema)
+- Added `player_id: playerSeasonId` (required by schema)
+
+**Files Modified:**
+- src/stores/draftStore.ts (schema alignment for draft_picks insert)
+
+**Commit:**
+- commit [pending]
+
 ## Testing Checklist
 - [x] TypeScript compilation succeeds
 - [x] Production build succeeds

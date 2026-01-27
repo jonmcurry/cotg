@@ -570,6 +570,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **Commit:**
 - commit 20f0fa2
 
+### Fixed - 2026-01-27 (Draft Picks Schema Mismatch)
+
+**CPU Draft Save Failing - COMPLETE ✅**
+
+- Fixed schema mismatch between code and database for draft_picks table
+  - Issue: CPU draft making picks successfully but getting 400 Bad Request when saving to Supabase
+  - Error: "Could not find the 'team_id' column of 'draft_picks' in the schema cache"
+  - Root causes:
+    1. Code used `team_id` but database schema has `draft_team_id`
+    2. Code missing required field `pick_in_round`
+    3. Code missing required field `player_id`
+- Solution: Updated draftStore.ts makePick() to match database schema
+  - Changed: `team_id` → `draft_team_id`
+  - Added: `pick_in_round: currentPick.pickInRound`
+  - Added: `player_id: playerSeasonId`
+
+**Technical Details:**
+- Database schema (004_create_draft_tables.sql) defines:
+  - `draft_team_id UUID NOT NULL` (not team_id)
+  - `player_id UUID NOT NULL` (was missing)
+  - `player_season_id UUID NOT NULL` (was present ✓)
+  - `pick_in_round INTEGER NOT NULL` (was missing)
+- Code was inserting wrong column names and missing required fields
+- Supabase returned PGRST204 error (column not found in schema cache)
+
+**Files Modified:**
+- src/stores/draftStore.ts (makePick method - draft_picks insert)
+
+**Impact:**
+- Draft picks now save successfully to Supabase
+- Pick history persists to database
+- Draft sessions can be resumed from database state
+- Full draft flow now works end-to-end
+
+**Commit:**
+- commit [pending]
+
 ### Next Steps
 
 - Phase 1.5: Build Lahman CSV import pipeline (TypeScript)
