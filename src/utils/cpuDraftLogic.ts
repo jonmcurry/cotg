@@ -23,6 +23,7 @@ export interface PlayerSeason {
   // Stats
   apba_rating: number | null  // APBA-style rating (0-100 scale) - primary metric for drafting
   war: number | null  // Keep for reference, but use apba_rating for drafting
+  at_bats: number | null  // Used to determine if player qualifies as position player (>= 50)
   batting_avg: number | null
   hits: number | null
   home_runs: number | null
@@ -32,6 +33,7 @@ export interface PlayerSeason {
   slugging_pct: number | null
 
   // Pitching
+  innings_pitched_outs: number | null  // Used to determine if player qualifies as pitcher (>= 30)
   wins: number | null
   losses: number | null
   era: number | null
