@@ -64,7 +64,7 @@ echo ""
 SUCCESS=0
 FAILED=0
 
-for FILE in $FILES; then
+for FILE in $FILES; do
   FILENAME=$(basename "$FILE")
   echo "📄 Executing: $FILENAME"
 
