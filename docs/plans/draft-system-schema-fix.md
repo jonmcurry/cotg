@@ -80,14 +80,52 @@ Draft system failing with 401 Unauthorized and 400 Bad Request errors when attem
 **Files Modified:**
 - src/components/draft/DraftBoard.tsx (error handling and logging)
 
+### Issue 6: Zustand State Mutation Bug (2026-01-27)
+**Problem:** Session status stuck at 'setup', never changed to 'in_progress'
+- CPU draft blocked because status check failed
+- Root cause: `startDraft()` mutated session object then passed same reference to `set()`
+- Zustand uses reference equality - no re-renders or useEffect updates
+
+**Solution:**
+- Fixed all state mutations in draftStore.ts to use immutable updates
+- `startDraft()`, `pauseDraft()`, `resumeDraft()`, `saveSession()`, `makePick()`
+- All now create new objects with spread operator instead of mutating
+- Added comprehensive logging to startDraft() and saveSession()
+
+**Files Modified:**
+- src/stores/draftStore.ts (immutable state updates)
+
+**Commit:**
+- commit 887abe8
+
+### Issue 7: CPU Draft Timeout Cancellation Bug (2026-01-27)
+**Problem:** CPU draft showed "Team is thinking..." but never made picks
+- Timeout was being cancelled before it could fire
+- Root cause: `cpuThinking` was in useEffect dependency array
+- When `setCpuThinking(true)` ran, it triggered cleanup that cancelled timeout
+
+**Solution:**
+- Removed `cpuThinking` from useEffect dependency array
+- Effect should only re-run when session, team, or players change
+- Timeout now executes after 1-2 second delay
+- CPU draft progresses automatically through all teams
+
+**Files Modified:**
+- src/components/draft/DraftBoard.tsx (removed cpuThinking from deps)
+
+**Commit:**
+- commit 72cd3f1
+
 ## Testing Checklist
 - [x] TypeScript compilation succeeds
 - [x] Production build succeeds
 - [x] Draft session creation succeeds (no 401 error)
 - [x] Draft session creation succeeds (no 400 error)
 - [x] Error handling added (loud errors, no silent failures)
+- [x] Zustand state mutation fixed (status updates correctly)
+- [x] CPU draft timeout executes (picks are made)
 - [ ] Draft board loads with player data
-- [ ] CPU auto-draft executes successfully
+- [ ] CPU auto-draft completes full draft successfully
 - [ ] Human player can select and assign players
 - [ ] Snake draft order works correctly
 - [ ] Session persistence works
