@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed - 2026-01-27 (Sort Double-Render Fix)
 
+**Commit:** `7cdd42f`
+
 **Fixed Sorting Running Twice (Double-Render Issue)**
 
 - Fixed sorting operation running twice when clicking column headers
