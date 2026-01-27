@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed - 2026-01-27 (Player Pool 1000 Limit)
 
+**Commit:** `518d915`
+
 **Fixed Player Pool Only Showing 1000 Players**
 
 - Fixed draft board player loading to fetch all players beyond Supabase's 1000 row default limit
