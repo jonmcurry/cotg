@@ -312,7 +312,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - src/stores/draftStore.ts (UUID generation fix)
 
 **Commit:**
-- Pending commit with UUID fix
+- commit 5064f32
+
+### Fixed - 2026-01-27 (CPU Draft Silent Failure - Rule 3)
+
+**Error Handling Improvements - COMPLETE ✅**
+
+- Fixed silent CPU draft failures (Rule 3 violation)
+  - Issue: CPU draft stalled with no console output or error messages
+  - Added comprehensive logging to player loading process
+  - Added step-by-step logging to CPU draft decision logic
+  - All errors now show CRITICAL ERROR alerts with details
+- Improved debugging visibility:
+  - Player load logs: start, success count, or failure reasons
+  - CPU draft logs: session status, player count, team info, blocking reasons
+  - Console shows full context for troubleshooting
+- All failures are now "loud and proud" per Rule 3
+
+**Files Modified:**
+- src/components/draft/DraftBoard.tsx (comprehensive error handling)
+
+**Commit:**
+- commit 962b752
 
 ### Next Steps
 
