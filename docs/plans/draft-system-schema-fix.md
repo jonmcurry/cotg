@@ -295,7 +295,7 @@ Player name (expanded):  [▼] Pos PlayerName          3 seasons | WAR 12.5
 - src/components/draft/DraftBoard.tsx (use GroupedPlayerPool instead of PlayerPool)
 
 **Commit:**
-- commit [pending]
+- commit c111e25
 
 ## Testing Checklist
 - [x] TypeScript compilation succeeds
