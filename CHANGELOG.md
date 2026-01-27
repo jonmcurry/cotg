@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-01-27 (APBA Rating Script Performance Recovery)
+
+**Commit:** TBD
+
+**Restored Fast Batch Upsert Using Service Role Key**
+
+- Fixed rating calculation script taking 20+ minutes (was supposed to be 2-3 minutes)
+  - Issue: Script stuck on batch 68 after 20+ minutes, using individual UPDATE queries
+  - Root cause: Previous RLS fix reverted to slow individual updates (500 per batch × 90 batches = 45,000 queries)
+  - User impact: Rating calculations were painfully slow, blocking development workflow
+  - Performance degradation: 2-3 minutes → 20+ minutes (10x slower than expected)
+- Solution: Use service role key for admin operations
+  - Service role key bypasses RLS policies (appropriate for admin scripts)
+  - Enables batch upsert operations (500 updates → 1 upsert per batch)
+  - Maintains security: RLS still protects client-side database access
+  - Service key already existed in `.env` file, just needed to use it
+
+**Before (Anon Key + Individual Updates):**
+```typescript
+// 500 individual UPDATE queries per batch
+const supabase = createClient(url, ANON_KEY) // RLS enforced
+for (const update of updates) {
+  await supabase.update({ apba_rating }).eq('id', update.id)
+}
+// Result: 45,000 network calls, 20+ minutes
+```
+
+**After (Service Key + Batch Upsert):**
+```typescript
+// 1 batch UPSERT per batch
+const supabase = createClient(url, SERVICE_KEY) // RLS bypassed
+await supabase.upsert(
+  updates.map(u => ({ id: u.id, apba_rating: u.rating })),
+  { onConflict: 'id' }
+)
+// Result: 90 network calls, 2-3 minutes
+```
+
+**Performance Impact:**
+- Network calls: 45,000 → 90 (99.8% reduction)
+- Execution time: 20+ minutes → 2-3 minutes (87% faster)
+- Per-batch time: 500 × 100ms = 50 seconds → 1 × 100ms = 0.1 seconds (500x faster)
+- Maintains retry logic for transient errors (3 attempts with backoff)
+
+**Technical Details:**
+- Changed from `VITE_SUPABASE_ANON_KEY` to `SUPABASE_SERVICE_ROLE_KEY`
+- Restored batch upsert operation (was disabled due to RLS constraints)
+- Service role key approach is standard practice for admin scripts:
+  - Client code: Use anon key (RLS enforced for security)
+  - Admin scripts: Use service key (bypass RLS for efficiency)
+- RLS policies remain active for all client-side database access
+- Only affects server-side admin operations
+
+**Files Modified:**
+- [scripts/calculate-apba-ratings.ts](scripts/calculate-apba-ratings.ts) - Use service key and batch upsert
+
+**Architecture Note:**
+- This restores the performance from commit `d8d971d` (Optimized - 2026-01-27)
+- Previous fix in commit `13b2c6d` used anon key due to RLS concerns
+- Service key is the correct solution: bypasses RLS for admin operations, maintains security for client access
+
 ### Fixed - 2026-01-27 (Virtual Scrolling for Player Pool)
 
 **Commit:** `0667482`

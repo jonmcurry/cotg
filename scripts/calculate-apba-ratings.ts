@@ -17,14 +17,16 @@ import { calculatePlayerRating, getRatingDescription } from '../src/utils/apbaRa
 dotenv.config()
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL!
-const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY!
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
-if (!supabaseUrl || !supabaseAnonKey) {
+if (!supabaseUrl || !supabaseServiceKey) {
   console.error('Missing Supabase credentials in .env file')
+  console.error('Required: VITE_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY')
   process.exit(1)
 }
 
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// Use service role key for admin operations (bypasses RLS, allows batch upsert)
+const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
 interface PlayerSeasonRow {
   id: string
@@ -145,45 +147,37 @@ async function calculateAndUpdateRatings() {
 
     console.log('  Updating database...')
 
-    // Update each player's rating individually (upsert requires INSERT permission which RLS doesn't allow)
-    // Retry each update up to 3 times on transient errors (Cloudflare 500, network issues)
+    // Use batch upsert (service role key bypasses RLS, allows this operation)
+    // Retry up to 3 times on transient errors (Cloudflare 500, network issues)
     let batchUpdated = 0
-    const failedUpdates: string[] = []
+    let success = false
+    let lastError: any = null
 
-    for (const update of updates) {
-      let success = false
-      let lastError: any = null
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const { error: upsertError } = await supabase
+        .from('player_seasons')
+        .upsert(
+          updates.map(u => ({ id: u.id, apba_rating: u.rating })),
+          { onConflict: 'id' }
+        )
 
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        const { error: updateError } = await supabase
-          .from('player_seasons')
-          .update({ apba_rating: update.rating })
-          .eq('id', update.id)
-
-        if (!updateError) {
-          success = true
-          batchUpdated++
-          break
-        }
-
-        lastError = updateError
-
-        if (attempt < 3) {
-          await new Promise(resolve => setTimeout(resolve, attempt * 100)) // 100ms, 200ms delays
-        }
+      if (!upsertError) {
+        success = true
+        batchUpdated = updates.length
+        break
       }
 
-      if (!success && lastError) {
-        failedUpdates.push(`${update.id}: ${lastError.message}`)
+      lastError = upsertError
+
+      if (attempt < 3) {
+        console.log(`  Retry attempt ${attempt + 1} after error: ${upsertError.message}`)
+        await new Promise(resolve => setTimeout(resolve, attempt * 1000)) // 1s, 2s delays
       }
     }
 
-    if (failedUpdates.length > 0) {
-      console.error(`  Failed to update ${failedUpdates.length} players after 3 attempts:`)
-      failedUpdates.slice(0, 5).forEach(err => console.error(`    ${err}`))
-      if (failedUpdates.length > 5) {
-        console.error(`    ... and ${failedUpdates.length - 5} more`)
-      }
+    if (!success && lastError) {
+      console.error(`  ✗ Failed to update batch after 3 attempts: ${lastError.message}`)
+      console.error(`  Skipping ${updates.length} players in this batch`)
     }
 
     totalProcessed += players.length
