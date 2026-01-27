@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed - 2026-01-27 (APBA Rating Script Performance Recovery)
 
-**Commit:** `88cb5b5`
+**Commit:** `43efb7b`
 
 **Optimized Using Service Role Key and Parallel Updates**
 
