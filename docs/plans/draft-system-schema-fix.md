@@ -176,6 +176,26 @@ Draft system failing with 401 Unauthorized and 400 Bad Request errors when attem
 **Commit:**
 - commit 7277858
 
+### Issue 11: CPU Draft Player Availability Trigger (2026-01-27)
+**Problem:** CPU draft never progressed after players loaded
+- Console showed "[Player Load] SUCCESS - Loaded 1000 players"
+- Console showed "Waiting for players to load..." but never reached "Team is thinking..."
+- Effect didn't re-run when players became available
+- Root cause: After removing `players` from deps to fix false re-runs (Issue #10), effect no longer triggered when players.length changed from 0 → 1000
+
+**Solution:**
+- Added `players.length` (primitive) to dependency array
+- Uses number value instead of array reference to avoid false re-runs
+- Triggers when players.length changes from 0 to 1000
+- Does NOT re-run when array reference changes (only when length changes)
+- Final dependencies: `[session?.currentPick, session?.status, currentTeam?.id, players.length, makePick]`
+
+**Files Modified:**
+- src/components/draft/DraftBoard.tsx (added players.length to dependency array)
+
+**Commit:**
+- commit [pending]
+
 ## Testing Checklist
 - [x] TypeScript compilation succeeds
 - [x] Production build succeeds

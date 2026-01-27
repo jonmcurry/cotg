@@ -196,9 +196,10 @@ export default function DraftBoard({ onExit }: Props) {
     // - session?.currentPick: Re-run when pick advances to next team
     // - session?.status: Re-run when draft starts/pauses
     // - currentTeam?.id: Re-run when the picking team changes
+    // - players.length: Re-run when players become available (0 -> 1000)
     // We intentionally do NOT depend on: session (full object), players (array reference), loading, cpuThinking
-    // These are READ but changes shouldn't cancel the pending timeout
-  }, [session?.currentPick, session?.status, currentTeam?.id, makePick])
+    // Using players.length (primitive) instead of players (array) prevents false re-runs when array reference changes
+  }, [session?.currentPick, session?.status, currentTeam?.id, players.length, makePick])
 
   const handlePlayerSelect = useCallback((player: PlayerSeason) => {
     if (!currentTeam || currentTeam.control !== 'human') {

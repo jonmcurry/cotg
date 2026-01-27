@@ -529,6 +529,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Draft progresses through all teams to completion
 - No more false re-runs from unrelated state updates
 
+**Commit:**
+- commit 7277858
+
+### Fixed - 2026-01-27 (CPU Draft Player Availability Trigger)
+
+**Effect Not Re-Running When Players Load - COMPLETE ✅**
+
+- Fixed CPU draft not triggering when players finished loading
+  - Issue: Console showed "[Player Load] SUCCESS - Loaded 1000 players" but CPU draft never progressed
+  - Console showed "Waiting for players to load..." but never reached "Team is thinking..."
+  - Root cause: After removing `players` from deps to fix false re-runs, effect no longer triggered when players became available
+  - Effect needed to re-run when players.length changed from 0 → 1000
+- Solution: Added `players.length` to dependency array
+  - Uses primitive value (number) instead of array reference
+  - Triggers effect when players.length changes from 0 to 1000
+  - Does NOT cause false re-runs because length stays 1000 after initial load
+  - Final dependencies: `[session?.currentPick, session?.status, currentTeam?.id, players.length, makePick]`
+
+**Technical Details:**
+- Problem: Needed to trigger on player loading without false re-runs
+- Using `players` (array) would cause re-runs on every array reference change
+- Using `players.length` (primitive) only triggers when the COUNT changes
+- Flow:
+  1. Initial state: players = [], players.length = 0
+  2. Effect runs, sees loading=true, waits
+  3. Players load: players = [1000 items], players.length = 1000
+  4. Effect re-runs due to players.length change
+  5. Effect sees loading=false and players.length=1000, proceeds with draft
+  6. Future updates don't change players.length, so no false re-runs
+
+**Files Modified:**
+- src/components/draft/DraftBoard.tsx (added players.length to dependency array)
+
+**Impact:**
+- CPU draft effect triggers when players finish loading
+- Draft progresses from "Waiting..." to "Team is thinking..." to making picks
+- Complete flow: Load players → Wait for loading → Trigger CPU draft → Make picks
+
+**Commit:**
+- commit [pending]
+
 ### Next Steps
 
 - Phase 1.5: Build Lahman CSV import pipeline (TypeScript)
