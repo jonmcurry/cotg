@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-01-27 (APBA Rating Script RLS Policy)
+
+**Fixed Row Level Security Policy Violation in Rating Script**
+
+- Fixed RLS policy violation error: "new row violates row-level security policy for table 'player_seasons'"
+  - Issue: Script using `.upsert()` operation which requires INSERT permission
+  - RLS policies don't grant INSERT permission to anonymous role on player_seasons table
+  - Records already exist, only need to UPDATE the apba_rating column
+- Solution: Changed from `.upsert()` to individual `.update()` operations
+  - `.update()` only requires UPDATE permission (which RLS allows)
+  - Each row updated individually with `.eq('id', player_id)`
+  - Maintained retry logic with 3 attempts per update (100ms, 200ms delays)
+  - Better error reporting showing which specific players failed
+
+**Technical Details:**
+- Changed from batch upsert to individual updates:
+  ```typescript
+  // Before: Single upsert (requires INSERT + UPDATE permissions)
+  await supabase.upsert(
+    updates.map(u => ({ id: u.id, apba_rating: u.rating })),
+    { onConflict: 'id' }
+  )
+
+  // After: Individual updates (requires only UPDATE permission)
+  for (const update of updates) {
+    await supabase
+      .update({ apba_rating: update.rating })
+      .eq('id', update.id)
+  }
+  ```
+- Retry logic moved to per-update level for better error recovery
+- Failed updates tracked and reported with specific error messages
+
+**Performance Note:**
+- Script now takes longer than batch upsert approach (back to ~10-15 minutes for 45,000 rows)
+- This is necessary tradeoff to work within RLS policy constraints
+- Still includes retry logic to handle transient network errors
+
+**Files Modified:**
+- [scripts/calculate-apba-ratings.ts](scripts/calculate-apba-ratings.ts) - Changed upsert to individual updates
+
 ### Optimized - 2026-01-27 (APBA Rating Script Performance)
 
 **Rating Calculation Script Optimization - COMPLETE ✅**
