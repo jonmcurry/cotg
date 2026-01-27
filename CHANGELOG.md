@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - 2026-01-27 (Player Loading Progress Bar)
+
+**Added Real-Time Progress Bar for Player Loading**
+
+- Implemented accurate progress tracking during player loading with visual feedback
+  - Issue: Loading screen showed static "Preparing 125 season(s)" without progress indication
+  - User experience: Users couldn't see how many players loaded or if loading was stuck
+  - For large datasets (10,000+ players), loading takes several seconds
+- Solution: Real-time progress bar with live count
+  - Track players loaded after each batch (1,000 at a time)
+  - Display animated progress bar showing loading status
+  - Show exact count: "2,000 players loaded..." with shimmer animation
+  - Final state shows "Finalizing..." when last batch completes
+
+**Visual Features:**
+- Live player count updates: "1,000 players loaded...", "2,000 players loaded...", etc.
+- Animated progress bar with shimmer effect during loading
+- Status text changes: "Fetching more players..." → "Finalizing..."
+- Smooth transitions between batch loads
+
+**Technical Details:**
+- Added `loadingProgress` state tracking:
+  ```typescript
+  const [loadingProgress, setLoadingProgress] = useState({
+    loaded: 0,
+    hasMore: true
+  })
+  ```
+- Progress updated after each batch:
+  ```typescript
+  allPlayers.push(...data)
+  setLoadingProgress({
+    loaded: allPlayers.length,
+    hasMore: data.length === batchSize
+  })
+  ```
+- UI shows count and animated progress bar with CSS shimmer effect
+- Progress bar pulses while loading, stops when complete
+
+**User Impact:**
+- Users see exact count of players loaded in real-time
+- Visual feedback confirms loading is progressing (not stuck)
+- Better UX for large datasets (125 seasons = 10,000+ players)
+- Reduces perceived loading time with engaging animation
+
+**Files Modified:**
+- [src/components/draft/DraftBoard.tsx](src/components/draft/DraftBoard.tsx) - Added progress state and updated loading UI
+
 ### Fixed - 2026-01-27 (Player Pool 1000 Limit)
 
 **Commit:** `518d915`

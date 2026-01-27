@@ -32,6 +32,7 @@ export default function DraftBoard({ onExit }: Props) {
 
   const [players, setPlayers] = useState<PlayerSeason[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingProgress, setLoadingProgress] = useState({ loaded: 0, hasMore: true })
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerSeason | null>(null)
   const [cpuThinking, setCpuThinking] = useState(false)
 
@@ -45,6 +46,7 @@ export default function DraftBoard({ onExit }: Props) {
 
       console.log('[Player Load] Starting player load for seasons:', session.selectedSeasons)
       setLoading(true)
+      setLoadingProgress({ loaded: 0, hasMore: true })
       try {
         const { supabase } = await import('../../lib/supabaseClient')
 
@@ -107,6 +109,9 @@ export default function DraftBoard({ onExit }: Props) {
 
           console.log(`[Player Load] Fetched ${data.length} players in this batch`)
           allPlayers.push(...data)
+
+          // Update progress after each batch
+          setLoadingProgress({ loaded: allPlayers.length, hasMore: data.length === batchSize })
 
           // If we got fewer than batchSize, we've reached the end
           if (data.length < batchSize) {
@@ -294,11 +299,51 @@ export default function DraftBoard({ onExit }: Props) {
   if (loading) {
     return (
       <div className="min-h-screen bg-cream flex items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-2xl font-display text-burgundy mb-2">Loading Players...</h2>
-          <p className="text-charcoal/60 font-serif">
+        <div className="text-center max-w-md w-full px-8">
+          <h2 className="text-2xl font-display text-burgundy mb-4">Loading Players...</h2>
+          <p className="text-charcoal/60 font-serif mb-6">
             Preparing {session.selectedSeasons.length} season(s)
           </p>
+
+          {/* Progress Info */}
+          <div className="mb-3">
+            <p className="text-lg font-display text-charcoal">
+              {loadingProgress.loaded.toLocaleString()} players loaded
+              {loadingProgress.hasMore && <span className="text-charcoal/60">...</span>}
+            </p>
+          </div>
+
+          {/* Progress Bar */}
+          <div className="w-full bg-charcoal/10 rounded-full h-3 overflow-hidden">
+            <div
+              className="bg-burgundy h-full rounded-full transition-all duration-300 ease-out relative"
+              style={{
+                width: loadingProgress.hasMore ? '100%' : '100%',
+                animation: loadingProgress.hasMore ? 'pulse 1.5s ease-in-out infinite' : 'none'
+              }}
+            >
+              {/* Shimmer effect while loading */}
+              {loadingProgress.hasMore && (
+                <div
+                  className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent"
+                  style={{
+                    animation: 'shimmer 1.5s infinite'
+                  }}
+                />
+              )}
+            </div>
+          </div>
+
+          <p className="text-xs text-charcoal/50 font-serif mt-3">
+            {loadingProgress.hasMore ? 'Fetching more players...' : 'Finalizing...'}
+          </p>
+
+          <style>{`
+            @keyframes shimmer {
+              0% { transform: translateX(-100%); }
+              100% { transform: translateX(100%); }
+            }
+          `}</style>
         </div>
       </div>
     )
