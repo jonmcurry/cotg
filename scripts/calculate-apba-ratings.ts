@@ -228,7 +228,7 @@ async function calculateAndUpdateRatings() {
       const rating = player.rating.toFixed(1).padStart(6, ' ')
       const pos = player.position.padEnd(4, ' ')
       const year = player.year.toString()
-      const desc = getRatingDescription(player.rating).padEnd(15, ' ')
+      const desc = (getRatingDescription(player.rating) || 'Unknown').padEnd(15, ' ')
       console.log(`${rank}  ${rating}  ${pos} ${year}  ${player.name} (${desc})`)
     })
     console.log('-'.repeat(80))
