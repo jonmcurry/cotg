@@ -215,7 +215,7 @@ Draft system failing with 401 Unauthorized and 400 Bad Request errors when attem
 - src/stores/draftStore.ts (schema alignment for draft_picks insert)
 
 **Commit:**
-- commit [pending]
+- commit 089fc73
 
 ## Testing Checklist
 - [x] TypeScript compilation succeeds
