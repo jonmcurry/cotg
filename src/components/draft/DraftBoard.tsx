@@ -183,7 +183,9 @@ export default function DraftBoard({ onExit }: Props) {
     }, delay)
 
     return () => clearTimeout(timeoutId)
-  }, [session, currentTeam, players, cpuThinking, makePick])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Note: cpuThinking is intentionally NOT in dependencies to prevent cleanup from canceling timeout
+  }, [session, currentTeam, players, makePick])
 
   const handlePlayerSelect = useCallback((player: PlayerSeason) => {
     if (!currentTeam || currentTeam.control !== 'human') {

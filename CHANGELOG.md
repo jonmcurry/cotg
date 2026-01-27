@@ -371,6 +371,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - State persistence to Supabase works correctly
 - Draft flow unblocked
 
+**Commit:**
+- commit 887abe8
+
+### Fixed - 2026-01-27 (CPU Draft Timeout Cancellation Bug)
+
+**CPU Draft Never Executes - COMPLETE ✅**
+
+- Fixed race condition where CPU draft timeout was cancelled before firing
+  - Issue: CPU showed "Team is thinking..." but never made a pick
+  - Root cause: `cpuThinking` was in useEffect dependency array
+  - When `setCpuThinking(true)` ran, it triggered useEffect cleanup
+  - Cleanup function `clearTimeout(timeoutId)` cancelled the pending timeout
+  - setTimeout callback never executed, so no pick was made
+- Solution: Removed `cpuThinking` from dependency array
+  - Effect should only re-run when session, team, or players change
+  - Setting `cpuThinking` to `true` should NOT trigger cleanup
+  - After pick is made and `cpuThinking` resets to `false`, session change triggers next pick
+- Added ESLint disable comment explaining the intentional exclusion
+
+**Technical Details:**
+- React useEffect cleanup runs BEFORE the next effect when dependencies change
+- Having `cpuThinking` in deps array created this flow:
+  1. Effect runs, sets `cpuThinking = true`, schedules timeout
+  2. State change triggers re-render
+  3. Cleanup runs: `clearTimeout(timeoutId)` ← timeout cancelled!
+  4. Effect runs again, but early returns due to `cpuThinking === true`
+  5. No pick is ever made
+- Correct flow (without `cpuThinking` in deps):
+  1. Effect runs, sets `cpuThinking = true`, schedules timeout
+  2. State change triggers re-render, but effect doesn't re-run
+  3. Timeout fires after 1-2 seconds
+  4. Pick is made, `cpuThinking = false`, session advances
+  5. Session change triggers effect for next team
+
+**Files Modified:**
+- src/components/draft/DraftBoard.tsx (removed cpuThinking from deps array)
+
+**Impact:**
+- CPU draft now executes picks after 1-2 second delay
+- Draft progresses through all teams automatically
+- Timeout cleanup only runs when component unmounts or session changes
+- CPU draft flow fully functional
+
 ### Next Steps
 
 - Phase 1.5: Build Lahman CSV import pipeline (TypeScript)
