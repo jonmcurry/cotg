@@ -5,8 +5,8 @@
  * Algorithm:
  * 1. Identify unfilled required positions
  * 2. Weight positions by scarcity (C, SS weighted higher)
- * 3. Find top 3-5 players at needed positions by WAR
- * 4. Apply randomization factor (±10% WAR weight)
+ * 3. Find top 3-5 players at needed positions by APBA Rating
+ * 4. Apply randomization factor (±10% rating weight)
  * 5. Select highest weighted player
  */
 
@@ -21,7 +21,8 @@ export interface PlayerSeason {
   primary_position: string
 
   // Stats
-  war: number | null
+  apba_rating: number | null  // APBA-style rating (0-100 scale) - primary metric for drafting
+  war: number | null  // Keep for reference, but use apba_rating for drafting
   batting_avg: number | null
   home_runs: number | null
   rbi: number | null
@@ -91,20 +92,20 @@ export function playerQualifiesForPosition(
 
 /**
  * Calculate weighted score for a player
- * Combines WAR, position scarcity, and randomization
+ * Combines APBA Rating, position scarcity, and randomization
  */
 function calculateWeightedScore(
   player: PlayerSeason,
   position: PositionCode,
   randomizationFactor: number = 0.1
 ): number {
-  const war = player.war || 0
+  const rating = player.apba_rating || 0  // Use APBA rating instead of WAR
   const scarcityWeight = POSITION_SCARCITY[position] || 1.0
 
   // Apply randomization (±10% by default)
   const randomness = 1 + (Math.random() * 2 - 1) * randomizationFactor
 
-  return war * scarcityWeight * randomness
+  return rating * scarcityWeight * randomness
 }
 
 /**
@@ -222,13 +223,13 @@ export function getCPUDraftRecommendation(
   }
 
   const unfilledPositions = getUnfilledPositions(team)
-  const war = selection.player.war?.toFixed(1) || 'N/A'
+  const rating = selection.player.apba_rating?.toFixed(1) || 'N/A'
 
   let reasoning = ''
   if (unfilledPositions.length > 0) {
-    reasoning = `Filling ${selection.position} (WAR: ${war}) - needed position`
+    reasoning = `Filling ${selection.position} (Rating: ${rating}) - needed position`
   } else {
-    reasoning = `Best available player (WAR: ${war}) for bench`
+    reasoning = `Best available player (Rating: ${rating}) for bench`
   }
 
   return {

@@ -17,7 +17,7 @@ interface GroupedPlayer {
   displayName: string
   seasons: PlayerSeason[]
   availableSeasons: PlayerSeason[]
-  bestWAR: number
+  bestRating: number
   bestPosition: string
 }
 
@@ -42,7 +42,7 @@ export default function GroupedPlayerPool({
           displayName: name,
           seasons: [],
           availableSeasons: [],
-          bestWAR: 0,
+          bestRating: 0,
           bestPosition: player.primary_position,
         })
       }
@@ -52,22 +52,22 @@ export default function GroupedPlayerPool({
 
       if (!draftedPlayerIds.has(player.id)) {
         group.availableSeasons.push(player)
-        if ((player.war || 0) > group.bestWAR) {
-          group.bestWAR = player.war || 0
+        if ((player.apba_rating || 0) > group.bestRating) {
+          group.bestRating = player.apba_rating || 0
           group.bestPosition = player.primary_position
         }
       }
     })
 
-    // Sort seasons within each group by WAR descending
+    // Sort seasons within each group by APBA rating descending
     groups.forEach(group => {
-      group.availableSeasons.sort((a, b) => (b.war || 0) - (a.war || 0))
+      group.availableSeasons.sort((a, b) => (b.apba_rating || 0) - (a.apba_rating || 0))
     })
 
     // Convert to array and filter out players with no available seasons
     return Array.from(groups.values())
       .filter(group => group.availableSeasons.length > 0)
-      .sort((a, b) => b.bestWAR - a.bestWAR)
+      .sort((a, b) => b.bestRating - a.bestRating)
   }, [players, draftedPlayerIds])
 
   // Filter by search term
@@ -159,7 +159,7 @@ export default function GroupedPlayerPool({
                           {hasMultipleSeasons ? `${group.availableSeasons.length} seasons` : group.availableSeasons[0].year}
                         </span>
                         <span className="text-sm font-medium text-burgundy">
-                          WAR {group.bestWAR.toFixed(1)}
+                          Rating {group.bestRating.toFixed(1)}
                         </span>
                       </div>
                     </div>
@@ -186,8 +186,8 @@ export default function GroupedPlayerPool({
                               </span>
                             </div>
                             <div className="flex items-center gap-4 text-xs text-charcoal/60">
-                              {season.war !== null && (
-                                <span>WAR {season.war.toFixed(1)}</span>
+                              {season.apba_rating !== null && (
+                                <span>Rating {season.apba_rating.toFixed(1)}</span>
                               )}
                               {season.batting_avg !== null && (
                                 <span>.{Math.floor(season.batting_avg * 1000)}</span>

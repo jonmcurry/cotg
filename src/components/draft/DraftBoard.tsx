@@ -57,6 +57,7 @@ export default function DraftBoard({ onExit }: Props) {
             year,
             team_id,
             primary_position,
+            apba_rating,
             war,
             batting_avg,
             home_runs,
@@ -75,7 +76,7 @@ export default function DraftBoard({ onExit }: Props) {
           `)
           .in('year', session.selectedSeasons)
           .or('at_bats.gte.100,innings_pitched_outs.gte.60') // Minimum playing time
-          .order('war', { ascending: false, nullsFirst: false })
+          .order('apba_rating', { ascending: false, nullsFirst: false })
 
         if (error) {
           console.error('[Player Load] CRITICAL ERROR loading players:', error)
@@ -96,6 +97,7 @@ export default function DraftBoard({ onExit }: Props) {
           year: p.year,
           team_id: p.team_id,
           primary_position: p.primary_position,
+          apba_rating: p.apba_rating,
           war: p.war,
           batting_avg: p.batting_avg,
           home_runs: p.home_runs,

@@ -7,6 +7,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - 2026-01-27 (APBA Rating System Implementation)
+
+**APBA-Style Player Rating System - COMPLETE ✅**
+
+- Reverse engineered APBA Baseball For Windows v3.0 rating system from binary data files
+- Implemented APBA-inspired player rating system (0-100 scale) to replace NULL WAR values
+- Created comprehensive rating utility (`src/utils/apbaRating.ts`) with:
+  - Position player rating formula: (Batting × 0.7 + Fielding × 0.3) × Position_Scarcity
+  - Pitcher rating formula: (Grade × 0.5 + Control × 0.3 + Stars × 0.2)
+  - Uses existing Bill James metrics (OPS, runs_created_advanced, isolated_power)
+  - Position scarcity multipliers (C: 1.3, SS: 1.2, SP: 1.2, CL: 1.3)
+- Added database migration (`supabase/migrations/20260127_add_apba_rating.sql`)
+  - New `apba_rating` column on `player_seasons` table (DECIMAL 5,2)
+  - Index for efficient sorting/filtering
+- Created rating calculation script (`scripts/calculate-apba-ratings.ts`)
+  - Batch processes all player_seasons records
+  - Calculates ratings using APBA methodology
+  - Updates database with calculated ratings
+- Updated CPU draft logic to use APBA rating instead of WAR
+  - Modified `calculateWeightedScore()` to use `apba_rating` field
+  - Updated draft recommendations to show rating instead of WAR
+- Updated UI components to display APBA ratings
+  - `DraftBoard.tsx`: Query apba_rating, sort by rating
+  - `GroupedPlayerPool.tsx`: Display "Rating X.X" instead of "WAR X.X"
+  - Removed WAR from all draft interfaces per user request
+- Created comprehensive documentation
+  - `docs/analysis/apba-rating-system-reverse-engineered.md`: Full APBA system documentation
+  - `docs/analysis/war-vs-apba-rating-analysis.md`: Comparison analysis
+  - `docs/plans/apba-rating-system-implementation.md`: Implementation plan
+
+**APBA Rating Methodology:**
+- Position Players: Offensive value (OPS, RC, ISO) + Defensive rating + Position scarcity
+- Pitchers: ERA-based grade (A/B/C/D) + K/BB control + Wins+Saves stars
+- Scale: 0-100 (Legendary: 90+, Elite: 85+, All-Star: 75+, Average: 50+)
+
+**Technical Details:**
+- Analyzed C:\dosgames\shared\BBW\1971S.WDD\PLAYERS.DAT (120,888 bytes)
+- Extracted 48 pitching grades, 278 defensive ratings from APBA data
+- Extracted 685 rating references from WINDRAFT.HLP file
+- Defensive ratings: 1 (elite) to 9 (poor)
+- Pitcher grades: A (100 pts), B (75 pts), C (50 pts), D (25 pts)
+- Control ratings: 1-22+ scale mapped to 0-88 points
+- Star ratings: W/X/Y/Z mapped to 5-50 points
+
+**Files Created:**
+- src/utils/apbaRating.ts (rating calculation utility)
+- supabase/migrations/20260127_add_apba_rating.sql (database migration)
+- scripts/calculate-apba-ratings.ts (batch rating calculator)
+- scripts/apply-apba-migration.ts (migration helper)
+- docs/analysis/apba-rating-system-reverse-engineered.md (system documentation)
+- docs/plans/apba-rating-system-implementation.md (implementation plan)
+
+**Files Modified:**
+- src/utils/cpuDraftLogic.ts (use apba_rating instead of war)
+- src/components/draft/DraftBoard.tsx (query and display apba_rating)
+- src/components/draft/GroupedPlayerPool.tsx (show Rating instead of WAR)
+
+**Impact:**
+- Draft system now has meaningful player ratings (replacing 0.0 values)
+- CPU draft can effectively rank and select players
+- Ratings authentic to APBA baseball gameplay
+- User can compare players across eras using 0-100 scale
+- No complex WAR calculation required (uses existing stats)
+
+**Next Steps:**
+1. User must apply migration via Supabase Dashboard SQL Editor
+2. Run `npx tsx scripts/calculate-apba-ratings.ts` to populate ratings
+3. Ratings will display in draft interface instead of WAR 0.0
+
 ### Added - 2026-01-27
 
 - Created comprehensive implementation plan document (`docs/IMPLEMENTATION_PLAN.md`)
