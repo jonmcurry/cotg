@@ -32,7 +32,7 @@ export default function DraftBoard({ onExit }: Props) {
 
   const [players, setPlayers] = useState<PlayerSeason[]>([])
   const [loading, setLoading] = useState(true)
-  const [loadingProgress, setLoadingProgress] = useState({ loaded: 0, hasMore: true })
+  const [loadingProgress, setLoadingProgress] = useState({ loaded: 0, total: 0, hasMore: true })
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerSeason | null>(null)
   const [cpuThinking, setCpuThinking] = useState(false)
 
@@ -47,79 +47,102 @@ export default function DraftBoard({ onExit }: Props) {
       console.log('[Player Load] EFFECT TRIGGERED - Starting player load for seasons:', session.selectedSeasons)
       console.log('[Player Load] Current player count:', players.length)
       setLoading(true)
-      setLoadingProgress({ loaded: 0, hasMore: true })
+      setLoadingProgress({ loaded: 0, total: 0, hasMore: true })
       try {
         const { supabase } = await import('../../lib/supabaseClient')
 
-        // Fetch all players using pagination (Supabase has 1000 row default limit)
-        // Keep fetching until we get all results
+        // First, get total count for progress indication
+        console.log('[Player Load] Getting total player count...')
+        const { count, error: countError } = await supabase
+          .from('player_seasons')
+          .select('id', { count: 'exact', head: true })
+          .in('year', session.selectedSeasons)
+          .or('at_bats.gte.50,innings_pitched_outs.gte.30')
+
+        if (countError) {
+          console.error('[Player Load] Error getting count:', countError)
+        }
+
+        const totalPlayers = count || 0
+        console.log(`[Player Load] Total players to fetch: ${totalPlayers}`)
+        setLoadingProgress({ loaded: 0, total: totalPlayers, hasMore: true })
+
+        // Fetch all players using parallel batch loading (3 batches at a time)
         const allPlayers: any[] = []
-        let offset = 0
         const batchSize = 1000
-        let hasMore = true
+        const parallelBatches = 3
+        let offset = 0
 
-        while (hasMore) {
-          console.log(`[Player Load] Fetching batch at offset ${offset}...`)
+        while (offset < totalPlayers) {
+          // Create array of batch promises (up to 3 at a time)
+          const batchPromises = []
+          for (let i = 0; i < parallelBatches && offset < totalPlayers; i++) {
+            const currentOffset = offset
+            console.log(`[Player Load] Starting batch at offset ${currentOffset}...`)
 
-          const { data, error } = await supabase
-            .from('player_seasons')
-            .select(`
-              id,
-              player_id,
-              year,
-              team_id,
-              primary_position,
-              apba_rating,
-              war,
-              batting_avg,
-              hits,
-              home_runs,
-              rbi,
-              stolen_bases,
-              on_base_pct,
-              slugging_pct,
-              wins,
-              losses,
-              era,
-              strikeouts_pitched,
-              saves,
-              shutouts,
-              whip,
-              players!inner (
-                display_name,
-                first_name,
-                last_name
-              )
-            `)
-            .in('year', session.selectedSeasons)
-            .or('at_bats.gte.50,innings_pitched_outs.gte.30') // Minimum playing time (50 ABs or 10 IP)
-            .order('apba_rating', { ascending: false, nullsFirst: false })
-            .range(offset, offset + batchSize - 1)
+            batchPromises.push(
+              supabase
+                .from('player_seasons')
+                .select(`
+                  id,
+                  player_id,
+                  year,
+                  team_id,
+                  primary_position,
+                  apba_rating,
+                  war,
+                  batting_avg,
+                  hits,
+                  home_runs,
+                  rbi,
+                  stolen_bases,
+                  on_base_pct,
+                  slugging_pct,
+                  wins,
+                  losses,
+                  era,
+                  strikeouts_pitched,
+                  saves,
+                  shutouts,
+                  whip,
+                  players!inner (
+                    display_name,
+                    first_name,
+                    last_name
+                  )
+                `)
+                .in('year', session.selectedSeasons)
+                .or('at_bats.gte.50,innings_pitched_outs.gte.30')
+                .order('apba_rating', { ascending: false, nullsFirst: false })
+                .range(currentOffset, currentOffset + batchSize - 1)
+            )
 
-          if (error) {
-            console.error('[Player Load] CRITICAL ERROR loading players:', error)
-            alert(`CRITICAL ERROR: Failed to load players from Supabase.\n\nError: ${error.message}\n\nCheck console for details.`)
-            return
-          }
-
-          if (!data || data.length === 0) {
-            // No more results
-            hasMore = false
-            break
-          }
-
-          console.log(`[Player Load] Fetched ${data.length} players in this batch`)
-          allPlayers.push(...data)
-
-          // Update progress after each batch
-          setLoadingProgress({ loaded: allPlayers.length, hasMore: data.length === batchSize })
-
-          // If we got fewer than batchSize, we've reached the end
-          if (data.length < batchSize) {
-            hasMore = false
-          } else {
             offset += batchSize
           }
+
+          // Wait for all parallel batches to complete
+          const results = await Promise.all(batchPromises)
+
+          // Process results
+          for (const result of results) {
+            if (result.error) {
+              console.error('[Player Load] CRITICAL ERROR loading players:', result.error)
+              alert(`CRITICAL ERROR: Failed to load players from Supabase.\n\nError: ${result.error.message}\n\nCheck console for details.`)
+              return
+            }
+
+            if (result.data && result.data.length > 0) {
+              console.log(`[Player Load] Fetched ${result.data.length} players in batch`)
+              allPlayers.push(...result.data)
+            }
+          }
+
+          // Update progress after parallel batches complete
+          setLoadingProgress({
+            loaded: allPlayers.length,
+            total: totalPlayers,
+            hasMore: allPlayers.length < totalPlayers
+          })
         }
 
         if (allPlayers.length === 0) {
@@ -309,10 +332,20 @@ export default function DraftBoard({ onExit }: Props) {
 
           {/* Progress Info */}
           <div className="mb-3">
-            <p className="text-lg font-display text-charcoal">
-              {loadingProgress.loaded.toLocaleString()} players loaded
-              {loadingProgress.hasMore && <span className="text-charcoal/60">...</span>}
-            </p>
+            {loadingProgress.total > 0 ? (
+              <>
+                <p className="text-lg font-display text-charcoal">
+                  {loadingProgress.loaded.toLocaleString()} of {loadingProgress.total.toLocaleString()} players
+                </p>
+                <p className="text-sm text-charcoal/60 font-serif mt-1">
+                  {Math.round((loadingProgress.loaded / loadingProgress.total) * 100)}% complete
+                </p>
+              </>
+            ) : (
+              <p className="text-lg font-display text-charcoal">
+                Calculating total players...
+              </p>
+            )}
           </div>
 
           {/* Progress Bar */}
@@ -320,7 +353,9 @@ export default function DraftBoard({ onExit }: Props) {
             <div
               className="bg-burgundy h-full rounded-full transition-all duration-300 ease-out relative"
               style={{
-                width: loadingProgress.hasMore ? '100%' : '100%',
+                width: loadingProgress.total > 0
+                  ? `${Math.min((loadingProgress.loaded / loadingProgress.total) * 100, 100)}%`
+                  : '100%',
                 animation: loadingProgress.hasMore ? 'pulse 1.5s ease-in-out infinite' : 'none'
               }}
             >
@@ -337,7 +372,7 @@ export default function DraftBoard({ onExit }: Props) {
           </div>
 
           <p className="text-xs text-charcoal/50 font-serif mt-3">
-            {loadingProgress.hasMore ? 'Fetching more players...' : 'Finalizing...'}
+            {loadingProgress.hasMore ? 'Loading player data...' : 'Complete!'}
           </p>
 
           <style>{`
