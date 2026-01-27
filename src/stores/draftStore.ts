@@ -131,7 +131,54 @@ export const useDraftStore = create<DraftState>()(
           throw new Error('Failed to create draft session - no data returned')
         }
 
-        // Create session with the real UUID from Supabase
+        // Save teams to Supabase to get UUIDs
+        const teamsToInsert = teams.map(team => ({
+          draft_session_id: newSession.id,
+          team_name: team.name,
+          draft_order: team.draftPosition,
+        }))
+
+        const { data: newTeams, error: teamsError } = await supabase
+          .from('draft_teams')
+          .insert(teamsToInsert)
+          .select()
+
+        if (teamsError) {
+          console.error('Error creating draft teams:', teamsError)
+          throw teamsError
+        }
+
+        if (!newTeams || newTeams.length === 0) {
+          throw new Error('Failed to create draft teams - no data returned')
+        }
+
+        // Update teams with real UUIDs from database
+        const teamsWithUUIDs = teams.map((team, index) => ({
+          ...team,
+          id: newTeams[index].id,
+          draftSessionId: newSession.id,
+        }))
+
+        // Recreate picks array with correct team UUIDs
+        const picksWithUUIDs: DraftPick[] = []
+        for (let round = 1; round <= TOTAL_ROUNDS; round++) {
+          // Calculate pick order for this round using teams with UUIDs
+          const sortedTeams = [...teamsWithUUIDs].sort((a, b) => a.draftPosition - b.draftPosition)
+          const pickOrder = round % 2 === 0 ? sortedTeams.reverse() : sortedTeams
+
+          pickOrder.forEach((team, pickInRound) => {
+            picksWithUUIDs.push({
+              pickNumber: (round - 1) * config.numTeams + pickInRound + 1,
+              round,
+              pickInRound: pickInRound + 1,
+              teamId: team.id, // Now using UUID from database
+              playerSeasonId: null,
+              pickTime: null,
+            })
+          })
+        }
+
+        // Create session with real UUIDs from Supabase
         const session: DraftSession = {
           id: newSession.id,
           name: newSession.session_name,
@@ -139,8 +186,8 @@ export const useDraftStore = create<DraftState>()(
           numTeams: config.numTeams,
           currentPick: 1,
           currentRound: 1,
-          teams,
-          picks,
+          teams: teamsWithUUIDs,
+          picks: picksWithUUIDs,
           selectedSeasons: config.selectedSeasons,
           createdAt: new Date(newSession.created_at),
           updatedAt: new Date(newSession.updated_at),

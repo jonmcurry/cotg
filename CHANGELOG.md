@@ -607,6 +607,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **Commit:**
 - commit 089fc73
 
+### Fixed - 2026-01-27 (Team ID UUID Format Error)
+
+**Draft Stopped After 2 Picks - COMPLETE ✅**
+
+- Fixed UUID format error causing draft to stop after 2 picks
+  - Issue: CPU draft made 2 picks then stopped with `hasCurrentTeam: false`
+  - Error: "invalid input syntax for type uuid: 'team-7'"
+  - Error: "invalid input syntax for type uuid: 'team-5'"
+  - Root cause: Teams created with local string IDs ("team-0", "team-1") instead of database UUIDs
+  - Teams were never saved to draft_teams table during session creation
+  - Picks referenced team IDs that didn't exist in database
+- Solution: Save teams to database during session creation
+  - Insert all teams into draft_teams table after creating session
+  - Retrieve generated UUIDs for each team from database
+  - Update local teams array with real UUIDs from database
+  - Regenerate picks array using real team UUIDs
+  - Teams and picks now reference actual database records
+
+**Technical Details:**
+- Previous flow (broken):
+  1. Create session in DB (get UUID)
+  2. Create teams locally with string IDs
+  3. Create picks locally referencing string IDs
+  4. Try to insert picks → UUID format error!
+- New flow (fixed):
+  1. Create session in DB (get session UUID)
+  2. Insert teams into DB (get team UUIDs)
+  3. Update local teams with real UUIDs
+  4. Create picks using real team UUIDs
+  5. Insert picks → success (valid UUIDs that exist in DB)
+- Database foreign key: draft_picks.draft_team_id → draft_teams.id (UUID)
+- Must insert teams before picks can reference them
+
+**Files Modified:**
+- src/stores/draftStore.ts (createSession - added team database insertion)
+
+**Impact:**
+- Draft progresses beyond pick #2
+- Team lookups work correctly (getCurrentPickingTeam returns valid team)
+- Pick inserts succeed with valid UUID foreign keys
+- Full draft flow unblocked
+- Teams persist to database for session resumption
+
+**Commit:**
+- commit [pending]
+
 ### Next Steps
 
 - Phase 1.5: Build Lahman CSV import pipeline (TypeScript)

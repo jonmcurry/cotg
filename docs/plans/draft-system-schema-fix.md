@@ -217,6 +217,28 @@ Draft system failing with 401 Unauthorized and 400 Bad Request errors when attem
 **Commit:**
 - commit 089fc73
 
+### Issue 13: Team ID UUID Format Error (2026-01-27)
+**Problem:** Draft stopped after 2 picks with UUID format errors
+- Error: `invalid input syntax for type uuid: "team-7"`
+- Error: `invalid input syntax for type uuid: "team-5"`
+- Draft stopped at pick #3 with `hasCurrentTeam: false`
+- Root cause: Teams created with local string IDs like "team-0", "team-1" instead of UUIDs
+- Teams were never saved to draft_teams table, so UUIDs were never generated
+- Picks referenced non-existent team IDs in the database
+
+**Solution:**
+- Save teams to draft_teams table immediately after creating session
+- Retrieve generated UUIDs for each team from database
+- Update local teams array with real UUIDs
+- Regenerate picks array using real team UUIDs (not local string IDs)
+- Flow: Create session → Insert teams → Get UUIDs → Update local state → Generate picks
+
+**Files Modified:**
+- src/stores/draftStore.ts (createSession - added team insertion to database)
+
+**Commit:**
+- commit [pending]
+
 ## Testing Checklist
 - [x] TypeScript compilation succeeds
 - [x] Production build succeeds
