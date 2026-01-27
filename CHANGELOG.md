@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-01-27 (Sorting Performance)
+
+**Added Performance Monitoring to Identify Slow Sorting Operations**
+
+- Added comprehensive performance logging to diagnose sorting slowness issue
+  - Issue: User reported that "sorting on stats is extremely slow and then reloads the players"
+  - SRD requirement violation: Performance must be paramount
+  - Suspected causes: Sorting 10,000+ players, unnecessary re-renders, player array recreation
+- Solution: Added performance monitoring throughout the pipeline
+  - Track player filtering time (removing drafted players)
+  - Track search filter time (when searching by name)
+  - Track sort operation time (sorting by stat columns)
+  - Track player load effect triggers to detect unnecessary reloads
+  - Console logs show exact timing: "Sort completed in 45.23ms"
+
+**Performance Monitoring Added:**
+- **Player Filtering**: Logs time to filter drafted players from pool
+- **Search Filtering**: Logs time to apply name search (with before/after counts)
+- **Sorting**: Logs which field/direction and time to sort
+- **Player Loading**: Logs when effect is triggered to detect unwanted reloads
+
+**Technical Details:**
+- Added `performance.now()` timing to all useMemo computations:
+  ```typescript
+  const sortedPlayers = useMemo(() => {
+    const startTime = performance.now()
+    console.log(`Starting sort of ${filteredPlayers.length} players on field: ${sortField}`)
+
+    // ... sorting logic ...
+
+    const sortTime = performance.now() - startTime
+    console.log(`Sort completed in ${sortTime.toFixed(2)}ms`)
+    return sorted
+  }, [filteredPlayers, sortField, sortDirection])
+  ```
+- Logs help identify:
+  - If sorting is actually slow (>100ms for 10,000 players would be problematic)
+  - If player array is being reloaded unnecessarily (effect triggered multiple times)
+  - Which operation is the bottleneck (filter vs search vs sort)
+
+**Next Steps for User:**
+- Open browser console and click a column header to sort
+- Check console logs to see:
+  - "Starting sort of N players..." - shows sort is happening
+  - "Sort completed in Xms" - shows actual sort time
+  - "EFFECT TRIGGERED - Starting player load" - shows if players are reloading (shouldn't happen on sort)
+- If sort time >200ms, sorting algorithm needs optimization
+- If "EFFECT TRIGGERED" appears on sort, there's a state/props issue causing reload
+
+**Files Modified:**
+- [src/components/draft/TabbedPlayerPool.tsx](src/components/draft/TabbedPlayerPool.tsx) - Added performance logging to filter and sort operations
+- [src/components/draft/DraftBoard.tsx](src/components/draft/DraftBoard.tsx) - Added logging to detect player reload triggers
+
 ### Added - 2026-01-27 (Player Loading Progress Bar)
 
 **Commit:** `5a41c78`

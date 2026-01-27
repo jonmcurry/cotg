@@ -44,7 +44,8 @@ export default function DraftBoard({ onExit }: Props) {
     async function loadPlayers() {
       if (!session) return
 
-      console.log('[Player Load] Starting player load for seasons:', session.selectedSeasons)
+      console.log('[Player Load] EFFECT TRIGGERED - Starting player load for seasons:', session.selectedSeasons)
+      console.log('[Player Load] Current player count:', players.length)
       setLoading(true)
       setLoadingProgress({ loaded: 0, hasMore: true })
       try {
@@ -156,6 +157,7 @@ export default function DraftBoard({ onExit }: Props) {
         }))
 
         console.log(`[Player Load] SUCCESS - Loaded ${transformedPlayers.length} total players across all batches`)
+        console.log(`[Player Load] Setting players state (will trigger TabbedPlayerPool re-render)`)
         setPlayers(transformedPlayers)
       } catch (err) {
         console.error('[Player Load] CRITICAL ERROR - Exception:', err)

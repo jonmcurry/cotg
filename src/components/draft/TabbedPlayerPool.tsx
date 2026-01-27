@@ -44,22 +44,11 @@ export default function TabbedPlayerPool({
   // Filter available (undrafted) players
   // Note: draftedPlayerIds contains player_id (not season id), so all seasons of a drafted player are filtered out
   const availablePlayers = useMemo(() => {
+    const startTime = performance.now()
     const filtered = players.filter(p => !draftedPlayerIds.has(p.player_id))
-    console.log('[TabbedPlayerPool] Total seasons:', players.length, '| Unique players drafted:', draftedPlayerIds.size, '| Available seasons:', filtered.length)
+    const filterTime = performance.now() - startTime
 
-    // Debug: verify a drafted player's all seasons are removed
-    if (draftedPlayerIds.size > 0) {
-      const draftedPlayerIdsSample = Array.from(draftedPlayerIds).slice(0, 3)
-      console.log('[TabbedPlayerPool] Sample drafted player_ids:', draftedPlayerIdsSample)
-
-      // Check if any season of a drafted player is still in the available list
-      const leakedSeason = filtered.find(p => draftedPlayerIds.has(p.player_id))
-      if (leakedSeason) {
-        console.error('[TabbedPlayerPool] ERROR - Drafted player still in list:', leakedSeason.display_name, leakedSeason.year, 'player_id:', leakedSeason.player_id)
-      } else {
-        console.log('[TabbedPlayerPool] ✓ All seasons of drafted players successfully filtered out')
-      }
-    }
+    console.log(`[TabbedPlayerPool] Filter completed in ${filterTime.toFixed(2)}ms | Total: ${players.length} | Drafted: ${draftedPlayerIds.size} | Available: ${filtered.length}`)
 
     return filtered
   }, [players, draftedPlayerIds])
@@ -75,19 +64,32 @@ export default function TabbedPlayerPool({
 
   // Apply search filter
   const filteredPlayers = useMemo(() => {
+    const startTime = performance.now()
     const pool = activeTab === 'hitters' ? positionPlayers : pitchers
 
-    if (!searchTerm) return pool
+    if (!searchTerm) {
+      const filterTime = performance.now() - startTime
+      console.log(`[TabbedPlayerPool] Filter (no search) completed in ${filterTime.toFixed(2)}ms | Pool size: ${pool.length}`)
+      return pool
+    }
 
     const term = searchTerm.toLowerCase()
-    return pool.filter(p => {
+    const filtered = pool.filter(p => {
       const name = p.display_name || `${p.first_name} ${p.last_name}`
       return name.toLowerCase().includes(term)
     })
+
+    const filterTime = performance.now() - startTime
+    console.log(`[TabbedPlayerPool] Filter (search: "${term}") completed in ${filterTime.toFixed(2)}ms | ${pool.length} → ${filtered.length}`)
+
+    return filtered
   }, [activeTab, positionPlayers, pitchers, searchTerm])
 
   // Apply sorting
   const sortedPlayers = useMemo(() => {
+    const startTime = performance.now()
+    console.log(`[TabbedPlayerPool] Starting sort of ${filteredPlayers.length} players on field: ${sortField}, direction: ${sortDirection}`)
+
     const sorted = [...filteredPlayers]
 
     sorted.sort((a, b) => {
@@ -163,6 +165,9 @@ export default function TabbedPlayerPool({
       if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1
       return 0
     })
+
+    const sortTime = performance.now() - startTime
+    console.log(`[TabbedPlayerPool] Sort completed in ${sortTime.toFixed(2)}ms`)
 
     return sorted
   }, [filteredPlayers, sortField, sortDirection])
