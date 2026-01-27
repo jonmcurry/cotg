@@ -485,6 +485,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Draft progresses through teams
 - No more infinite "thinking" modal
 
+**Commit:**
+- commit f260f99
+
+### Fixed - 2026-01-27 (CPU Draft Dependency Array Over-Triggering)
+
+**Final Timeout Cancellation Fix - COMPLETE ✅**
+
+- Fixed timeout cancellation caused by over-sensitive dependency array
+  - Issue: Timeout scheduled but immediately cancelled by effect re-running
+  - Root causes: `session` and `players` in dependency array
+  - When `saveSession()` updated `session.updatedAt`, effect re-ran
+  - When player loading called `setPlayers()` with new array, effect re-ran
+  - Each re-run cancelled the pending timeout via cleanup
+- Solution: Use granular dependencies instead of full objects
+  - Changed from: `[session, currentTeam, players, makePick]`
+  - Changed to: `[session?.currentPick, session?.status, currentTeam?.id, makePick]`
+  - Effect now ONLY re-runs when:
+    - Pick advances (`session.currentPick` changes)
+    - Draft status changes (`session.status` changes)
+    - Current team changes (`currentTeam.id` changes)
+  - Effect DOES NOT re-run when:
+    - saveSession() updates `session.updatedAt`
+    - Player loading sets `players` to new array reference
+    - `loading` or `cpuThinking` state changes
+
+**Technical Details:**
+- React useEffect cleanup runs when dependencies change
+- Using full object references (`session`, `players`) as dependencies means:
+  - ANY field change triggers re-run (even `updatedAt`)
+  - New array reference triggers re-run (even with same contents)
+- Using specific primitive values (currentPick, status, id) means:
+  - Only VALUE changes trigger re-run
+  - Reference changes without value changes don't trigger
+- This is the correct React pattern for effects that schedule async operations
+
+**Files Modified:**
+- src/components/draft/DraftBoard.tsx (granular dependency array)
+
+**Impact:**
+- Timeout FINALLY executes without cancellation
+- CPU draft makes picks after 1-2 second delay
+- Draft progresses through all teams to completion
+- No more false re-runs from unrelated state updates
+
 ### Next Steps
 
 - Phase 1.5: Build Lahman CSV import pipeline (TypeScript)

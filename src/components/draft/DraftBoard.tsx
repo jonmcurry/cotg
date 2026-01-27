@@ -192,8 +192,13 @@ export default function DraftBoard({ onExit }: Props) {
 
     return () => clearTimeout(timeoutId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    // Note: cpuThinking and loading are intentionally NOT in dependencies to prevent cleanup from canceling timeout
-  }, [session, currentTeam, players, makePick])
+    // Note: We only depend on values that should trigger a NEW draft decision:
+    // - session?.currentPick: Re-run when pick advances to next team
+    // - session?.status: Re-run when draft starts/pauses
+    // - currentTeam?.id: Re-run when the picking team changes
+    // We intentionally do NOT depend on: session (full object), players (array reference), loading, cpuThinking
+    // These are READ but changes shouldn't cancel the pending timeout
+  }, [session?.currentPick, session?.status, currentTeam?.id, makePick])
 
   const handlePlayerSelect = useCallback((player: PlayerSeason) => {
     if (!currentTeam || currentTeam.control !== 'human') {
