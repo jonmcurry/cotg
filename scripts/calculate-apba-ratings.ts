@@ -147,37 +147,55 @@ async function calculateAndUpdateRatings() {
 
     console.log('  Updating database...')
 
-    // Use batch upsert (service role key bypasses RLS, allows this operation)
-    // Retry up to 3 times on transient errors (Cloudflare 500, network issues)
+    // Use Promise.all to parallelize individual updates (service role key allows fast parallel writes)
+    // Parallelize in chunks of 50 to avoid overwhelming the connection pool
+    const chunkSize = 50
     let batchUpdated = 0
-    let success = false
-    let lastError: any = null
+    const failedUpdates: string[] = []
 
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      const { error: upsertError } = await supabase
-        .from('player_seasons')
-        .upsert(
-          updates.map(u => ({ id: u.id, apba_rating: u.rating })),
-          { onConflict: 'id' }
-        )
+    for (let i = 0; i < updates.length; i += chunkSize) {
+      const chunk = updates.slice(i, i + chunkSize)
 
-      if (!upsertError) {
-        success = true
-        batchUpdated = updates.length
-        break
-      }
+      const results = await Promise.all(
+        chunk.map(async (update) => {
+          // Retry each update up to 3 times
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            const { error } = await supabase
+              .from('player_seasons')
+              .update({ apba_rating: update.rating })
+              .eq('id', update.id)
 
-      lastError = upsertError
+            if (!error) {
+              return { success: true, id: update.id }
+            }
 
-      if (attempt < 3) {
-        console.log(`  Retry attempt ${attempt + 1} after error: ${upsertError.message}`)
-        await new Promise(resolve => setTimeout(resolve, attempt * 1000)) // 1s, 2s delays
-      }
+            if (attempt === 3) {
+              return { success: false, id: update.id, error: error.message }
+            }
+
+            // Wait before retry (100ms, 200ms)
+            await new Promise(resolve => setTimeout(resolve, attempt * 100))
+          }
+          return { success: false, id: update.id, error: 'Unknown error' }
+        })
+      )
+
+      // Count successes and failures
+      results.forEach(result => {
+        if (result.success) {
+          batchUpdated++
+        } else {
+          failedUpdates.push(`${result.id}: ${result.error}`)
+        }
+      })
     }
 
-    if (!success && lastError) {
-      console.error(`  ✗ Failed to update batch after 3 attempts: ${lastError.message}`)
-      console.error(`  Skipping ${updates.length} players in this batch`)
+    if (failedUpdates.length > 0) {
+      console.error(`  ✗ Failed to update ${failedUpdates.length} players:`)
+      failedUpdates.slice(0, 3).forEach(err => console.error(`    ${err}`))
+      if (failedUpdates.length > 3) {
+        console.error(`    ... and ${failedUpdates.length - 3} more`)
+      }
     }
 
     totalProcessed += players.length
