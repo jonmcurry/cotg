@@ -24,9 +24,12 @@ export interface PlayerSeason {
   apba_rating: number | null  // APBA-style rating (0-100 scale) - primary metric for drafting
   war: number | null  // Keep for reference, but use apba_rating for drafting
   batting_avg: number | null
+  hits: number | null
   home_runs: number | null
   rbi: number | null
   stolen_bases: number | null
+  on_base_pct: number | null
+  slugging_pct: number | null
 
   // Pitching
   wins: number | null
@@ -34,6 +37,8 @@ export interface PlayerSeason {
   era: number | null
   strikeouts_pitched: number | null
   saves: number | null
+  shutouts: number | null
+  whip: number | null
 
   // Player info (from join)
   display_name?: string

@@ -4,9 +4,9 @@
  * Implements SRD UI requirement 7.3
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useDraftStore } from '../../stores/draftStore'
-import GroupedPlayerPool from './GroupedPlayerPool'
+import TabbedPlayerPool from './TabbedPlayerPool'
 import RosterView from './RosterView'
 import PositionAssignmentModal from './PositionAssignmentModal'
 import DraftControls from './DraftControls'
@@ -62,14 +62,19 @@ export default function DraftBoard({ onExit }: Props) {
             apba_rating,
             war,
             batting_avg,
+            hits,
             home_runs,
             rbi,
             stolen_bases,
+            on_base_pct,
+            slugging_pct,
             wins,
             losses,
             era,
             strikeouts_pitched,
             saves,
+            shutouts,
+            whip,
             players!inner (
               display_name,
               first_name,
@@ -77,7 +82,7 @@ export default function DraftBoard({ onExit }: Props) {
             )
           `)
           .in('year', session.selectedSeasons)
-          .or('at_bats.gte.100,innings_pitched_outs.gte.60') // Minimum playing time
+          .or('at_bats.gte.50,innings_pitched_outs.gte.30') // Minimum playing time (50 ABs or 10 IP)
           .order('apba_rating', { ascending: false, nullsFirst: false })
           .limit(10000)  // Override default 1000 limit to get all players
 
@@ -103,14 +108,19 @@ export default function DraftBoard({ onExit }: Props) {
           apba_rating: p.apba_rating,
           war: p.war,
           batting_avg: p.batting_avg,
+          hits: p.hits,
           home_runs: p.home_runs,
           rbi: p.rbi,
           stolen_bases: p.stolen_bases,
+          on_base_pct: p.on_base_pct,
+          slugging_pct: p.slugging_pct,
           wins: p.wins,
           losses: p.losses,
           era: p.era,
           strikeouts_pitched: p.strikeouts_pitched,
           saves: p.saves,
+          shutouts: p.shutouts,
+          whip: p.whip,
           display_name: p.players.display_name,
           first_name: p.players.first_name,
           last_name: p.players.last_name,
@@ -224,11 +234,25 @@ export default function DraftBoard({ onExit }: Props) {
     [selectedPlayer, makePick]
   )
 
-  const draftedPlayerIds = new Set(
-    session?.picks
-      .filter(p => p.playerSeasonId !== null)
-      .map(p => p.playerSeasonId!) || []
-  )
+  const draftedPlayerIds = useMemo(() => {
+    // Get all drafted season IDs
+    const draftedSeasonIds = new Set(
+      session?.picks
+        .filter(p => p.playerSeasonId !== null)
+        .map(p => p.playerSeasonId!) || []
+    )
+
+    // Convert season IDs to player IDs so all seasons of a drafted player are filtered out
+    const playerIds = new Set(
+      players
+        .filter(p => draftedSeasonIds.has(p.id))
+        .map(p => p.player_id)
+    )
+
+    console.log('[DraftBoard] Drafted seasons:', draftedSeasonIds.size, '| Unique players drafted:', playerIds.size)
+
+    return playerIds
+  }, [session?.picks, players])
 
   if (!session) {
     return (
@@ -293,7 +317,7 @@ export default function DraftBoard({ onExit }: Props) {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
           {/* Left Column: Player Pool */}
           <div className="lg:col-span-2">
-            <GroupedPlayerPool
+            <TabbedPlayerPool
               players={players}
               draftedPlayerIds={draftedPlayerIds}
               onSelectPlayer={handlePlayerSelect}

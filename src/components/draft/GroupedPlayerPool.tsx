@@ -52,8 +52,11 @@ export default function GroupedPlayerPool({
   // Group players by display_name
   const groupedPlayers = useMemo(() => {
     const groups = new Map<string, GroupedPlayer>()
+    let totalSeasons = 0
+    let draftedSeasons = 0
 
     players.forEach(player => {
+      totalSeasons++
       const name = player.display_name || `${player.first_name} ${player.last_name}`
 
       if (!groups.has(name)) {
@@ -69,12 +72,15 @@ export default function GroupedPlayerPool({
       const group = groups.get(name)!
       group.seasons.push(player)
 
-      if (!draftedPlayerIds.has(player.id)) {
+      // Check by player_id so all seasons of a drafted player are filtered out
+      if (!draftedPlayerIds.has(player.player_id)) {
         group.availableSeasons.push(player)
         if ((player.apba_rating || 0) > group.bestRating) {
           group.bestRating = player.apba_rating || 0
           group.bestPosition = player.primary_position
         }
+      } else {
+        draftedSeasons++
       }
     })
 
@@ -84,9 +90,12 @@ export default function GroupedPlayerPool({
     })
 
     // Convert to array and filter out players with no available seasons
-    return Array.from(groups.values())
+    const result = Array.from(groups.values())
       .filter(group => group.availableSeasons.length > 0)
       .sort((a, b) => b.bestRating - a.bestRating)
+
+    console.log('[GroupedPlayerPool] Total seasons:', totalSeasons, '| Drafted:', draftedSeasons, '| Available groups:', result.length)
+    return result
   }, [players, draftedPlayerIds])
 
   // Filter by search term
@@ -134,12 +143,12 @@ export default function GroupedPlayerPool({
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm table-fixed">
           <thead className="sticky top-0 bg-cream border-b border-charcoal/20">
-            <tr className="text-left">
-              <th className="py-2 px-2 font-display text-charcoal/80 w-12">Pos</th>
-              <th className="py-2 px-2 font-display text-charcoal/80">Player</th>
-              <th className="py-2 px-2 font-display text-charcoal/80 text-right">Year</th>
+            <tr>
+              <th className="py-2 px-4 font-display text-charcoal/80 text-left">
+                Players Available
+              </th>
             </tr>
           </thead>
           <tbody className="font-serif">
@@ -154,34 +163,32 @@ export default function GroupedPlayerPool({
                     <div
                       onClick={() => hasMultipleSeasons ? toggleExpanded(group.displayName) : handleSeasonClick(group.availableSeasons[0])}
                       className={`
-                        flex items-center justify-between px-2 py-2
+                        flex items-center justify-between w-full px-4 py-2.5
                         border-b border-charcoal/10
                         ${currentTeamControl === 'human' ? 'hover:bg-gold/10 cursor-pointer' : 'cursor-default'}
                         ${isExpanded ? 'bg-burgundy/5' : ''}
                       `}
                     >
-                      <div className="flex items-center gap-2 flex-1">
-                        {hasMultipleSeasons && (
-                          <span className="text-burgundy text-xs">
-                            {isExpanded ? '▼' : '▶'}
-                          </span>
-                        )}
-                        <span className="text-xs text-burgundy font-display w-8">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <span className="text-burgundy text-xs w-3">
+                          {hasMultipleSeasons ? (isExpanded ? '▼' : '▶') : ''}
+                        </span>
+                        <span className="text-xs text-burgundy font-display w-10">
                           {group.bestPosition}
                         </span>
-                        <span className="font-medium text-charcoal">
+                        <span className="font-medium text-charcoal truncate">
                           {group.displayName}
                         </span>
                       </div>
-                      <div className="flex items-center gap-4">
-                        <span className="text-xs text-charcoal/60">
+                      <div className="flex items-center gap-4 flex-shrink-0">
+                        <span className="text-xs text-charcoal/60 min-w-[100px]">
                           {hasMultipleSeasons ? (
                             `${group.availableSeasons.length} seasons`
                           ) : (
                             `${group.availableSeasons[0].year} ${group.availableSeasons[0].team_id}`
                           )}
                         </span>
-                        <span className="text-sm font-medium text-burgundy">
+                        <span className="text-sm font-medium text-burgundy min-w-[80px] text-right">
                           {formatRating(group.bestRating, group.bestPosition)}
                         </span>
                       </div>
@@ -195,26 +202,26 @@ export default function GroupedPlayerPool({
                             key={season.id}
                             onClick={() => handleSeasonClick(season)}
                             className={`
-                              flex items-center justify-between px-4 pl-10 py-2
+                              flex items-center justify-between w-full px-4 pl-12 py-2
                               border-t border-charcoal/5
                               ${currentTeamControl === 'human' ? 'hover:bg-gold/10 cursor-pointer' : 'cursor-default'}
                             `}
                           >
-                            <div className="flex items-center gap-4 flex-1">
-                              <span className="text-xs text-burgundy font-display w-8">
+                            <div className="flex items-center gap-4 min-w-0 flex-1">
+                              <span className="text-xs text-burgundy font-display w-10">
                                 {season.primary_position}
                               </span>
                               <span className="text-sm text-charcoal/80">
                                 {season.year} {season.team_id}
                               </span>
                             </div>
-                            <div className="flex items-center gap-4 text-xs">
+                            <div className="flex items-center gap-4 text-xs flex-shrink-0">
                               {/* Rating shown prominently first */}
-                              <span className="text-sm font-medium text-burgundy">
+                              <span className="text-sm font-medium text-burgundy min-w-[80px] text-right">
                                 {formatRating(season.apba_rating, season.primary_position)}
                               </span>
                               {/* Supporting stats */}
-                              <span className="text-charcoal/60">
+                              <span className="text-charcoal/60 min-w-[120px] text-right">
                                 {season.batting_avg !== null && (
                                   <span>.{Math.floor(season.batting_avg * 1000)}</span>
                                 )}
