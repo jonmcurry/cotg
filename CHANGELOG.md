@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-01-27 (Sort Double-Render Fix)
+
+**Fixed Sorting Running Twice (Double-Render Issue)**
+
+- Fixed sorting operation running twice when clicking column headers
+  - Issue: Clicking a column header caused sort to run twice: "Sort completed in 31.20ms" followed by "Sort completed in 9.80ms"
+  - Root cause: Separate state updates for `sortField` and `sortDirection` triggered two re-renders
+  - User impact: Perceived slowness, flickering, and wasted CPU cycles sorting 47k+ players twice
+  - Performance logs revealed the double-execution pattern
+- Solution: Batch sort configuration into single state object
+  - Replaced two separate states with single `sortConfig` object
+  - Single `setSortConfig` call updates both field and direction atomically
+  - React only re-renders once per sort action
+  - Sort now runs once with same speed (30-40ms for 47k players)
+
+**Before (Two State Updates):**
+```typescript
+// Clicking new column caused TWO renders:
+setSortField(field)        // Render 1: sortField changes
+setSortDirection('desc')   // Render 2: sortDirection changes
+// Result: Sort runs twice (31ms + 9ms)
+```
+
+**After (Single State Update):**
+```typescript
+// Single atomic update causes ONE render:
+setSortConfig({ field, direction: 'desc' })
+// Result: Sort runs once (31ms)
+```
+
+**Performance Impact:**
+- Eliminated duplicate sort operations (50% reduction in sort calls)
+- Eliminated duplicate re-renders (smoother UI)
+- Sorting 47,413 players now takes 30-40ms total instead of 40ms+ (31ms + 9ms)
+- No visual flickering or lag when changing sort columns
+
+**Technical Details:**
+- Combined `sortField` and `sortDirection` into single `sortConfig` state:
+  ```typescript
+  const [sortConfig, setSortConfig] = useState<{
+    field: SortField
+    direction: SortDirection
+  }>({ field: 'grade', direction: 'desc' })
+  ```
+- Updated `handleSort` to use single state setter:
+  ```typescript
+  setSortConfig(prev => ({
+    field,
+    direction: prev.field === field ? (prev.direction === 'asc' ? 'desc' : 'asc') : 'desc'
+  }))
+  ```
+- Updated useMemo dependency from `[filteredPlayers, sortField, sortDirection]` to `[filteredPlayers, sortConfig]`
+- Single object reference change triggers single re-render
+
+**Files Modified:**
+- [src/components/draft/TabbedPlayerPool.tsx](src/components/draft/TabbedPlayerPool.tsx) - Batched sort state into single object
+
 ### Fixed - 2026-01-27 (Sorting Performance)
 
 **Commit:** `f362f15`

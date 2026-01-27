@@ -38,8 +38,10 @@ export default function TabbedPlayerPool({
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('hitters')
   const [searchTerm, setSearchTerm] = useState('')
-  const [sortField, setSortField] = useState<SortField>('grade')
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
+  const [sortConfig, setSortConfig] = useState<{ field: SortField; direction: SortDirection }>({
+    field: 'grade',
+    direction: 'desc'
+  })
 
   // Filter available (undrafted) players
   // Note: draftedPlayerIds contains player_id (not season id), so all seasons of a drafted player are filtered out
@@ -88,7 +90,7 @@ export default function TabbedPlayerPool({
   // Apply sorting
   const sortedPlayers = useMemo(() => {
     const startTime = performance.now()
-    console.log(`[TabbedPlayerPool] Starting sort of ${filteredPlayers.length} players on field: ${sortField}, direction: ${sortDirection}`)
+    console.log(`[TabbedPlayerPool] Starting sort of ${filteredPlayers.length} players on field: ${sortConfig.field}, direction: ${sortConfig.direction}`)
 
     const sorted = [...filteredPlayers]
 
@@ -96,7 +98,7 @@ export default function TabbedPlayerPool({
       let aVal: any
       let bVal: any
 
-      switch (sortField) {
+      switch (sortConfig.field) {
         case 'name':
           aVal = (a.display_name || `${a.first_name} ${a.last_name}`).toLowerCase()
           bVal = (b.display_name || `${b.first_name} ${b.last_name}`).toLowerCase()
@@ -161,8 +163,8 @@ export default function TabbedPlayerPool({
           return 0
       }
 
-      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1
-      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1
+      if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1
+      if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1
       return 0
     })
 
@@ -170,22 +172,25 @@ export default function TabbedPlayerPool({
     console.log(`[TabbedPlayerPool] Sort completed in ${sortTime.toFixed(2)}ms`)
 
     return sorted
-  }, [filteredPlayers, sortField, sortDirection])
+  }, [filteredPlayers, sortConfig])
 
   const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')
-    } else {
-      setSortField(field)
-      setSortDirection('desc')
-    }
+    setSortConfig(prev => {
+      if (prev.field === field) {
+        // Toggle direction for same field
+        return { field, direction: prev.direction === 'asc' ? 'desc' : 'asc' }
+      } else {
+        // New field, default to descending
+        return { field, direction: 'desc' }
+      }
+    })
   }
 
   const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) {
+    if (sortConfig.field !== field) {
       return <span className="text-charcoal/30 ml-1">⇅</span>
     }
-    return sortDirection === 'asc' ?
+    return sortConfig.direction === 'asc' ?
       <span className="text-burgundy ml-1">↑</span> :
       <span className="text-burgundy ml-1">↓</span>
   }
