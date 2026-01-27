@@ -145,19 +145,35 @@ async function calculateAndUpdateRatings() {
 
     console.log('  Updating database...')
 
-    // Update ratings in database (one at a time due to RLS)
+    // Batch update all ratings at once using upsert (works with RLS)
+    // Retry up to 3 times on transient errors (Cloudflare 500, network issues)
     let batchUpdated = 0
-    for (const update of updates) {
+    let lastError: any = null
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
       const { error: updateError } = await supabase
         .from('player_seasons')
-        .update({ apba_rating: update.rating })
-        .eq('id', update.id)
+        .upsert(
+          updates.map(u => ({ id: u.id, apba_rating: u.rating })),
+          { onConflict: 'id', ignoreDuplicates: false }
+        )
 
       if (!updateError) {
-        batchUpdated++
-      } else {
-        console.error(`  Error updating player ${update.id}:`, updateError.message)
+        batchUpdated = updates.length
+        break
       }
+
+      lastError = updateError
+
+      if (attempt < 3) {
+        console.warn(`  Attempt ${attempt} failed: ${updateError.message}. Retrying in ${attempt}s...`)
+        await new Promise(resolve => setTimeout(resolve, attempt * 1000))
+      }
+    }
+
+    if (batchUpdated === 0 && lastError) {
+      console.error(`  Error updating batch after 3 attempts:`, lastError.message)
+      console.error(`  Failed to update ${updates.length} players in this batch`)
     }
 
     totalProcessed += players.length
