@@ -260,7 +260,7 @@ Draft system failing with 401 Unauthorized and 400 Bad Request errors when attem
 - src/stores/draftStore.ts (makePick - fetch player_id before insert)
 
 **Commit:**
-- commit [pending]
+- commit 8578456
 
 ## Testing Checklist
 - [x] TypeScript compilation succeeds
