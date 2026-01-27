@@ -71,9 +71,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Game mechanics: 2d6 dice system, pitcher grades, outcome resolution
 - All findings documented in `docs/APBA_REVERSE_ENGINEERING.md`
 
+### In Progress - 2026-01-27 (Evening)
+
+- Analyzing Bill James Baseball Encyclopedia structure
+- Identified key data files: BIO, OFFENSE, DEFENSE, PITCHING, LCYCLE
+- Documented Bill James advanced metrics (Runs Created, Range Factor, Win Shares)
+- Created `docs/BILL_JAMES_FEATURES.md` with comprehensive analysis
+- Total Bill James database: ~5.1MB (vs APBA's ~72KB per season)
+
+### Decision Point
+
+**Bill James Parsing Options:**
+1. **Quick extraction** - Get enough data to understand structure, defer full parsing
+2. **Complete parsing** - Parse all files now before moving to React setup
+3. **Progressive** - Parse basics now, advanced features in Phase 4
+
 ### Next Steps
 
-- Phase 1.2: Reverse engineer Bill James data structures
+- Complete Phase 1.2 Bill James analysis (pending user direction)
 - Phase 1.3: Set up React + TypeScript project
 - Phase 1.4: Design Supabase database schema
 
