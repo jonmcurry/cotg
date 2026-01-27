@@ -448,6 +448,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clean user experience with proper loading states
 - Error only shows if there's a real Supabase connection or data issue
 
+**Commit:**
+- commit 4461211
+
+### Fixed - 2026-01-27 (CPU Draft Loading State Timeout Cancellation)
+
+**Timeout Still Being Cancelled - COMPLETE ✅**
+
+- Fixed another timeout cancellation bug caused by `loading` in dependency array
+  - Issue: CPU draft showed "Team is thinking..." but timeout never fired
+  - Root cause: `loading` was in useEffect dependency array
+  - When `saveSession()` changed session, player loading useEffect re-ran
+  - Player loading sets `loading = true` then `loading = false`
+  - `loading` change triggered CPU draft cleanup, cancelling timeout
+- Solution: Removed `loading` from dependency array (same as `cpuThinking`)
+  - Effect should only READ loading value, not re-run when it changes
+  - Timeout now executes without being cancelled
+  - Effect checks loading when it runs, but doesn't re-run on loading changes
+
+**Technical Details:**
+- Same root cause as Issue #7 (timeout cancellation) but different trigger
+- Flow causing cancellation:
+  1. CPU draft schedules timeout
+  2. saveSession() updates session
+  3. Player loading useEffect re-runs (depends on session)
+  4. loading: false → true → false
+  5. CPU draft useEffect re-runs (depends on loading)
+  6. Cleanup cancels timeout before it fires!
+- Fix: Check loading value but don't depend on it changing
+
+**Files Modified:**
+- src/components/draft/DraftBoard.tsx (removed loading from deps array)
+
+**Impact:**
+- CPU draft timeout actually fires after 1-2 seconds
+- Draft progresses through teams
+- No more infinite "thinking" modal
+
 ### Next Steps
 
 - Phase 1.5: Build Lahman CSV import pipeline (TypeScript)
