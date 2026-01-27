@@ -116,6 +116,25 @@ Draft system failing with 401 Unauthorized and 400 Bad Request errors when attem
 **Commit:**
 - commit 72cd3f1
 
+### Issue 8: CPU Draft Player Loading Race Condition (2026-01-27)
+**Problem:** False "CRITICAL ERROR: No players loaded" alert immediately after starting draft
+- CPU draft checked `players.length === 0` before async player loading completed
+- Both player loading and CPU draft useEffects triggered simultaneously
+- Player loading is async (Supabase query), CPU draft is synchronous check
+
+**Solution:**
+- Added `loading` state check to CPU draft logic
+- Effect now waits for `loading === false` before checking player count
+- Added "Waiting for players to load..." log message
+- Added `loading` to dependency array so effect re-runs when loading completes
+- Only shows error if loading complete AND still no players
+
+**Files Modified:**
+- src/components/draft/DraftBoard.tsx (added loading check)
+
+**Commit:**
+- commit 4461211
+
 ## Testing Checklist
 - [x] TypeScript compilation succeeds
 - [x] Production build succeeds
