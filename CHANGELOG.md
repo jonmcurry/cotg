@@ -146,21 +146,107 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - componentERA() - Defense-independent ERA estimate
 - gameScore() - Single-game pitching performance
 
+### Completed - 2026-01-27 (Night continued)
+
+**Phase 1.4: Supabase Database Schema - COMPLETE ✅**
+
+- Designed comprehensive PostgreSQL database schema (17 tables, 4 views, 3 functions)
+- Created 8 SQL migration files covering all application domains
+- Analyzed Lahman CSV structure to inform schema design
+- Implemented Row Level Security (RLS) policies for all tables
+
+**Database Domains:**
+
+1. **Core Player Data (5 tables):**
+   - `players` - Player biographical data with full-text search
+   - `player_seasons` - Season-by-season stats (batting, pitching, fielding, Bill James)
+   - `teams_history` - Historical MLB teams
+   - `apba_cards` - APBA player cards with dice outcome arrays
+   - `apba_outcomes` - APBA outcome reference data
+
+2. **Draft System (5 tables):**
+   - `draft_sessions` - Draft configuration and state
+   - `draft_teams` - Teams in a draft
+   - `draft_picks` - Record of picks made
+   - `draft_rankings` - TRD algorithm rankings
+   - `draft_watchlist` - Players being watched
+
+3. **Game Simulation (6 tables):**
+   - `leagues` - User-created leagues
+   - `league_teams` - Teams in a league
+   - `league_rosters` - Player assignments
+   - `games` - Simulated games
+   - `game_events` - Play-by-play APBA simulation log
+   - `player_game_stats` - Box score data
+
+**Helper Views (4):**
+- `v_player_seasons_enriched` - Player seasons with calculated stats and names
+- `v_apba_cards_enriched` - APBA cards with player details
+- `v_draft_board` - Available players for drafting
+- `v_league_standings` - League standings with rankings
+
+**Helper Functions (3):**
+- `get_player_career_stats()` - Calculate career totals
+- `get_draft_pick_order()` - Calculate pick order (handles snake draft)
+- `calculate_next_pick()` - Determine who picks next
+
+**Performance Optimizations:**
+- 50+ indexes on common query patterns
+- Full-text search on player names (GIN index)
+- Composite indexes for player_id + year queries
+- Filtered indexes for qualified batters/pitchers
+- Computed columns for display_name and career_span
+
+**Migration Files Created:**
+- 001_create_players.sql (Players table with full biographical data)
+- 002_create_player_seasons.sql (Player seasons + teams history)
+- 003_create_apba_cards.sql (APBA cards + outcomes lookup table)
+- 004_create_draft_tables.sql (5 draft system tables)
+- 005_create_game_simulation_tables.sql (6 game simulation tables)
+- 006_create_helper_views.sql (4 views + 3 functions)
+- 007_create_rls_policies.sql (Row Level Security - permissive for Phase 1-3)
+- 008_seed_apba_outcomes.sql (Sample APBA outcome data)
+
+**Documentation:**
+- docs/DATABASE_SCHEMA.md (comprehensive 1,000+ line reference guide)
+- Updated src/types/database.types.ts (23 TypeScript interfaces matching schema)
+
+**Schema Features:**
+- UUID primary keys for all user-generated data
+- Lahman IDs for player identification
+- JSONB for flexible data (games_by_position)
+- Array columns for dice outcomes (INTEGER[36])
+- Generated columns for computed fields
+- Triggers for updated_at timestamps
+- CHECK constraints for data validation
+- Comprehensive foreign key relationships
+- Comments on all tables and critical columns
+
+**UI/UX Considerations:**
+- Denormalized views for fast frontend queries
+- Pre-computed standings and rankings
+- Snake draft logic handled in database functions
+- Play-by-play event storage for game replay
+- Draft watchlist for user experience
+- Player search optimized with full-text indexing
+
 ### Phase 1 Progress Summary
 
 **Week 1 - Foundation Complete!**
 - ✅ Phase 1.1: APBA (player cards, game mechanics, outcomes)
 - ✅ Phase 1.2: Bill James (formulas, features, methodology)
 - ✅ Phase 1.3: React + TypeScript setup (development environment ready!)
-- ⏳ Phase 1.4: Supabase database schema (next)
-- ⏳ Phase 1.5: Lahman import pipeline
+- ✅ Phase 1.4: Supabase database schema (17 tables, 4 views, 3 functions!)
+- ⏳ Phase 1.5: Lahman import pipeline (next)
 - ⏳ Phase 1.6: APBA card generation
+
+**Week 1 Status:** All design/planning work complete! Ready to implement data pipelines.
 
 ### Next Steps
 
-- Phase 1.4: Design and deploy Supabase database schema
-- Phase 1.5: Build Lahman import pipeline
+- Phase 1.5: Build Lahman CSV import pipeline (TypeScript)
 - Phase 1.6: Generate APBA cards for all players
+- Deploy migrations to Supabase (when ready)
 
 ---
 
