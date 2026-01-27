@@ -37,21 +37,36 @@ Draft system failing with 401 Unauthorized and 400 Bad Request errors when attem
   - New: 'setup' | 'in_progress' | 'paused' | 'completed' | 'abandoned'
 
 ### Phase 4: Code Cleanup (Rule 6: No Emojis)
-- [ ] Remove emoji characters from App.tsx (home screen feature cards)
-- [ ] Remove emoji characters from DraftBoard.tsx (loading/completion screens)
-- [ ] Remove emoji from DraftConfig.tsx buttons
-- [ ] Replace with text-only or icon components
+- [x] Remove emoji characters from App.tsx (home screen feature cards)
+- [x] Remove emoji characters from DraftBoard.tsx (loading/completion screens)
+- [x] Remove emoji from DraftControls.tsx (team control indicators)
+- [x] Replace with text-only (no icon components needed)
 
 ### Phase 5: Documentation & Git
-- [ ] Update CHANGELOG.md with all fixes
-- [ ] Commit changes to git with descriptive message
-- [ ] Clean up temporary scripts (get-supabase-anon-key.ts)
+- [x] Update CHANGELOG.md with all fixes
+- [x] Commit changes to git with descriptive message (commit 5a853a9)
+- [x] Clean up temporary scripts (get-supabase-anon-key.ts)
+- [x] Clean up backup files (App-Draft.tsx, App-Old.tsx)
+
+## Additional Issues Found
+
+### Issue 4: UUID Format Error (2026-01-27)
+**Problem:** Session ID generated as `draft-${Date.now()}` is not a valid UUID format
+- Error: `invalid input syntax for type uuid: "draft-1769536158830"`
+- The database `draft_sessions.id` column expects UUID type
+- Frontend was generating string IDs, causing PATCH requests to fail
+
+**Solution:**
+- Let Supabase auto-generate the UUID via `uuid_generate_v4()` default
+- Use `.select().single()` to retrieve the generated UUID after insert
+- Update local session state with the real UUID from database
+- Modified draftStore.ts createSession to insert first, then create session object
 
 ## Testing Checklist
 - [x] TypeScript compilation succeeds
 - [x] Production build succeeds
-- [ ] Draft session creation succeeds (no 401 error)
-- [ ] Draft session creation succeeds (no 400 error)
+- [x] Draft session creation succeeds (no 401 error)
+- [x] Draft session creation succeeds (no 400 error)
 - [ ] Draft board loads with player data
 - [ ] CPU auto-draft executes successfully
 - [ ] Human player can select and assign players

@@ -295,6 +295,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rule 7: Created implementation plan (docs/plans/draft-system-schema-fix.md)
 - Rule 10: Updated CHANGELOG.md (this entry)
 
+### Fixed - 2026-01-27 (UUID Format Error)
+
+**UUID Generation Fix - COMPLETE ✅**
+
+- Fixed UUID format error in draft session creation
+  - Error: `invalid input syntax for type uuid: "draft-1769536158830"`
+  - Root cause: Frontend was generating string IDs instead of UUIDs
+  - Solution: Let Supabase auto-generate UUID, retrieve it via `.select().single()`
+- Updated draftStore.ts createSession method:
+  - Insert draft_sessions record first to get auto-generated UUID
+  - Use returned UUID for local session state
+  - Removed client-side ID generation (`draft-${Date.now()}`)
+
+**Files Modified:**
+- src/stores/draftStore.ts (UUID generation fix)
+
+**Commit:**
+- Pending commit with UUID fix
+
 ### Next Steps
 
 - Phase 1.5: Build Lahman CSV import pipeline (TypeScript)

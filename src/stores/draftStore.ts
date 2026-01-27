@@ -106,38 +106,44 @@ export const useDraftStore = create<DraftState>()(
           })
         }
 
-        // Create session
+        // Save to Supabase first to get the UUID
+        const { data: newSession, error } = await supabase
+          .from('draft_sessions')
+          .insert({
+            session_name: `Draft ${new Date().toLocaleDateString()}`,
+            season_year: config.selectedSeasons[0] || new Date().getFullYear(),
+            num_teams: config.numTeams,
+            num_rounds: TOTAL_ROUNDS,
+            draft_type: 'snake',
+            current_pick_number: 1,
+            current_round: 1,
+            status: 'setup',
+          })
+          .select()
+          .single()
+
+        if (error) {
+          console.error('Error creating draft session:', error)
+          throw error
+        }
+
+        if (!newSession) {
+          throw new Error('Failed to create draft session - no data returned')
+        }
+
+        // Create session with the real UUID from Supabase
         const session: DraftSession = {
-          id: `draft-${Date.now()}`,
-          name: `Draft ${new Date().toLocaleDateString()}`,
-          status: 'setup',
+          id: newSession.id,
+          name: newSession.session_name,
+          status: newSession.status as DraftSession['status'],
           numTeams: config.numTeams,
           currentPick: 1,
           currentRound: 1,
           teams,
           picks,
           selectedSeasons: config.selectedSeasons,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        }
-
-        // Save to Supabase
-        const { error } = await supabase
-          .from('draft_sessions')
-          .insert({
-            session_name: session.name,
-            season_year: config.selectedSeasons[0] || new Date().getFullYear(),
-            num_teams: session.numTeams,
-            num_rounds: TOTAL_ROUNDS,
-            draft_type: 'snake',
-            current_pick_number: session.currentPick,
-            current_round: session.currentRound,
-            status: 'setup',
-          })
-
-        if (error) {
-          console.error('Error creating draft session:', error)
-          throw error
+          createdAt: new Date(newSession.created_at),
+          updatedAt: new Date(newSession.updated_at),
         }
 
         set({ session })
