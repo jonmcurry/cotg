@@ -57,7 +57,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Better user experience for rating recalculation tasks
 
 **Commit:**
-- commit [pending]
+- commit d8d971d
+
+### Fixed - 2026-01-27 (Drafted Player Removal)
+
+**All Player Seasons Removed When Drafted - COMPLETE ✅**
+
+- Fixed draft board to remove all seasons of a player when any season is drafted
+  - Issue: Drafting Pete Alexander 1916 PHI left his other seasons (1913, 1915, 1917, 1919, 1911) visible
+  - User expectation: "Once a player is drafted, they're not being removed from the draft board"
+  - Root cause: System tracked season IDs and only removed the specific drafted season
+  - Other seasons of same player had different IDs, remained in pool
+- Solution: Filter by player_id instead of season id
+  - DraftBoard.tsx: Convert drafted season IDs to player IDs
+    - Map `player_seasons.id` → `player_seasons.player_id`
+    - Create Set of drafted `player_id` values (not season ids)
+  - TabbedPlayerPool.tsx: Filter using player_id
+    - Changed: `!draftedPlayerIds.has(p.id)` → `!draftedPlayerIds.has(p.player_id)`
+    - Added debug logging to verify filtering works correctly
+  - GroupedPlayerPool.tsx: Same player_id filtering change
+- Added comprehensive debug logging
+  - Shows drafted seasons count vs unique players drafted
+  - Verifies no "leaked" seasons remain in filtered list
+  - Console shows "✓ All seasons of drafted players successfully filtered out"
+
+**User Impact:**
+- Drafting Babe Ruth 1927 now removes ALL Babe Ruth seasons from pool
+- Clear visual feedback when player is drafted (disappears completely)
+- No confusion about which seasons are still draftable
+- Prevents accidentally drafting same player twice with different seasons
+
+**Technical Details:**
+- `player_seasons.id` = unique season identifier (UUID)
+- `player_seasons.player_id` = links all seasons to same base player (UUID)
+- Filtering logic now checks `player_id` to remove all player's seasons at once
+- Set-based filtering maintains O(1) lookup performance
+- Compatible with both TabbedPlayerPool and GroupedPlayerPool components
+
+**Files Modified:**
+- src/components/draft/DraftBoard.tsx (convert season IDs to player IDs)
+- src/components/draft/TabbedPlayerPool.tsx (filter by player_id + debug logging)
+- src/components/draft/GroupedPlayerPool.tsx (filter by player_id)
+- src/utils/cpuDraftLogic.ts (PlayerSeason interface unchanged - has both id and player_id)
+
+**Commit:**
+- commit 6c761bd
 
 ### Added - 2026-01-27 (APBA Rating System Implementation)
 
