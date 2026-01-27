@@ -2,6 +2,33 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+  /* Card component */
+  .card {
+    @apply bg-white rounded-lg shadow-md p-6 border border-charcoal/10;
+  }
+
+  /* Button styles */
+  .btn-primary {
+    @apply bg-burgundy text-cream font-semibold px-6 py-3 rounded-lg
+           hover:bg-burgundy-dark transition-colors shadow-md
+           active:transform active:scale-95;
+  }
+
+  .btn-secondary {
+    @apply bg-charcoal/10 text-charcoal font-semibold px-6 py-3 rounded-lg
+           hover:bg-charcoal/20 transition-colors
+           active:transform active:scale-95;
+  }
+
+  /* Input field styles */
+  .input-field {
+    @apply border border-charcoal/20 rounded-lg px-4 py-2
+           focus:outline-none focus:ring-2 focus:ring-burgundy/50 focus:border-burgundy
+           bg-white text-charcoal;
+  }
+}
+
 @layer base {
   body {
     @apply bg-cream text-charcoal font-sans;

@@ -13,7 +13,17 @@
       "Bash(npm install:*)",
       "Bash(timeout 5 npm run dev)",
       "Bash(choco install:*)",
-      "Bash(psql:*)"
+      "Bash(psql:*)",
+      "Bash(export SUPABASE_DB_PASSWORD='ClearToFly2026')",
+      "Bash(bash scripts/deploy-migrations.sh:*)",
+      "Bash(npm run import:lahman:*)",
+      "Bash(tee:*)",
+      "Bash(grep:*)",
+      "Bash(npm run generate:apba-cards:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npm run build:*)",
+      "Bash(supabase --version:*)",
+      "Bash(start https://supabase.com/dashboard/project/vbxpxgrqiixrvvmhkhrx/settings/api)"
     ]
   }
 }

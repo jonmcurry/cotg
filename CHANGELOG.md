@@ -242,11 +242,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Week 1 Status:** All design/planning work complete! Ready to implement data pipelines.
 
+### Completed - 2026-01-27 (Phase 2 Draft System)
+
+**Draft System Schema Alignment and Bug Fixes - COMPLETE ✅**
+
+- Fixed authentication errors (401 Unauthorized) by updating Supabase anon key in .env
+- Created RLS policies migration (20260127_add_draft_rls_policies.sql) enabling anonymous access
+- Fixed schema mismatch between code and database:
+  - Updated column names: `name` → `session_name`, `current_pick` → `current_pick_number`
+  - Added required fields: `season_year`, `draft_type`, `current_round`
+  - Fixed status enum: `'configuring'` → `'setup'` to match database constraints
+- Removed all emoji characters from source code per Rule 6:
+  - App.tsx (home screen buttons and feature cards)
+  - DraftBoard.tsx (loading screen, completion screen, CPU overlay)
+  - DraftControls.tsx (team control indicators)
+- Cleaned up temporary/backup files per Rule 5:
+  - Removed App-Draft.tsx (backup file)
+  - Removed App-Old.tsx (backup file)
+  - Removed scripts/get-supabase-anon-key.ts (one-time helper script)
+- Created draft system fix plan document: docs/plans/draft-system-schema-fix.md
+- Fixed TypeScript compilation errors (unused variables, missing type definitions)
+- Created vite-env.d.ts for Vite environment variable type definitions
+
+**Files Modified:**
+- .env (updated with real Supabase anon key)
+- supabase/migrations/20260127_add_draft_rls_policies.sql (created)
+- src/stores/draftStore.ts (schema alignment fixes)
+- src/types/draft.types.ts (status enum update)
+- src/App.tsx (emoji removal)
+- src/components/draft/DraftBoard.tsx (emoji removal)
+- src/components/draft/DraftControls.tsx (emoji removal)
+- src/vite-env.d.ts (created)
+- src/utils/cpuDraftLogic.ts (added losses field to PlayerSeason)
+- src/components/draft/RosterView.tsx (removed unused parameter)
+- src/components/draft/PickHistory.tsx (removed unused prop)
+
+**Files Cleaned Up:**
+- src/App-Draft.tsx (deleted)
+- src/App-Old.tsx (deleted)
+- scripts/get-supabase-anon-key.ts (deleted)
+
+**RLS Policies Created:**
+- draft_sessions: INSERT, SELECT, UPDATE, DELETE for anon role
+- draft_teams: INSERT, SELECT, UPDATE, DELETE for anon role
+- draft_picks: INSERT, SELECT, UPDATE, DELETE for anon role
+- draft_rankings: INSERT, SELECT, UPDATE, DELETE for anon role
+- draft_watchlist: INSERT, SELECT, UPDATE, DELETE for anon role
+
+**Rules Followed:**
+- Rule 5: Cleaned up temporary/backup files
+- Rule 6: Removed all emoji characters from code
+- Rule 7: Created implementation plan (docs/plans/draft-system-schema-fix.md)
+- Rule 10: Updated CHANGELOG.md (this entry)
+
 ### Next Steps
 
 - Phase 1.5: Build Lahman CSV import pipeline (TypeScript)
 - Phase 1.6: Generate APBA cards for all players
 - Deploy migrations to Supabase (when ready)
+- Rule 9: Commit all changes to git repository
 
 ---
 
