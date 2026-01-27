@@ -195,33 +195,54 @@ export const useDraftStore = create<DraftState>()(
         const session = get().session
         if (!session) return
 
-        session.updatedAt = new Date()
+        // Create new object instead of mutating
+        const updatedSession: DraftSession = {
+          ...session,
+          updatedAt: new Date(),
+        }
 
         // Update Supabase
         const { error } = await supabase
           .from('draft_sessions')
           .update({
-            current_pick_number: session.currentPick,
-            current_round: session.currentRound,
-            status: session.status,
+            current_pick_number: updatedSession.currentPick,
+            current_round: updatedSession.currentRound,
+            status: updatedSession.status,
           })
-          .eq('id', session.id)
+          .eq('id', updatedSession.id)
 
         if (error) {
-          console.error('Error saving session:', error)
+          console.error('[saveSession] Error saving to Supabase:', error)
+        } else {
+          console.log('[saveSession] Successfully saved to Supabase:', {
+            status: updatedSession.status,
+            pick: updatedSession.currentPick,
+            round: updatedSession.currentRound,
+          })
         }
 
-        set({ session })
+        set({ session: updatedSession })
       },
 
       startDraft: () => {
         const session = get().session
-        if (!session) return
+        if (!session) {
+          console.error('[startDraft] CRITICAL ERROR - No session found!')
+          return
+        }
 
-        session.status = 'in_progress'
-        session.updatedAt = new Date()
+        console.log('[startDraft] Starting draft, changing status from', session.status, 'to in_progress')
 
-        set({ session })
+        // IMPORTANT: Create a new object instead of mutating
+        // Zustand uses reference equality - mutating and passing same reference won't trigger updates
+        const updatedSession: DraftSession = {
+          ...session,
+          status: 'in_progress',
+          updatedAt: new Date(),
+        }
+
+        set({ session: updatedSession })
+        console.log('[startDraft] Status updated, saving to Supabase...')
         get().saveSession()
       },
 
@@ -229,10 +250,14 @@ export const useDraftStore = create<DraftState>()(
         const session = get().session
         if (!session) return
 
-        session.status = 'paused'
-        session.updatedAt = new Date()
+        // Create new object instead of mutating
+        const updatedSession: DraftSession = {
+          ...session,
+          status: 'paused',
+          updatedAt: new Date(),
+        }
 
-        set({ session })
+        set({ session: updatedSession })
         get().saveSession()
       },
 
@@ -240,10 +265,14 @@ export const useDraftStore = create<DraftState>()(
         const session = get().session
         if (!session) return
 
-        session.status = 'in_progress'
-        session.updatedAt = new Date()
+        // Create new object instead of mutating
+        const updatedSession: DraftSession = {
+          ...session,
+          status: 'in_progress',
+          updatedAt: new Date(),
+        }
 
-        set({ session })
+        set({ session: updatedSession })
         get().saveSession()
       },
 
@@ -251,29 +280,45 @@ export const useDraftStore = create<DraftState>()(
         const session = get().session
         if (!session) return
 
-        const currentPick = session.picks[session.currentPick - 1]
+        const currentPickIndex = session.currentPick - 1
+        const currentPick = session.picks[currentPickIndex]
         if (!currentPick) return
 
-        const team = session.teams.find(t => t.id === currentPick.teamId)
-        if (!team) return
+        const teamIndex = session.teams.findIndex(t => t.id === currentPick.teamId)
+        if (teamIndex === -1) return
 
-        // Find the roster slot
-        const rosterSlot = team.roster.find(
+        const team = session.teams[teamIndex]
+
+        // Find the roster slot index
+        const rosterSlotIndex = team.roster.findIndex(
           slot => slot.position === position && slot.slotNumber === slotNumber
         )
 
-        if (!rosterSlot) {
+        if (rosterSlotIndex === -1) {
           console.error('Roster slot not found')
           return
         }
 
-        // Assign player to roster
-        rosterSlot.playerSeasonId = playerSeasonId
-        rosterSlot.isFilled = true
+        // Create immutable updates
+        const updatedRoster = [...team.roster]
+        updatedRoster[rosterSlotIndex] = {
+          ...updatedRoster[rosterSlotIndex],
+          playerSeasonId,
+          isFilled: true,
+        }
 
-        // Record the pick
-        currentPick.playerSeasonId = playerSeasonId
-        currentPick.pickTime = new Date()
+        const updatedTeams = [...session.teams]
+        updatedTeams[teamIndex] = {
+          ...team,
+          roster: updatedRoster,
+        }
+
+        const updatedPicks = [...session.picks]
+        updatedPicks[currentPickIndex] = {
+          ...currentPick,
+          playerSeasonId,
+          pickTime: new Date(),
+        }
 
         // Save pick to Supabase
         const { error } = await supabase
@@ -287,20 +332,41 @@ export const useDraftStore = create<DraftState>()(
           })
 
         if (error) {
-          console.error('Error saving pick:', error)
+          console.error('[makePick] Error saving pick to Supabase:', error)
         }
 
         // Advance to next pick
-        session.currentPick += 1
-        if (session.currentPick > session.picks.length) {
-          session.status = 'completed'
+        const nextPickNumber = session.currentPick + 1
+        let newStatus = session.status
+        let newRound = session.currentRound
+
+        if (nextPickNumber > session.picks.length) {
+          newStatus = 'completed'
+          console.log('[makePick] Draft completed!')
         } else {
-          session.currentRound = session.picks[session.currentPick - 1].round
+          newRound = updatedPicks[nextPickNumber - 1].round
         }
 
-        session.updatedAt = new Date()
+        // Create new session object
+        const updatedSession: DraftSession = {
+          ...session,
+          teams: updatedTeams,
+          picks: updatedPicks,
+          currentPick: nextPickNumber,
+          currentRound: newRound,
+          status: newStatus,
+          updatedAt: new Date(),
+        }
 
-        set({ session })
+        console.log('[makePick] Pick made:', {
+          player: playerSeasonId,
+          position,
+          team: team.name,
+          pickNumber: currentPick.pickNumber,
+          nextPick: nextPickNumber,
+        })
+
+        set({ session: updatedSession })
         get().saveSession()
       },
 

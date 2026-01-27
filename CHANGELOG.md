@@ -335,6 +335,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **Commit:**
 - commit 962b752
 
+### Fixed - 2026-01-27 (Zustand State Mutation Bug)
+
+**Session Status Not Updating - COMPLETE ✅**
+
+- Fixed critical Zustand state mutation bug causing session status to remain 'setup'
+  - Issue: CPU draft blocked because session status never changed to 'in_progress'
+  - Root cause: `startDraft()` was mutating session object then passing same reference to `set()`
+  - Zustand uses reference equality - mutating and passing same reference doesn't trigger updates
+  - This prevented useEffect dependencies from detecting changes
+- Fixed all state mutation violations in draftStore.ts:
+  - `startDraft()`: Now creates new session object with spread operator
+  - `pauseDraft()`: Now creates new session object (immutable update)
+  - `resumeDraft()`: Now creates new session object (immutable update)
+  - `saveSession()`: Now creates new session object (immutable update)
+  - `makePick()`: Now creates new objects for teams, roster, picks (deep immutable update)
+- Added comprehensive logging to `startDraft()`:
+  - Logs session status transition
+  - Logs Supabase save confirmation
+  - Helps debug state flow issues
+- All state updates now follow Zustand best practices (immutable updates)
+
+**Technical Details:**
+- Zustand anti-pattern: `session.status = 'in_progress'; set({ session })`
+- Correct pattern: `const updated = { ...session, status: 'in_progress' }; set({ session: updated })`
+- Deep cloning required for nested objects (teams, roster, picks)
+- Reference equality: `oldRef === newRef` means no re-render
+
+**Files Modified:**
+- src/stores/draftStore.ts (startDraft, pauseDraft, resumeDraft, saveSession, makePick)
+
+**Impact:**
+- CPU draft now executes immediately when session starts
+- All useEffect hooks properly detect session changes
+- State persistence to Supabase works correctly
+- Draft flow unblocked
+
 ### Next Steps
 
 - Phase 1.5: Build Lahman CSV import pipeline (TypeScript)
