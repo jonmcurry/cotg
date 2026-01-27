@@ -414,6 +414,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Timeout cleanup only runs when component unmounts or session changes
 - CPU draft flow fully functional
 
+**Commit:**
+- commit 72cd3f1
+
+### Fixed - 2026-01-27 (CPU Draft Player Loading Race Condition)
+
+**False "No Players Loaded" Error - COMPLETE ✅**
+
+- Fixed race condition where CPU draft checked for players before async loading completed
+  - Issue: Alert showed "CRITICAL ERROR: No players loaded for draft" immediately after starting
+  - Root cause: Both player loading and CPU draft useEffects triggered simultaneously
+  - Player loading is async (Supabase query takes time)
+  - CPU draft checked `players.length === 0` before query completed
+- Solution: CPU draft now waits for `loading === false` before checking player count
+  - Added `loading` state check: "Waiting for players to load..."
+  - Only shows error if loading is complete AND still no players
+  - Added `loading` to dependency array so effect re-runs when loading completes
+- Added `loading` to console logs for better debugging visibility
+
+**Technical Details:**
+- Async race condition between two useEffects with overlapping dependencies
+- Both depend on `session`, so both trigger when session is created or status changes
+- Player loading useEffect: `async function loadPlayers()` takes time
+- CPU draft useEffect: Runs immediately, sees empty array
+- Fix: Early return while `loading === true`
+
+**Files Modified:**
+- src/components/draft/DraftBoard.tsx (added loading check to CPU draft logic)
+
+**Impact:**
+- No more false error alerts when draft starts
+- CPU draft waits for players to load before attempting to draft
+- Clean user experience with proper loading states
+- Error only shows if there's a real Supabase connection or data issue
+
 ### Next Steps
 
 - Phase 1.5: Build Lahman CSV import pipeline (TypeScript)

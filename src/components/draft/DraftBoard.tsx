@@ -133,6 +133,7 @@ export default function DraftBoard({ onExit }: Props) {
       cpuThinking,
       sessionStatus: session?.status,
       playersCount: players.length,
+      loading,
     })
 
     if (!session || !currentTeam || currentTeam.control !== 'cpu' || cpuThinking) {
@@ -145,6 +146,13 @@ export default function DraftBoard({ onExit }: Props) {
       return
     }
 
+    // Wait for players to finish loading before checking if empty
+    if (loading) {
+      console.log('[CPU Draft] Waiting for players to load...')
+      return
+    }
+
+    // Only show error if loading is complete and still no players
     if (players.length === 0) {
       console.error('[CPU Draft] CRITICAL ERROR - No players loaded! Cannot draft.')
       alert('CRITICAL ERROR: No players loaded for draft. Please check Supabase connection and player_seasons data.')
@@ -185,7 +193,7 @@ export default function DraftBoard({ onExit }: Props) {
     return () => clearTimeout(timeoutId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
     // Note: cpuThinking is intentionally NOT in dependencies to prevent cleanup from canceling timeout
-  }, [session, currentTeam, players, makePick])
+  }, [session, currentTeam, players, loading, makePick])
 
   const handlePlayerSelect = useCallback((player: PlayerSeason) => {
     if (!currentTeam || currentTeam.control !== 'human') {
