@@ -7,6 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-01-27 (Pitcher Filtering and Rating Display)
+
+**Issue:** Pitchers appearing in position player pool; pitcher ratings showing as alpha grades instead of numeric
+
+- Fixed pitcher filtering to use actual pitching activity instead of position label
+  - Issue: Players like Tom Burgmeier (pitcher who occasionally played OF) appeared in position player pool
+  - Root cause: `isPitcherPosition()` only checked `primary_position` field (P, SP, RP, CL)
+  - Problem: Database can list pitchers with fielding positions as their primary_position for some seasons
+  - User impact: Position player pool contaminated with pitchers, confusing draft experience
+- Fixed pitcher rating display to show numeric values instead of alpha grades
+  - Issue: Pitchers showed "Grade A" instead of "93.4" like position players
+  - Root cause: `formatRating()` function used `getPitcherGrade()` for pitchers
+  - User impact: Inconsistent rating display made pitcher comparison difficult
+
+**Solution:**
+- Replace position-based filtering with stats-based filtering
+- Use `innings_pitched_outs >= 30` threshold (matches DraftBoard.tsx player filter)
+- Remove `formatRating()` and `getPitcherGrade()` usage
+- Display numeric ratings (e.g., "93.4") for both position players and pitchers
+
+**Before (Position-Based Filtering):**
+```typescript
+const isPitcherPosition = (position: string): boolean => {
+  return position === 'P' || position === 'SP' || position === 'RP' || position === 'CL'
+}
+
+const positionPlayers = availablePlayers.filter(p => !isPitcherPosition(p.primary_position))
+const pitchers = availablePlayers.filter(p => isPitcherPosition(p.primary_position))
+
+// Pitcher rating display
+{formatRating(player.apba_rating, player.primary_position)}
+// → "Grade A" for pitchers
+```
+
+**After (Stats-Based Filtering):**
+```typescript
+const isPitcher = (player: PlayerSeason): boolean => {
+  return (player.innings_pitched_outs || 0) >= 30
+}
+
+const positionPlayers = availablePlayers.filter(p => !isPitcher(p))
+const pitchers = availablePlayers.filter(p => isPitcher(p))
+
+// Pitcher rating display
+{player.apba_rating !== null ? player.apba_rating.toFixed(1) : 'NR'}
+// → "93.4" for all players
+```
+
+**Files Changed:**
+- `src/components/draft/TabbedPlayerPool.tsx` - Updated filtering logic and rating display
+- Removed unused import: `getPitcherGrade` from `../../utils/apbaRating`
+- Changed pitcher tab header from "Grade" to "Rating" for consistency
+
+**Technical Details:**
+- Filtering now based on actual pitching activity (innings >= 30) not position label
+- Ensures pitchers stay in pitcher tab even if they have fielding position listed
+- Consistent numeric rating display (XX.X format) across all players
+- Maintains performance with useMemo hooks and virtual scrolling
+
 ### Fixed - 2026-01-27 (APBA Rating Script Performance Recovery)
 
 **Commit:** `43efb7b`

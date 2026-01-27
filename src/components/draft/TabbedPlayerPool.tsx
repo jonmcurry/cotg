@@ -6,7 +6,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { FixedSizeList as List } from 'react-window'
 import type { PlayerSeason } from '../../utils/cpuDraftLogic'
-import { getPitcherGrade } from '../../utils/apbaRating'
 
 interface Props {
   players: PlayerSeason[]
@@ -19,16 +18,10 @@ type Tab = 'hitters' | 'pitchers'
 type SortField = 'name' | 'position' | 'year' | 'avg' | 'hits' | 'hr' | 'rbi' | 'sb' | 'ops' | 'wins' | 'era' | 'strikeouts' | 'shutouts' | 'whip' | 'grade'
 type SortDirection = 'asc' | 'desc'
 
-const isPitcherPosition = (position: string): boolean => {
-  return position === 'P' || position === 'SP' || position === 'RP' || position === 'CL'
-}
-
-const formatRating = (rating: number | null, position: string): string => {
-  if (rating === null) return 'Not Rated'
-  if (isPitcherPosition(position)) {
-    return `Grade ${getPitcherGrade(rating)}`
-  }
-  return rating.toFixed(1)
+// Determine if a player is a pitcher based on their actual pitching activity
+// Uses innings_pitched_outs >= 30 threshold (same as DraftBoard.tsx player filter)
+const isPitcher = (player: PlayerSeason): boolean => {
+  return (player.innings_pitched_outs || 0) >= 30
 }
 
 export default function TabbedPlayerPool({
@@ -56,13 +49,13 @@ export default function TabbedPlayerPool({
     return filtered
   }, [players, draftedPlayerIds])
 
-  // Split into position players and pitchers
+  // Split into position players and pitchers based on actual pitching activity
   const positionPlayers = useMemo(() => {
-    return availablePlayers.filter(p => !isPitcherPosition(p.primary_position))
+    return availablePlayers.filter(p => !isPitcher(p))
   }, [availablePlayers])
 
   const pitchers = useMemo(() => {
-    return availablePlayers.filter(p => isPitcherPosition(p.primary_position))
+    return availablePlayers.filter(p => isPitcher(p))
   }, [availablePlayers])
 
   // Apply search filter
@@ -282,7 +275,7 @@ export default function TabbedPlayerPool({
           {player.whip !== null ? player.whip.toFixed(2) : '-'}
         </div>
         <div className="py-2 px-2 text-burgundy font-medium text-right flex-[1]">
-          {formatRating(player.apba_rating, player.primary_position)}
+          {player.apba_rating !== null ? player.apba_rating.toFixed(1) : 'NR'}
         </div>
       </div>
     )
@@ -421,7 +414,7 @@ export default function TabbedPlayerPool({
                   WHIP <SortIcon field="whip" />
                 </div>
                 <div className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-right flex-[1]" onClick={() => handleSort('grade')}>
-                  Grade <SortIcon field="grade" />
+                  Rating <SortIcon field="grade" />
                 </div>
               </div>
             </div>
