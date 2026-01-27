@@ -48,58 +48,82 @@ export default function DraftBoard({ onExit }: Props) {
       try {
         const { supabase } = await import('../../lib/supabaseClient')
 
-        // Build query to get players from selected seasons
-        // Note: Using .limit(10000) to override Supabase default 1000 row limit
-        // This ensures we get all players including legends like Babe Ruth
-        const { data, error } = await supabase
-          .from('player_seasons')
-          .select(`
-            id,
-            player_id,
-            year,
-            team_id,
-            primary_position,
-            apba_rating,
-            war,
-            batting_avg,
-            hits,
-            home_runs,
-            rbi,
-            stolen_bases,
-            on_base_pct,
-            slugging_pct,
-            wins,
-            losses,
-            era,
-            strikeouts_pitched,
-            saves,
-            shutouts,
-            whip,
-            players!inner (
-              display_name,
-              first_name,
-              last_name
-            )
-          `)
-          .in('year', session.selectedSeasons)
-          .or('at_bats.gte.50,innings_pitched_outs.gte.30') // Minimum playing time (50 ABs or 10 IP)
-          .order('apba_rating', { ascending: false, nullsFirst: false })
-          .limit(10000)  // Override default 1000 limit to get all players
+        // Fetch all players using pagination (Supabase has 1000 row default limit)
+        // Keep fetching until we get all results
+        const allPlayers: any[] = []
+        let offset = 0
+        const batchSize = 1000
+        let hasMore = true
 
-        if (error) {
-          console.error('[Player Load] CRITICAL ERROR loading players:', error)
-          alert(`CRITICAL ERROR: Failed to load players from Supabase.\n\nError: ${error.message}\n\nCheck console for details.`)
-          return
+        while (hasMore) {
+          console.log(`[Player Load] Fetching batch at offset ${offset}...`)
+
+          const { data, error } = await supabase
+            .from('player_seasons')
+            .select(`
+              id,
+              player_id,
+              year,
+              team_id,
+              primary_position,
+              apba_rating,
+              war,
+              batting_avg,
+              hits,
+              home_runs,
+              rbi,
+              stolen_bases,
+              on_base_pct,
+              slugging_pct,
+              wins,
+              losses,
+              era,
+              strikeouts_pitched,
+              saves,
+              shutouts,
+              whip,
+              players!inner (
+                display_name,
+                first_name,
+                last_name
+              )
+            `)
+            .in('year', session.selectedSeasons)
+            .or('at_bats.gte.50,innings_pitched_outs.gte.30') // Minimum playing time (50 ABs or 10 IP)
+            .order('apba_rating', { ascending: false, nullsFirst: false })
+            .range(offset, offset + batchSize - 1)
+
+          if (error) {
+            console.error('[Player Load] CRITICAL ERROR loading players:', error)
+            alert(`CRITICAL ERROR: Failed to load players from Supabase.\n\nError: ${error.message}\n\nCheck console for details.`)
+            return
+          }
+
+          if (!data || data.length === 0) {
+            // No more results
+            hasMore = false
+            break
+          }
+
+          console.log(`[Player Load] Fetched ${data.length} players in this batch`)
+          allPlayers.push(...data)
+
+          // If we got fewer than batchSize, we've reached the end
+          if (data.length < batchSize) {
+            hasMore = false
+          } else {
+            offset += batchSize
+          }
         }
 
-        if (!data || data.length === 0) {
+        if (allPlayers.length === 0) {
           console.error('[Player Load] CRITICAL ERROR - No players found for selected seasons:', session.selectedSeasons)
           alert(`CRITICAL ERROR: No players found for selected seasons: ${session.selectedSeasons.join(', ')}\n\nPlease ensure player_seasons table has data for these years.`)
           return
         }
 
         // Transform data to include player names
-        const transformedPlayers = data.map((p: any) => ({
+        const transformedPlayers = allPlayers.map((p: any) => ({
           id: p.id,
           player_id: p.player_id,
           year: p.year,
@@ -126,7 +150,7 @@ export default function DraftBoard({ onExit }: Props) {
           last_name: p.players.last_name,
         }))
 
-        console.log(`[Player Load] SUCCESS - Loaded ${transformedPlayers.length} players`)
+        console.log(`[Player Load] SUCCESS - Loaded ${transformedPlayers.length} total players across all batches`)
         setPlayers(transformedPlayers)
       } catch (err) {
         console.error('[Player Load] CRITICAL ERROR - Exception:', err)

@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-01-27 (Player Pool 1000 Limit)
+
+**Fixed Player Pool Only Showing 1000 Players**
+
+- Fixed draft board player loading to fetch all players beyond Supabase's 1000 row default limit
+  - Issue: Player pool showed exactly 1000 players (452 position players + 548 pitchers)
+  - Root cause: Supabase enforces 1000 row limit per query, `.limit(10000)` doesn't override this
+  - User impact: Many players missing from draft pool (could be thousands missing)
+- Solution: Implemented pagination to fetch all results
+  - Fetch players in batches using `.range(offset, offset + 999)`
+  - Loop until no more results returned (data.length < batchSize)
+  - Combine all batches into complete player list
+  - Added batch logging to show progress
+
+**Technical Details:**
+- Changed from single query with `.limit(10000)` to paginated fetching:
+  ```typescript
+  // Before: Single query (limited to 1000 rows by Supabase)
+  const { data } = await supabase
+    .from('player_seasons')
+    .select(...)
+    .limit(10000)  // This doesn't actually work
+
+  // After: Paginated fetching (gets all results)
+  const allPlayers = []
+  let offset = 0
+  while (hasMore) {
+    const { data } = await supabase
+      .from('player_seasons')
+      .select(...)
+      .range(offset, offset + 999)
+
+    allPlayers.push(...data)
+    offset += 1000
+    hasMore = data.length === 1000
+  }
+  ```
+- Console logs show batch progress: "Fetching batch at offset 0...", "Fetched 1000 players in this batch"
+- Final log shows total: "Loaded 3,456 total players across all batches" (example)
+
+**User Impact:**
+- All eligible players now appear in draft pool (not just first 1000)
+- Better player selection and draft experience
+- No more missing legends or deep roster players
+
+**Files Modified:**
+- [src/components/draft/DraftBoard.tsx](src/components/draft/DraftBoard.tsx) - Implemented paginated player loading
+
 ### Fixed - 2026-01-27 (APBA Rating Script RLS Policy)
 
 **Commit:** `13b2c6d`
