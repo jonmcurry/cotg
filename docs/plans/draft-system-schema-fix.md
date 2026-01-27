@@ -135,6 +135,26 @@ Draft system failing with 401 Unauthorized and 400 Bad Request errors when attem
 **Commit:**
 - commit 4461211
 
+### Issue 9: CPU Draft Loading State Timeout Cancellation (2026-01-27)
+**Problem:** CPU draft still stuck showing "Team is thinking..." - timeout never fired
+- Same symptom as Issue #7 but different root cause
+- `loading` was in useEffect dependency array
+- When session changed (from saveSession), player loading re-ran
+- Player loading changed loading: false -> true -> false
+- loading change triggered CPU draft cleanup, cancelling timeout
+
+**Solution:**
+- Removed `loading` from useEffect dependency array
+- Effect checks loading value but doesn't re-run when it changes
+- Prevents cleanup from cancelling timeout
+- Updated ESLint comment to mention both cpuThinking and loading
+
+**Files Modified:**
+- src/components/draft/DraftBoard.tsx (removed loading from deps)
+
+**Commit:**
+- commit f260f99
+
 ## Testing Checklist
 - [x] TypeScript compilation succeeds
 - [x] Production build succeeds
