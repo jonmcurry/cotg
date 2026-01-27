@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-01-27 (Smooth Progress Indicator)
+
+**Issue:** Progress indicator jumped erratically during player loading (68k → 62k → back up)
+
+- Fixed progress calculation to use offset-based tracking instead of array length
+  - Progress now advances smoothly and monotonically from 0 to total
+  - Eliminates jumping caused by asynchronous parallel batch completion
+  - Provides accurate, user-friendly loading feedback
+
+**Before (Array Length-Based Progress - Jumpy):**
+```typescript
+// Progress jumps as async results arrive
+setLoadingProgress({
+  loaded: allPlayers.length,  // Updates unpredictably as batches complete
+  total: totalPlayers,
+  hasMore: allPlayers.length < totalPlayers
+})
+```
+
+**After (Offset-Based Progress - Smooth):**
+```typescript
+// Progress advances smoothly as batches are started
+setLoadingProgress({
+  loaded: Math.min(offset, totalPlayers),  // Monotonic progression
+  total: totalPlayers,
+  hasMore: offset < totalPlayers
+})
+```
+
+**Technical Details:**
+- Root cause: Parallel batch loading (3 batches at a time) advances `offset` immediately to reserve ranges, but `allPlayers.length` updates asynchronously as results arrive
+- Impact: User saw confusing progress like "68,000 players" → "62,000 players" → back up
+- Solution: Base progress on `offset` (which advances monotonically) instead of `allPlayers.length` (which updates asynchronously)
+
+**Files Modified:**
+- `src/components/draft/DraftBoard.tsx` - Changed progress tracking logic (lines 142-147)
+
 ### Added - 2026-01-27 (Two-Way Player Support)
 
 **Feature:** Full support for two-way players (Babe Ruth, Shohei Ohtani) who both pitch and hit

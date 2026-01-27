@@ -140,10 +140,11 @@ export default function DraftBoard({ onExit }: Props) {
           }
 
           // Update progress after parallel batches complete
+          // Use offset for smooth monotonic progress (not allPlayers.length which jumps as async results arrive)
           setLoadingProgress({
-            loaded: allPlayers.length,
+            loaded: Math.min(offset, totalPlayers),
             total: totalPlayers,
-            hasMore: allPlayers.length < totalPlayers
+            hasMore: offset < totalPlayers
           })
         }
 
