@@ -194,7 +194,7 @@ Draft system failing with 401 Unauthorized and 400 Bad Request errors when attem
 - src/components/draft/DraftBoard.tsx (added players.length to dependency array)
 
 **Commit:**
-- commit [pending]
+- commit 20f0fa2
 
 ## Testing Checklist
 - [x] TypeScript compilation succeeds

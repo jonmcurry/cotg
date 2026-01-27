@@ -568,7 +568,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Complete flow: Load players → Wait for loading → Trigger CPU draft → Make picks
 
 **Commit:**
-- commit [pending]
+- commit 20f0fa2
 
 ### Next Steps
 
