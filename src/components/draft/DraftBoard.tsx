@@ -43,6 +43,7 @@ export default function DraftBoard({ onExit }: Props) {
     async function loadPlayers() {
       if (!session) return
 
+      console.log('[Player Load] Starting player load for seasons:', session.selectedSeasons)
       setLoading(true)
       try {
         const { supabase } = await import('../../lib/supabaseClient')
@@ -77,7 +78,14 @@ export default function DraftBoard({ onExit }: Props) {
           .order('war', { ascending: false, nullsFirst: false })
 
         if (error) {
-          console.error('Error loading players:', error)
+          console.error('[Player Load] CRITICAL ERROR loading players:', error)
+          alert(`CRITICAL ERROR: Failed to load players from Supabase.\n\nError: ${error.message}\n\nCheck console for details.`)
+          return
+        }
+
+        if (!data || data.length === 0) {
+          console.error('[Player Load] CRITICAL ERROR - No players found for selected seasons:', session.selectedSeasons)
+          alert(`CRITICAL ERROR: No players found for selected seasons: ${session.selectedSeasons.join(', ')}\n\nPlease ensure player_seasons table has data for these years.`)
           return
         }
 
@@ -103,9 +111,11 @@ export default function DraftBoard({ onExit }: Props) {
           last_name: p.players.last_name,
         }))
 
+        console.log(`[Player Load] SUCCESS - Loaded ${transformedPlayers.length} players`)
         setPlayers(transformedPlayers)
       } catch (err) {
-        console.error('Failed to load players:', err)
+        console.error('[Player Load] CRITICAL ERROR - Exception:', err)
+        alert(`CRITICAL ERROR: Exception while loading players.\n\nError: ${err}\n\nCheck console for details.`)
       } finally {
         setLoading(false)
       }
@@ -116,15 +126,33 @@ export default function DraftBoard({ onExit }: Props) {
 
   // CPU auto-draft logic
   useEffect(() => {
+    console.log('[CPU Draft] useEffect triggered', {
+      hasSession: !!session,
+      hasCurrentTeam: !!currentTeam,
+      teamControl: currentTeam?.control,
+      cpuThinking,
+      sessionStatus: session?.status,
+      playersCount: players.length,
+    })
+
     if (!session || !currentTeam || currentTeam.control !== 'cpu' || cpuThinking) {
+      console.log('[CPU Draft] Early return - conditions not met')
       return
     }
 
     if (session.status !== 'in_progress') {
+      console.error('[CPU Draft] BLOCKED - Session status is not in_progress:', session.status)
+      return
+    }
+
+    if (players.length === 0) {
+      console.error('[CPU Draft] CRITICAL ERROR - No players loaded! Cannot draft.')
+      alert('CRITICAL ERROR: No players loaded for draft. Please check Supabase connection and player_seasons data.')
       return
     }
 
     // CPU makes pick after 1-2 second delay for realism
+    console.log(`[CPU Draft] ${currentTeam.name} is thinking...`)
     setCpuThinking(true)
     const delay = 1000 + Math.random() * 1000
 
@@ -135,13 +163,20 @@ export default function DraftBoard({ onExit }: Props) {
           .map(p => p.playerSeasonId!)
       )
 
+      console.log(`[CPU Draft] Selecting from ${players.length} players, ${draftedIds.size} already drafted`)
+
       const selection = selectBestPlayer(players, currentTeam, draftedIds)
 
       if (selection) {
-        console.log(`CPU (${currentTeam.name}) drafts:`, selection.player.display_name)
+        console.log(`[CPU Draft] ${currentTeam.name} drafts: ${selection.player.display_name} (${selection.position})`)
         makePick(selection.player.id, selection.position, selection.slotNumber)
       } else {
-        console.error('CPU could not find a player to draft')
+        console.error('[CPU Draft] CRITICAL ERROR - CPU could not find a player to draft!', {
+          playersAvailable: players.length,
+          alreadyDrafted: draftedIds.size,
+          teamRosterFilled: currentTeam.roster.filter(s => s.isFilled).length,
+        })
+        alert('CRITICAL ERROR: CPU could not find a player to draft. Check console for details.')
       }
 
       setCpuThinking(false)

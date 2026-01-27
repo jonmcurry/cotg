@@ -62,11 +62,30 @@ Draft system failing with 401 Unauthorized and 400 Bad Request errors when attem
 - Update local session state with the real UUID from database
 - Modified draftStore.ts createSession to insert first, then create session object
 
+## Additional Issues Found (Continued)
+
+### Issue 5: Silent CPU Draft Failure (2026-01-27)
+**Problem:** CPU draft stalls showing "Evaluating available players" with no console output
+- Violates Rule 3: NO silent fallbacks or silent failures
+- No error messages when player loading fails
+- No visibility into CPU draft decision process
+
+**Solution:**
+- Added comprehensive console logging to player load process
+- Added step-by-step logging to CPU draft useEffect
+- Added CRITICAL ERROR alerts for all failure scenarios
+- Log player count, session status, team info at each step
+- Make all errors "loud and proud" per Rule 3
+
+**Files Modified:**
+- src/components/draft/DraftBoard.tsx (error handling and logging)
+
 ## Testing Checklist
 - [x] TypeScript compilation succeeds
 - [x] Production build succeeds
 - [x] Draft session creation succeeds (no 401 error)
 - [x] Draft session creation succeeds (no 400 error)
+- [x] Error handling added (loud errors, no silent failures)
 - [ ] Draft board loads with player data
 - [ ] CPU auto-draft executes successfully
 - [ ] Human player can select and assign players
