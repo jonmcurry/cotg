@@ -3,7 +3,8 @@
  * Sortable columns for easy draft board scanning
  */
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
+import { FixedSizeList as List } from 'react-window'
 import type { PlayerSeason } from '../../utils/cpuDraftLogic'
 import { getPitcherGrade } from '../../utils/apbaRating'
 
@@ -201,6 +202,92 @@ export default function TabbedPlayerPool({
     }
   }
 
+  // Ref to measure list container height
+  const listContainerRef = useRef<HTMLDivElement>(null)
+  const [listHeight, setListHeight] = useState(600)
+
+  useEffect(() => {
+    const updateHeight = () => {
+      if (listContainerRef.current) {
+        const rect = listContainerRef.current.getBoundingClientRect()
+        setListHeight(rect.height)
+      }
+    }
+
+    updateHeight()
+    window.addEventListener('resize', updateHeight)
+    return () => window.removeEventListener('resize', updateHeight)
+  }, [])
+
+  // Row renderer for hitters
+  const HitterRow = ({ index, style }: { index: number; style: React.CSSProperties }) => {
+    const player = sortedPlayers[index]
+    const name = player.display_name || `${player.first_name} ${player.last_name}`
+    const ops = (player.on_base_pct || 0) + (player.slugging_pct || 0)
+
+    return (
+      <div
+        style={style}
+        onClick={() => handlePlayerClick(player)}
+        className={`
+          flex items-center border-b border-charcoal/10 font-serif text-sm
+          ${currentTeamControl === 'human' ? 'hover:bg-gold/10 cursor-pointer' : 'cursor-default'}
+        `}
+      >
+        <div className="py-2 px-2 font-medium text-charcoal flex-[3]">{name}</div>
+        <div className="py-2 px-2 text-burgundy text-xs font-display text-center flex-[1]">{player.primary_position}</div>
+        <div className="py-2 px-2 text-charcoal/60 text-xs text-center flex-[1.5]">{player.year} {player.team_id}</div>
+        <div className="py-2 px-2 text-charcoal text-right flex-[1]">
+          {player.batting_avg !== null ? `.${Math.floor(player.batting_avg * 1000)}` : '-'}
+        </div>
+        <div className="py-2 px-2 text-charcoal text-right flex-[1]">{player.hits || '-'}</div>
+        <div className="py-2 px-2 text-charcoal text-right flex-[1]">{player.home_runs || '-'}</div>
+        <div className="py-2 px-2 text-charcoal text-right flex-[1]">{player.rbi || '-'}</div>
+        <div className="py-2 px-2 text-charcoal text-right flex-[1]">{player.stolen_bases || '-'}</div>
+        <div className="py-2 px-2 text-charcoal text-right flex-[1]">{ops > 0 ? ops.toFixed(3) : '-'}</div>
+        <div className="py-2 px-2 text-burgundy font-medium text-right flex-[1]">
+          {player.apba_rating !== null ? player.apba_rating.toFixed(1) : 'NR'}
+        </div>
+      </div>
+    )
+  }
+
+  // Row renderer for pitchers
+  const PitcherRow = ({ index, style }: { index: number; style: React.CSSProperties }) => {
+    const player = sortedPlayers[index]
+    const name = player.display_name || `${player.first_name} ${player.last_name}`
+    const winLoss = player.wins !== null && player.losses !== null
+      ? `${player.wins}-${player.losses}`
+      : '-'
+
+    return (
+      <div
+        style={style}
+        onClick={() => handlePlayerClick(player)}
+        className={`
+          flex items-center border-b border-charcoal/10 font-serif text-sm
+          ${currentTeamControl === 'human' ? 'hover:bg-gold/10 cursor-pointer' : 'cursor-default'}
+        `}
+      >
+        <div className="py-2 px-2 font-medium text-charcoal flex-[3]">{name}</div>
+        <div className="py-2 px-2 text-burgundy text-xs font-display text-center flex-[1]">{player.primary_position}</div>
+        <div className="py-2 px-2 text-charcoal/60 text-xs text-center flex-[1.5]">{player.year} {player.team_id}</div>
+        <div className="py-2 px-2 text-charcoal text-right flex-[1]">{winLoss}</div>
+        <div className="py-2 px-2 text-charcoal text-right flex-[1]">
+          {player.era !== null ? player.era.toFixed(2) : '-'}
+        </div>
+        <div className="py-2 px-2 text-charcoal text-right flex-[1]">{player.strikeouts_pitched || '-'}</div>
+        <div className="py-2 px-2 text-charcoal text-right flex-[1]">{player.shutouts || '-'}</div>
+        <div className="py-2 px-2 text-charcoal text-right flex-[1]">
+          {player.whip !== null ? player.whip.toFixed(2) : '-'}
+        </div>
+        <div className="py-2 px-2 text-burgundy font-medium text-right flex-[1]">
+          {formatRating(player.apba_rating, player.primary_position)}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="card h-full flex flex-col">
       {/* Header */}
@@ -249,151 +336,112 @@ export default function TabbedPlayerPool({
       </div>
 
       {/* Table */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-hidden flex flex-col" ref={listContainerRef}>
         {activeTab === 'hitters' ? (
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-cream border-b-2 border-charcoal/20">
-              <tr className="text-left">
-                <th className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy" onClick={() => handleSort('name')}>
+          <>
+            {/* Table Header */}
+            <div className="w-full text-sm bg-cream border-b-2 border-charcoal/20">
+              <div className="flex items-center text-left">
+                <div className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy flex-[3]" onClick={() => handleSort('name')}>
                   Player <SortIcon field="name" />
-                </th>
-                <th className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-center" onClick={() => handleSort('position')}>
+                </div>
+                <div className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-center flex-[1]" onClick={() => handleSort('position')}>
                   Pos <SortIcon field="position" />
-                </th>
-                <th className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-center" onClick={() => handleSort('year')}>
+                </div>
+                <div className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-center flex-[1.5]" onClick={() => handleSort('year')}>
                   Year <SortIcon field="year" />
-                </th>
-                <th className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-right" onClick={() => handleSort('avg')}>
+                </div>
+                <div className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-right flex-[1]" onClick={() => handleSort('avg')}>
                   AVG <SortIcon field="avg" />
-                </th>
-                <th className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-right" onClick={() => handleSort('hits')}>
+                </div>
+                <div className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-right flex-[1]" onClick={() => handleSort('hits')}>
                   H <SortIcon field="hits" />
-                </th>
-                <th className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-right" onClick={() => handleSort('hr')}>
+                </div>
+                <div className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-right flex-[1]" onClick={() => handleSort('hr')}>
                   HR <SortIcon field="hr" />
-                </th>
-                <th className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-right" onClick={() => handleSort('rbi')}>
+                </div>
+                <div className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-right flex-[1]" onClick={() => handleSort('rbi')}>
                   RBI <SortIcon field="rbi" />
-                </th>
-                <th className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-right" onClick={() => handleSort('sb')}>
+                </div>
+                <div className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-right flex-[1]" onClick={() => handleSort('sb')}>
                   SB <SortIcon field="sb" />
-                </th>
-                <th className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-right" onClick={() => handleSort('ops')}>
+                </div>
+                <div className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-right flex-[1]" onClick={() => handleSort('ops')}>
                   OPS <SortIcon field="ops" />
-                </th>
-                <th className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-right" onClick={() => handleSort('grade')}>
+                </div>
+                <div className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-right flex-[1]" onClick={() => handleSort('grade')}>
                   Rating <SortIcon field="grade" />
-                </th>
-              </tr>
-            </thead>
-            <tbody className="font-serif">
-              {sortedPlayers.map((player) => {
-                const name = player.display_name || `${player.first_name} ${player.last_name}`
-                const ops = (player.on_base_pct || 0) + (player.slugging_pct || 0)
+                </div>
+              </div>
+            </div>
 
-                return (
-                  <tr
-                    key={player.id}
-                    onClick={() => handlePlayerClick(player)}
-                    className={`
-                      border-b border-charcoal/10
-                      ${currentTeamControl === 'human' ? 'hover:bg-gold/10 cursor-pointer' : 'cursor-default'}
-                    `}
-                  >
-                    <td className="py-2 px-2 font-medium text-charcoal">{name}</td>
-                    <td className="py-2 px-2 text-burgundy text-xs font-display text-center">{player.primary_position}</td>
-                    <td className="py-2 px-2 text-charcoal/60 text-xs text-center">{player.year} {player.team_id}</td>
-                    <td className="py-2 px-2 text-charcoal text-right">
-                      {player.batting_avg !== null ? `.${Math.floor(player.batting_avg * 1000)}` : '-'}
-                    </td>
-                    <td className="py-2 px-2 text-charcoal text-right">{player.hits || '-'}</td>
-                    <td className="py-2 px-2 text-charcoal text-right">{player.home_runs || '-'}</td>
-                    <td className="py-2 px-2 text-charcoal text-right">{player.rbi || '-'}</td>
-                    <td className="py-2 px-2 text-charcoal text-right">{player.stolen_bases || '-'}</td>
-                    <td className="py-2 px-2 text-charcoal text-right">{ops > 0 ? ops.toFixed(3) : '-'}</td>
-                    <td className="py-2 px-2 text-burgundy font-medium text-right">
-                      {player.apba_rating !== null ? player.apba_rating.toFixed(1) : 'NR'}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+            {/* Virtualized List */}
+            {sortedPlayers.length > 0 ? (
+              <List
+                height={listHeight - 50}
+                itemCount={sortedPlayers.length}
+                itemSize={40}
+                width="100%"
+              >
+                {HitterRow}
+              </List>
+            ) : (
+              <div className="text-center py-12 text-charcoal/40 font-serif">
+                No players found matching "{searchTerm}"
+              </div>
+            )}
+          </>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-cream border-b-2 border-charcoal/20">
-              <tr className="text-left">
-                <th className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy" onClick={() => handleSort('name')}>
+          <>
+            {/* Table Header */}
+            <div className="w-full text-sm bg-cream border-b-2 border-charcoal/20">
+              <div className="flex items-center text-left">
+                <div className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy flex-[3]" onClick={() => handleSort('name')}>
                   Player <SortIcon field="name" />
-                </th>
-                <th className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-center" onClick={() => handleSort('position')}>
+                </div>
+                <div className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-center flex-[1]" onClick={() => handleSort('position')}>
                   Pos <SortIcon field="position" />
-                </th>
-                <th className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-center" onClick={() => handleSort('year')}>
+                </div>
+                <div className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-center flex-[1.5]" onClick={() => handleSort('year')}>
                   Year <SortIcon field="year" />
-                </th>
-                <th className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-right" onClick={() => handleSort('wins')}>
+                </div>
+                <div className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-right flex-[1]" onClick={() => handleSort('wins')}>
                   W-L <SortIcon field="wins" />
-                </th>
-                <th className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-right" onClick={() => handleSort('era')}>
+                </div>
+                <div className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-right flex-[1]" onClick={() => handleSort('era')}>
                   ERA <SortIcon field="era" />
-                </th>
-                <th className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-right" onClick={() => handleSort('strikeouts')}>
+                </div>
+                <div className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-right flex-[1]" onClick={() => handleSort('strikeouts')}>
                   K <SortIcon field="strikeouts" />
-                </th>
-                <th className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-right" onClick={() => handleSort('shutouts')}>
+                </div>
+                <div className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-right flex-[1]" onClick={() => handleSort('shutouts')}>
                   SHO <SortIcon field="shutouts" />
-                </th>
-                <th className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-right" onClick={() => handleSort('whip')}>
+                </div>
+                <div className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-right flex-[1]" onClick={() => handleSort('whip')}>
                   WHIP <SortIcon field="whip" />
-                </th>
-                <th className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-right" onClick={() => handleSort('grade')}>
+                </div>
+                <div className="py-2 px-2 font-display text-charcoal/80 cursor-pointer hover:text-burgundy text-right flex-[1]" onClick={() => handleSort('grade')}>
                   Grade <SortIcon field="grade" />
-                </th>
-              </tr>
-            </thead>
-            <tbody className="font-serif">
-              {sortedPlayers.map((player) => {
-                const name = player.display_name || `${player.first_name} ${player.last_name}`
-                const winLoss = player.wins !== null && player.losses !== null
-                  ? `${player.wins}-${player.losses}`
-                  : '-'
+                </div>
+              </div>
+            </div>
 
-                return (
-                  <tr
-                    key={player.id}
-                    onClick={() => handlePlayerClick(player)}
-                    className={`
-                      border-b border-charcoal/10
-                      ${currentTeamControl === 'human' ? 'hover:bg-gold/10 cursor-pointer' : 'cursor-default'}
-                    `}
-                  >
-                    <td className="py-2 px-2 font-medium text-charcoal">{name}</td>
-                    <td className="py-2 px-2 text-burgundy text-xs font-display text-center">{player.primary_position}</td>
-                    <td className="py-2 px-2 text-charcoal/60 text-xs text-center">{player.year} {player.team_id}</td>
-                    <td className="py-2 px-2 text-charcoal text-right">{winLoss}</td>
-                    <td className="py-2 px-2 text-charcoal text-right">
-                      {player.era !== null ? player.era.toFixed(2) : '-'}
-                    </td>
-                    <td className="py-2 px-2 text-charcoal text-right">{player.strikeouts_pitched || '-'}</td>
-                    <td className="py-2 px-2 text-charcoal text-right">{player.shutouts || '-'}</td>
-                    <td className="py-2 px-2 text-charcoal text-right">
-                      {player.whip !== null ? player.whip.toFixed(2) : '-'}
-                    </td>
-                    <td className="py-2 px-2 text-burgundy font-medium text-right">
-                      {formatRating(player.apba_rating, player.primary_position)}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        )}
-
-        {sortedPlayers.length === 0 && (
-          <div className="text-center py-12 text-charcoal/40 font-serif">
-            No players found matching "{searchTerm}"
-          </div>
+            {/* Virtualized List */}
+            {sortedPlayers.length > 0 ? (
+              <List
+                height={listHeight - 50}
+                itemCount={sortedPlayers.length}
+                itemSize={40}
+                width="100%"
+              >
+                {PitcherRow}
+              </List>
+            ) : (
+              <div className="text-center py-12 text-charcoal/40 font-serif">
+                No players found matching "{searchTerm}"
+              </div>
+            )}
+          </>
         )}
       </div>
 
