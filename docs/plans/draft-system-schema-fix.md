@@ -155,6 +155,27 @@ Draft system failing with 401 Unauthorized and 400 Bad Request errors when attem
 **Commit:**
 - commit f260f99
 
+### Issue 10: CPU Draft Dependency Array Over-Triggering (2026-01-27)
+**Problem:** Timeout still being cancelled - effect re-running too frequently
+- `session` and `players` in dependency array caused constant re-runs
+- saveSession() updated session.updatedAt → new session reference → effect re-ran
+- Player loading called setPlayers(new array) → new players reference → effect re-ran
+- Each re-run cancelled pending timeout via cleanup
+
+**Solution:**
+- Use granular primitive dependencies instead of full object references
+- Changed from: `[session, currentTeam, players, makePick]`
+- Changed to: `[session?.currentPick, session?.status, currentTeam?.id, makePick]`
+- Effect now only re-runs when pick/status/team ID actually changes
+- Does NOT re-run when unrelated fields update or arrays get new references
+- This is the correct React pattern for effects with async operations
+
+**Files Modified:**
+- src/components/draft/DraftBoard.tsx (granular dependencies)
+
+**Commit:**
+- commit 7277858
+
 ## Testing Checklist
 - [x] TypeScript compilation succeeds
 - [x] Production build succeeds
