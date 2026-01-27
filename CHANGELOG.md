@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed - 2026-01-27 (APBA Rating Script RLS Policy)
 
+**Commit:** `13b2c6d`
+
 **Fixed Row Level Security Policy Violation in Rating Script**
 
 - Fixed RLS policy violation error: "new row violates row-level security policy for table 'player_seasons'"
