@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed - 2026-01-27 (Virtual Scrolling for Player Pool)
 
-**Commit:** TBD
+**Commit:** `0667482`
 
 **Implemented Virtual Scrolling to Fix Performance with 47k+ Players**
 
