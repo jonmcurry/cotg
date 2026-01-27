@@ -55,7 +55,10 @@ export default function PositionAssignmentModal({
     }
   }
 
-  const isPitcher = ['P', 'SP', 'RP'].includes(player.primary_position)
+  // Detect two-way players (Babe Ruth, Shohei Ohtani) who both pitch and hit
+  const isPitcher = (player.innings_pitched_outs || 0) >= 30
+  const isPositionPlayer = (player.at_bats || 0) >= 50
+  const isTwoWayPlayer = isPitcher && isPositionPlayer
 
   return (
     <div className="fixed inset-0 bg-charcoal/50 flex items-center justify-center z-50 p-4">
@@ -92,30 +95,11 @@ export default function PositionAssignmentModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4 mt-4 text-sm">
-            {isPitcher ? (
-              <>
-                <div>
-                  <div className="text-xs text-charcoal/60">W-L</div>
-                  <div className="font-semibold text-charcoal">
-                    {player.wins || 0}-{player.losses || 0}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-xs text-charcoal/60">ERA</div>
-                  <div className="font-semibold text-charcoal">
-                    {player.era?.toFixed(2) || 'N/A'}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-xs text-charcoal/60">K</div>
-                  <div className="font-semibold text-charcoal">
-                    {player.strikeouts_pitched || 0}
-                  </div>
-                </div>
-              </>
-            ) : (
-              <>
+          {/* Show both hitting and pitching stats for two-way players */}
+          {isTwoWayPlayer ? (
+            <>
+              <div className="text-xs text-charcoal/60 mt-4 mb-2 font-semibold">Hitting</div>
+              <div className="grid grid-cols-3 gap-4 text-sm">
                 <div>
                   <div className="text-xs text-charcoal/60">AVG</div>
                   <div className="font-semibold text-charcoal">
@@ -134,9 +118,76 @@ export default function PositionAssignmentModal({
                     {player.rbi || 0}
                   </div>
                 </div>
-              </>
-            )}
-          </div>
+              </div>
+              <div className="text-xs text-charcoal/60 mt-4 mb-2 font-semibold">Pitching</div>
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <div>
+                  <div className="text-xs text-charcoal/60">W-L</div>
+                  <div className="font-semibold text-charcoal">
+                    {player.wins || 0}-{player.losses || 0}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-charcoal/60">ERA</div>
+                  <div className="font-semibold text-charcoal">
+                    {player.era?.toFixed(2) || 'N/A'}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-charcoal/60">K</div>
+                  <div className="font-semibold text-charcoal">
+                    {player.strikeouts_pitched || 0}
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="grid grid-cols-3 gap-4 mt-4 text-sm">
+              {isPitcher ? (
+                <>
+                  <div>
+                    <div className="text-xs text-charcoal/60">W-L</div>
+                    <div className="font-semibold text-charcoal">
+                      {player.wins || 0}-{player.losses || 0}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-charcoal/60">ERA</div>
+                    <div className="font-semibold text-charcoal">
+                      {player.era?.toFixed(2) || 'N/A'}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-charcoal/60">K</div>
+                    <div className="font-semibold text-charcoal">
+                      {player.strikeouts_pitched || 0}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <div className="text-xs text-charcoal/60">AVG</div>
+                    <div className="font-semibold text-charcoal">
+                      {player.batting_avg?.toFixed(3) || 'N/A'}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-charcoal/60">HR</div>
+                    <div className="font-semibold text-charcoal">
+                      {player.home_runs || 0}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-charcoal/60">RBI</div>
+                    <div className="font-semibold text-charcoal">
+                      {player.rbi || 0}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Position Selection */}

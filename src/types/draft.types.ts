@@ -90,6 +90,8 @@ export const POSITION_NAMES: Record<PositionCode, string> = {
 }
 
 // Position eligibility mapping (which positions qualify for each roster slot)
+// DH can be filled by ANY player who can hit (position players OR pitchers)
+// This allows two-way players (Babe Ruth, Shohei Ohtani) to DH on days they don't pitch
 export const POSITION_ELIGIBILITY: Record<PositionCode, string[]> = {
   'C': ['C'],
   '1B': ['1B'],
@@ -100,6 +102,6 @@ export const POSITION_ELIGIBILITY: Record<PositionCode, string[]> = {
   'SP': ['P', 'SP'],
   'RP': ['P', 'RP'],
   'CL': ['P', 'RP', 'CL'],
-  'DH': ['C', '1B', '2B', 'SS', '3B', 'OF', 'LF', 'CF', 'RF', 'DH'],
+  'DH': ['C', '1B', '2B', 'SS', '3B', 'OF', 'LF', 'CF', 'RF', 'P', 'SP', 'RP', 'CL', 'DH'],
   'BN': ['C', '1B', '2B', 'SS', '3B', 'OF', 'LF', 'CF', 'RF', 'P', 'SP', 'RP', 'DH'],
 }

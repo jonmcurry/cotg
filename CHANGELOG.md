@@ -7,6 +7,85 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - 2026-01-27 (Two-Way Player Support)
+
+**Feature:** Full support for two-way players (Babe Ruth, Shohei Ohtani) who both pitch and hit
+
+- Implemented dual-tab visibility for two-way players
+  - Players meeting BOTH pitching (innings >= 30) AND batting (at_bats >= 50) thresholds appear in BOTH tabs
+  - Teams can draft them from either Position Players or Pitchers tab
+  - Once drafted from either tab, player disappears from both (handled by existing draftedPlayerIds logic)
+  - Examples: Babe Ruth 1919 (29 HR, 113 RBI, 9-5, 2.97 ERA), Shohei Ohtani 2021 (46 HR, 130.1 IP)
+- Added DH position eligibility for pitchers
+  - Updated POSITION_ELIGIBILITY to allow pitchers to fill DH slot
+  - Enables strategic roster construction: draft elite two-way player, use as DH when not pitching
+  - Reflects real baseball strategy (e.g., Ohtani DHing on non-pitching days)
+- Enhanced Position Assignment Modal UX for two-way players
+  - Automatically detects two-way players using same thresholds as player pool
+  - Shows BOTH hitting and pitching stats for two-way players
+  - Single-discipline players continue showing only relevant stats
+  - Clear visual separation with labeled sections ("Hitting" / "Pitching")
+
+**Before (Position-Based, Exclusive Filtering):**
+```typescript
+// Pitchers excluded from position players
+const isPitcher = (position: string) => position === 'P' || position === 'SP'
+const positionPlayers = players.filter(p => !isPitcher(p.primary_position))
+const pitchers = players.filter(p => isPitcher(p.primary_position))
+
+// DH could NOT accept pitchers
+'DH': ['C', '1B', '2B', 'SS', '3B', 'OF']  // No 'P', 'SP', 'RP', 'CL'
+
+// Modal showed only one stat type
+{isPitcher ? <PitchingStats /> : <HittingStats />}
+```
+
+**After (Stats-Based, Inclusive Filtering):**
+```typescript
+// Two-way players appear in BOTH tabs
+const isPitcher = (player: PlayerSeason) => (player.innings_pitched_outs || 0) >= 30
+const isPositionPlayer = (player: PlayerSeason) => (player.at_bats || 0) >= 50
+const positionPlayers = players.filter(p => isPositionPlayer(p))  // Includes two-way
+const pitchers = players.filter(p => isPitcher(p))  // Includes two-way
+
+// DH now accepts ANY player who can hit (including pitchers)
+'DH': ['C', '1B', '2B', 'SS', '3B', 'OF', 'P', 'SP', 'RP', 'CL', 'DH']
+
+// Modal shows both stat types for two-way players
+{isTwoWayPlayer ? (
+  <>
+    <div>Hitting</div>
+    <HittingStats />
+    <div>Pitching</div>
+    <PitchingStats />
+  </>
+) : (isPitcher ? <PitchingStats /> : <HittingStats />)}
+```
+
+**User Impact:**
+- Draft flexibility: Can draft Babe Ruth 1919 as either SP or OF based on team needs
+- Strategic depth: Use elite two-way player at DH when not pitching (like modern Ohtani)
+- Better UX: See both stat sets when evaluating two-way players in assignment modal
+- Accurate representation: System properly handles rare but impactful two-way players
+
+**Technical Details:**
+- Filtering based on actual statistical activity, not database position label
+- Thresholds match DraftBoard.tsx player loading criteria (at_bats >= 50, innings_pitched_outs >= 30)
+- No double-counting: drafted player removed from both tabs via draftedPlayerIds set
+- Performance maintained: useMemo hooks prevent unnecessary recalculation
+- Modal detection: `isTwoWayPlayer = isPitcher && isPositionPlayer`
+
+**Files Modified:**
+- [src/components/draft/TabbedPlayerPool.tsx](src/components/draft/TabbedPlayerPool.tsx) - Dual filtering logic for two-way players
+- [src/types/draft.types.ts](src/types/draft.types.ts) - Added pitchers to DH eligibility
+- [src/components/draft/PositionAssignmentModal.tsx](src/components/draft/PositionAssignmentModal.tsx) - Dual stat display for two-way players
+
+**Examples of Two-Way Players:**
+- Babe Ruth 1918 BOS: 11 HR, 66 RBI, .300 AVG + 13-7, 2.22 ERA, 40 G
+- Babe Ruth 1919 BOS: 29 HR, 113 RBI, .322 AVG + 9-5, 2.97 ERA, 17 G
+- Shohei Ohtani 2021 LAA: 46 HR, 100 RBI, .257 AVG + 9-2, 3.18 ERA, 130.1 IP
+- Shohei Ohtani 2022 LAA: 34 HR, 95 RBI, .273 AVG + 15-9, 2.33 ERA, 166.0 IP
+
 ### Fixed - 2026-01-27 (Pitcher Filtering and Rating Display)
 
 **Issue:** Pitchers appearing in position player pool; pitcher ratings showing as alpha grades instead of numeric

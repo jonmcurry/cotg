@@ -18,11 +18,21 @@ type Tab = 'hitters' | 'pitchers'
 type SortField = 'name' | 'position' | 'year' | 'avg' | 'hits' | 'hr' | 'rbi' | 'sb' | 'ops' | 'wins' | 'era' | 'strikeouts' | 'shutouts' | 'whip' | 'grade'
 type SortDirection = 'asc' | 'desc'
 
-// Determine if a player is a pitcher based on their actual pitching activity
+// Determine if a player qualifies as a pitcher based on their actual pitching activity
 // Uses innings_pitched_outs >= 30 threshold (same as DraftBoard.tsx player filter)
 const isPitcher = (player: PlayerSeason): boolean => {
   return (player.innings_pitched_outs || 0) >= 30
 }
+
+// Determine if a player qualifies as a position player based on batting activity
+// Uses at_bats >= 50 threshold (same as DraftBoard.tsx player filter)
+const isPositionPlayer = (player: PlayerSeason): boolean => {
+  return (player.at_bats || 0) >= 50
+}
+
+// Two-way players (like Babe Ruth 1919 or Shohei Ohtani 2021) appear in BOTH tabs
+// Teams can choose whether to draft them as pitcher or position player
+// Once drafted in either tab, they disappear from both (handled by draftedPlayerIds filter)
 
 export default function TabbedPlayerPool({
   players,
@@ -49,9 +59,10 @@ export default function TabbedPlayerPool({
     return filtered
   }, [players, draftedPlayerIds])
 
-  // Split into position players and pitchers based on actual pitching activity
+  // Split into position players and pitchers based on actual activity
+  // Two-way players (Babe Ruth, Shohei Ohtani) appear in BOTH tabs
   const positionPlayers = useMemo(() => {
-    return availablePlayers.filter(p => !isPitcher(p))
+    return availablePlayers.filter(p => isPositionPlayer(p))
   }, [availablePlayers])
 
   const pitchers = useMemo(() => {
