@@ -55,6 +55,9 @@ export default function DraftBoard({ onExit }: Props) {
 
       loadingInProgress.current = true
       console.log('[Player Load] EFFECT TRIGGERED - Starting player load for seasons:', session.selectedSeasons)
+      console.log('[Player Load] Seasons array length:', session.selectedSeasons?.length)
+      console.log('[Player Load] Seasons array type:', typeof session.selectedSeasons)
+      console.log('[Player Load] Seasons array is array?:', Array.isArray(session.selectedSeasons))
       console.log('[Player Load] Current player count:', players.length)
       setLoading(true)
       setLoadingProgress({ loaded: 0, total: 0, hasMore: true })
@@ -62,19 +65,34 @@ export default function DraftBoard({ onExit }: Props) {
         const { supabase } = await import('../../lib/supabaseClient')
 
         // First, get total count for progress indication
-        console.log('[Player Load] Getting total player count...')
+        console.log('[Player Load] Building count query...')
+        console.log('[Player Load] Query params: years =', session.selectedSeasons)
         const { count, error: countError } = await supabase
           .from('player_seasons')
           .select('id', { count: 'exact', head: true })
           .in('year', session.selectedSeasons)
           .or('at_bats.gte.200,innings_pitched_outs.gte.30')
 
+        console.log('[Player Load] Count query result: count =', count, ', error =', countError)
+
         if (countError) {
           console.error('[Player Load] Error getting count:', countError)
+          console.error('[Player Load] Error code:', countError.code)
+          console.error('[Player Load] Error message:', countError.message)
+          console.error('[Player Load] Error details:', countError.details)
         }
 
         const totalPlayers = count || 0
         console.log(`[Player Load] Total players to fetch: ${totalPlayers}`)
+
+        if (totalPlayers === 0) {
+          console.error('[Player Load] WARNING: totalPlayers is 0!')
+          console.error('[Player Load] This will skip the loading loop and show "No players found" error')
+          console.error('[Player Load] Debugging info:')
+          console.error('  - session:', session)
+          console.error('  - session.selectedSeasons:', session.selectedSeasons)
+          console.error('  - countError:', countError)
+        }
         setLoadingProgress({ loaded: 0, total: totalPlayers, hasMore: true })
 
         // Fetch all players using parallel batch loading (3 batches at a time)
@@ -161,7 +179,15 @@ export default function DraftBoard({ onExit }: Props) {
 
         if (allPlayers.length === 0) {
           console.error('[Player Load] CRITICAL ERROR - No players found for selected seasons:', session.selectedSeasons)
-          alert(`CRITICAL ERROR: No players found for selected seasons: ${session.selectedSeasons.join(', ')}\n\nPlease ensure player_seasons table has data for these years.`)
+          alert(`CRITICAL ERROR: No players found for selected seasons: ${session.selectedSeasons.join(', ')}
+
+TROUBLESHOOTING STEPS:
+1. Try a hard refresh: Ctrl+Shift+R (Windows) or Cmd+Shift+R (Mac)
+2. Clear browser cache and reload the page
+3. Clear localStorage: Open browser console and run: localStorage.clear()
+4. Check browser console for detailed error messages
+
+If this persists, the database may be updating. Wait a few minutes and try again.`)
           return
         }
 
