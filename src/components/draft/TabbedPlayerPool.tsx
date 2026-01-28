@@ -29,21 +29,7 @@ const isPitcher = (player: PlayerSeason): boolean => {
 // This ensures only genuine two-way players (Babe Ruth, Shohei Ohtani) appear in both tabs
 const isPositionPlayer = (player: PlayerSeason): boolean => {
   const atBats = Number(player.at_bats || 0)
-  const qualifies = atBats >= 200
-
-  // Debug logging for pitchers who might incorrectly appear as position players
-  if (!qualifies && (player.innings_pitched_outs || 0) >= 30 && atBats > 0) {
-    console.log('[TabbedPlayerPool] Pitcher filtered from position players:', {
-      name: player.display_name || `${player.first_name} ${player.last_name}`,
-      at_bats: player.at_bats,
-      at_bats_type: typeof player.at_bats,
-      at_bats_parsed: atBats,
-      innings_pitched_outs: player.innings_pitched_outs,
-      primary_position: player.primary_position
-    })
-  }
-
-  return qualifies
+  return atBats >= 200
 }
 
 // Two-way players (like Babe Ruth 1919 or Shohei Ohtani 2021) appear in BOTH tabs

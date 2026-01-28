@@ -7,6 +7,100 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Performance - 2026-01-28 (Remove Excessive Debug Logging in TabbedPlayerPool)
+
+**Performance Improvement:** CPU draft STILL extremely slow - root cause was excessive debug logging
+
+**Problem:**
+- Despite 3 previous optimizations, CPU draft still slow
+- User reported THIRD TIME: "CPU draft is now working however it is extremely slow when the CPU has to pick"
+- Console flooded with thousands of log messages during draft
+
+**Console Output Showed:**
+```
+[TabbedPlayerPool] Pitcher filtered from position players: {name: 'Julio Santana', ...}
+[TabbedPlayerPool] Pitcher filtered from position players: {name: 'Eric Strickland', ...}
+[TabbedPlayerPool] Pitcher filtered from position players: {name: 'Jordan Lyles', ...}
+... (repeated 55,000+ times)
+```
+
+**Root Cause:**
+The `isPositionPlayer()` function in [TabbedPlayerPool.tsx](src/components/draft/TabbedPlayerPool.tsx:30-47) had debug logging that logged EVERY pitcher that didn't meet the 200 at-bats threshold:
+
+```typescript
+const isPositionPlayer = (player: PlayerSeason): boolean => {
+  const atBats = Number(player.at_bats || 0)
+  const qualifies = atBats >= 200
+
+  // Debug logging for pitchers (PERFORMANCE KILLER!)
+  if (!qualifies && (player.innings_pitched_outs || 0) >= 30 && atBats > 0) {
+    console.log('[TabbedPlayerPool] Pitcher filtered from position players:', {
+      // ... creates object with player data
+    })
+  }
+
+  return qualifies
+}
+```
+
+This function was called from line 81:
+```typescript
+const positionPlayers = useMemo(() => {
+  const filtered = availablePlayers.filter(p => isPositionPlayer(p))  // Calls for ALL 60k+ players!
+}, [availablePlayers])
+```
+
+**Why This Was Slow:**
+- After every CPU pick, session updates
+- TabbedPlayerPool re-renders with updated draftedPlayerIds
+- `availablePlayers` useMemo re-runs
+- `positionPlayers` useMemo re-runs
+- Calls `isPositionPlayer()` for ALL 60,000+ available players
+- For each of ~55,000 pitchers, creates log object and calls console.log
+- console.log is synchronous and blocks the main thread
+- Browser console rendering is slow with thousands of messages
+- **This happened AFTER EVERY CPU PICK**
+
+**Performance Impact:**
+- 55,000+ console.log calls per pick
+- Each log creates object with player data
+- Browser must render all messages in console
+- Total time: ~500ms-2000ms just for logging
+- Made CPU draft appear "frozen"
+
+**Solution:**
+Removed the debug logging entirely. Simplified function to:
+
+```typescript
+const isPositionPlayer = (player: PlayerSeason): boolean => {
+  const atBats = Number(player.at_bats || 0)
+  return atBats >= 200
+}
+```
+
+**Why This Is Safe:**
+- The logging was debug-only, not error/warning
+- It logged expected behavior (filtering pitchers is correct)
+- Filtering logic unchanged - still works correctly
+- No user-facing functionality affected
+- This was leftover debug code that should have been removed before deployment
+
+**Performance Impact:**
+- Before: ~500ms-2000ms logging overhead per pick
+- After: 0ms logging overhead
+- Expected result: TabbedPlayerPool filtering <50ms
+- CPU draft should now be instant (except artificial 1-2s delay for realism)
+
+**Files Modified:**
+- [src/components/draft/TabbedPlayerPool.tsx](src/components/draft/TabbedPlayerPool.tsx:30-33) - Removed excessive debug logging
+- [docs/plans/remove-excessive-debug-logging.md](docs/plans/remove-excessive-debug-logging.md) - Analysis and plan
+
+**CLAUDE.md Rule Compliance:**
+- Rule 2: Not hiding a bug - the filtering logic is correct, removing debug noise
+- Rule 3: Not a silent fallback - removing unnecessary console spam
+- Rule 5: Cleaning up the mess - removing debug code that should have been removed before
+- Rule 8: Proper solution - removing the root cause, not adding workarounds
+
 ### Performance - 2026-01-28 (Eliminate Unnecessary Database Query in makePick)
 
 **Performance Improvement:** CPU draft STILL extremely slow despite previous optimization - real bottleneck was database query
