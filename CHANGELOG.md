@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-01-28 (Player Loading Query Type Casting)
+
+**Bug Fix:** Player loading returned 0 results due to string comparison in database query
+
+**Problem:**
+- After implementing 200 at_bats threshold, query returned 0 players for all 125 seasons
+- Application showed "CRITICAL ERROR: No players found for selected seasons"
+- Database columns `at_bats` and `innings_pitched_outs` stored as TEXT type
+- Supabase performed string comparison instead of numeric comparison
+- String comparison failures: "30" < "5" (alphabetically "3" < "5"), "200" < "50"
+- Filter `.or('at_bats.gte.200,innings_pitched_outs.gte.30')` rejected all players
+
+**Root Cause:**
+```typescript
+// DraftBoard.tsx lines 70, 127 - NO TYPE CASTING
+.or('at_bats.gte.200,innings_pitched_outs.gte.30')
+// Database columns are TEXT, causing alphabetic comparison
+// "30" fails .gte.30 check when compared as strings
+```
+
+**Evidence:**
+- Lines 178, 186 explicitly convert to Number after fetching (suggests non-numeric storage)
+- Query returned count = 0 despite 125 seasons of valid data
+- PostgreSQL TEXT columns require casting for numeric operations
+
+**Solution:**
+Added PostgreSQL type casting to force numeric comparison:
+```typescript
+// Cast TEXT columns to integers before comparison
+.or('at_bats::int.gte.200,innings_pitched_outs::int.gte.30')
+```
+
+**Technical Details:**
+- PostgreSQL casting syntax: `column::type` converts value before comparison
+- `at_bats::int` casts TEXT to INTEGER for numeric comparison
+- Query now correctly identifies players with 200+ at_bats OR 30+ innings
+- Applied to both count query (line 70) and data query (line 127)
+
+**User Impact:**
+- Players now load successfully for all selected seasons
+- Draft board displays full player pool
+- 200 at_bats threshold preserved (no reduction needed)
+- Both pitchers and position players appear correctly
+
+**Files Modified:**
+- [src/components/draft/DraftBoard.tsx](src/components/draft/DraftBoard.tsx:70) - Cast at_bats and innings_pitched_outs to int in count query
+- [src/components/draft/DraftBoard.tsx](src/components/draft/DraftBoard.tsx:127) - Cast at_bats and innings_pitched_outs to int in data query
+
+**Related Documentation:**
+- [docs/CRITICAL_FIX_PLAYER_LOADING.md](docs/CRITICAL_FIX_PLAYER_LOADING.md) - Investigation and resolution plan
+
 ### Fixed - 2026-01-27 (Relief Pitchers as Starting Pitchers)
 
 **Bug Fix:** Relief pitchers were being drafted into Starting Pitcher roster slots
