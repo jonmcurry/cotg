@@ -7,6 +7,94 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Enhancement - 2026-01-28 (Platoon Awareness & Draft Round Awareness)
+
+**Feature Enhancement:** Added Platoon Awareness and Draft Round Awareness to CPU draft logic
+
+**Based on Reverse Engineering Analysis:**
+- Analyzed APBA Baseball for Windows (C:\dosgames\shared\BBW)
+- Analyzed Bill James Encyclopedia (C:\dosgames\shared\BJEBEW)
+- Created comprehensive analysis document: [docs/analysis/cpu-draft-logic-analysis.md](docs/analysis/cpu-draft-logic-analysis.md)
+- Current CPU draft logic was well-designed
+- Identified two high-value enhancements to implement
+
+**Enhancement 1: Platoon Awareness**
+CPU now considers batter handedness (L/R/B) to create balanced lineups:
+- Tracks existing lefty/righty/switch hitter counts in lineup
+- Awards 5% scoring bonus for minority handedness (balances lineup)
+- Awards 10% scoring bonus for switch hitters (always valuable)
+- Only applies to position players (not pitchers)
+
+Example:
+- Team has 5 righties, 1 lefty
+- CPU considers right-handed hitter: No bonus (already majority)
+- CPU considers left-handed hitter: +5% bonus (minority handedness)
+- CPU considers switch hitter: +10% bonus (always valuable)
+
+**Enhancement 2: Draft Round Awareness**
+CPU adjusts position scarcity weights based on draft phase:
+- **Early rounds (1-5):** Increase scarcity weight by +20% (aggressively target C, SS, CL)
+- **Mid rounds (6-15):** Use base scarcity weights (normal behavior)
+- **Late rounds (16+):** Decrease scarcity weight by -20% (focus more on BPA)
+
+Example:
+- Round 1: Catcher scarcity 1.5 → 1.8 (+20%) - CPU prioritizes scarce positions
+- Round 10: Catcher scarcity 1.5 → 1.5 (base) - Normal behavior
+- Round 18: Catcher scarcity 1.5 → 1.2 (-20%) - CPU focuses on best available
+
+**Implementation Details:**
+
+1. **Database Schema:**
+   - `bats` field already exists in `players` table (values: 'L', 'R', 'B')
+   - Note: Database uses 'B' for "Both" (switch hitter), not 'S'
+
+2. **Type Updates:**
+   - Added `bats?: 'L' | 'R' | 'B' | null` to PlayerSeason interface
+   - Added `playerBats?: 'L' | 'R' | 'B' | null` to RosterSlot interface
+   - Updated makePick signature to accept optional bats parameter
+
+3. **CPU Draft Logic Changes:**
+   - Modified `calculateWeightedScore()` to accept `team` parameter
+   - Added platoon bonus calculation (5% for minority, 10% for switch hitters)
+   - Created `adjustScarcityByRound()` function with early/mid/late round logic
+   - Updated `selectBestPlayer()` to accept `currentRound` parameter
+   - Position weights now adjusted by round before selection
+
+4. **Data Flow:**
+   - DraftBoard query now selects `bats` from players table join
+   - Passed to selectBestPlayer → calculateWeightedScore for platoon bonus
+   - Passed to makePick to store in roster slot for future platoon calculations
+   - Session.currentRound passed to selectBestPlayer for round-based scarcity adjustment
+
+**Console Logging:**
+Added detailed logging to track CPU draft decisions:
+- `[CPU Draft] Platoon check - Team has L:X R:Y B:Z`
+- `[CPU Draft] Platoon bonus: +5% for lefty (minority)`
+- `[CPU Draft] Round X (early/mid/late): Scarcity A → B (+/-20%)`
+- `[CPU Draft] Score calculation: rating=X × scarcity=Y × platoon=Z × random=W = FINAL`
+
+**Expected Behavior:**
+- CPU teams will build more balanced lineups (mix of L/R/B hitters)
+- Early rounds will prioritize scarce positions (C, SS, CL)
+- Late rounds will focus more on best available player
+- Draft quality should improve while maintaining unpredictability
+
+**Files Modified:**
+- [src/utils/cpuDraftLogic.ts](src/utils/cpuDraftLogic.ts) - Core platoon and round awareness logic
+- [src/types/draft.types.ts](src/types/draft.types.ts) - Added playerBats to RosterSlot
+- [src/stores/draftStore.ts](src/stores/draftStore.ts) - Updated makePick to accept and store bats
+- [src/components/draft/DraftBoard.tsx](src/components/draft/DraftBoard.tsx) - Query bats field, pass to CPU logic
+- [docs/plans/implement-platoon-and-round-awareness.md](docs/plans/implement-platoon-and-round-awareness.md) - Implementation plan
+- [docs/analysis/cpu-draft-logic-analysis.md](docs/analysis/cpu-draft-logic-analysis.md) - Reverse engineering analysis
+
+**Testing:**
+- Verified `bats` field exists in database players table
+- Console logs show platoon bonus calculations
+- Console logs show round-based scarcity adjustments
+- CPU draft should produce balanced lineups with appropriate round strategy
+
+---
+
 ### Performance - 2026-01-28 (Remove Excessive Debug Logging in TabbedPlayerPool)
 
 **Performance Improvement:** CPU draft STILL extremely slow - root cause was excessive debug logging

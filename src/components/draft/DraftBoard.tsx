@@ -145,7 +145,8 @@ export default function DraftBoard({ onExit }: Props) {
                   players!inner (
                     display_name,
                     first_name,
-                    last_name
+                    last_name,
+                    bats
                   )
                 `)
                 .in('year', session.selectedSeasons)
@@ -326,13 +327,13 @@ If this persists, the database may be updating. Wait a few minutes and try again
       console.log(`[CPU Draft] Selecting from ${topUndrafted.length} top-rated undrafted players (${draftedIds.size} already drafted, ${undraftedPlayers.length} remaining)`)
 
       console.time('[CPU Draft] 3. selectBestPlayer()')
-      const selection = selectBestPlayer(topUndrafted, currentTeam, draftedIds)
+      const selection = selectBestPlayer(topUndrafted, currentTeam, draftedIds, session.currentRound)
       console.timeEnd('[CPU Draft] 3. selectBestPlayer()')
 
       if (selection) {
-        console.log(`[CPU Draft] ${currentTeam.name} drafts: ${selection.player.display_name} (${selection.position})`)
+        console.log(`[CPU Draft] ${currentTeam.name} drafts: ${selection.player.display_name} (${selection.position}), bats: ${selection.player.bats || 'unknown'}`)
         console.time('[CPU Draft] 4. makePick() - database write')
-        makePick(selection.player.id, selection.player.player_id, selection.position, selection.slotNumber)
+        makePick(selection.player.id, selection.player.player_id, selection.position, selection.slotNumber, selection.player.bats)
         console.timeEnd('[CPU Draft] 4. makePick() - database write')
       } else {
         console.error('[CPU Draft] CRITICAL ERROR - CPU could not find a player to draft!', {
@@ -375,7 +376,7 @@ If this persists, the database may be updating. Wait a few minutes and try again
     async (position: PositionCode, slotNumber: number) => {
       if (!selectedPlayer) return
 
-      await makePick(selectedPlayer.id, selectedPlayer.player_id, position, slotNumber)
+      await makePick(selectedPlayer.id, selectedPlayer.player_id, position, slotNumber, selectedPlayer.bats)
       setSelectedPlayer(null)
     },
     [selectedPlayer, makePick]

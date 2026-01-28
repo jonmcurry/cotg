@@ -31,7 +31,7 @@ interface DraftState {
   resumeDraft: () => void
 
   // Pick actions
-  makePick: (playerSeasonId: string, playerId: string | undefined, position: PositionCode, slotNumber: number) => Promise<void>
+  makePick: (playerSeasonId: string, playerId: string | undefined, position: PositionCode, slotNumber: number, bats?: 'L' | 'R' | 'B' | null) => Promise<void>
   getCurrentPickingTeam: () => DraftTeam | null
   getNextPickingTeam: () => DraftTeam | null
 
@@ -323,7 +323,7 @@ export const useDraftStore = create<DraftState>()(
         get().saveSession()
       },
 
-      makePick: async (playerSeasonId: string, playerId: string | undefined, position: PositionCode, slotNumber: number) => {
+      makePick: async (playerSeasonId: string, playerId: string | undefined, position: PositionCode, slotNumber: number, bats?: 'L' | 'R' | 'B' | null) => {
         const session = get().session
         if (!session) return
 
@@ -352,6 +352,7 @@ export const useDraftStore = create<DraftState>()(
           ...updatedRoster[rosterSlotIndex],
           playerSeasonId,
           isFilled: true,
+          playerBats: bats,  // Store batting handedness for platoon tracking
         }
 
         const updatedTeams = [...session.teams]

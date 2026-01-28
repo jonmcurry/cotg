@@ -21,6 +21,7 @@ export interface RosterSlot {
   slotNumber: number // For multi-position slots (OF1, OF2, OF3, etc.)
   playerSeasonId: string | null
   isFilled: boolean
+  playerBats?: 'L' | 'R' | 'B' | null  // Batting handedness for platoon tracking
 }
 
 export interface DraftPick {

@@ -46,6 +46,7 @@ export interface PlayerSeason {
   display_name?: string
   first_name?: string
   last_name?: string
+  bats?: 'L' | 'R' | 'B' | null  // Batting handedness: L=Left, R=Right, B=Both/Switch
 }
 
 // Position scarcity weights (higher = more scarce = draft earlier)
@@ -61,6 +62,35 @@ const POSITION_SCARCITY: Record<PositionCode, number> = {
   'CL': 1.3,  // Elite closers are scarce
   'DH': 0.7,  // Can be any position
   'BN': 0.5,  // Bench - least priority
+}
+
+/**
+ * Adjust position scarcity weight based on draft round
+ * Early rounds: Emphasize scarcity (+20%)
+ * Mid rounds: Use base weights
+ * Late rounds: De-emphasize scarcity (-20%), focus on BPA
+ */
+function adjustScarcityByRound(
+  baseWeight: number,
+  currentRound: number
+): number {
+  // Early rounds (1-5): Emphasize scarcity more
+  if (currentRound <= 5) {
+    const adjusted = baseWeight * 1.2
+    console.log(`[CPU Draft] Round ${currentRound} (early): Scarcity ${baseWeight} → ${adjusted.toFixed(2)} (+20%)`)
+    return adjusted
+  }
+
+  // Mid rounds (6-15): Use base weights
+  if (currentRound <= 15) {
+    console.log(`[CPU Draft] Round ${currentRound} (mid): Scarcity ${baseWeight} (base)`)
+    return baseWeight
+  }
+
+  // Late rounds (16+): Reduce scarcity emphasis, focus on BPA
+  const adjusted = baseWeight * 0.8
+  console.log(`[CPU Draft] Round ${currentRound} (late): Scarcity ${baseWeight} → ${adjusted.toFixed(2)} (-20%)`)
+  return adjusted
 }
 
 /**
@@ -99,20 +129,51 @@ export function playerQualifiesForPosition(
 
 /**
  * Calculate weighted score for a player
- * Combines APBA Rating, position scarcity, and randomization
+ * Combines APBA Rating, position scarcity, platoon balance, and randomization
  */
 function calculateWeightedScore(
   player: PlayerSeason,
   position: PositionCode,
+  team: DraftTeam,
   randomizationFactor: number = 0.1
 ): number {
   const rating = player.apba_rating || 0  // Use APBA rating instead of WAR
   const scarcityWeight = POSITION_SCARCITY[position] || 1.0
 
+  // Platoon bonus: reward balanced lineup
+  let platoonBonus = 1.0
+
+  // Only apply to position players (not SP, RP, CL)
+  if (position !== 'SP' && position !== 'RP' && position !== 'CL') {
+    const filledRoster = team.roster.filter(s => s.isFilled)
+
+    const existingLefties = filledRoster.filter(s => s.playerBats === 'L').length
+    const existingRighties = filledRoster.filter(s => s.playerBats === 'R').length
+    const existingSwitchHitters = filledRoster.filter(s => s.playerBats === 'B').length
+
+    console.log(`[CPU Draft] Platoon check - Team has L:${existingLefties} R:${existingRighties} B:${existingSwitchHitters}`)
+
+    // Prefer minority handedness for balance
+    if (player.bats === 'L' && existingLefties < existingRighties) {
+      platoonBonus = 1.05  // 5% bonus
+      console.log(`[CPU Draft] Platoon bonus: +5% for lefty (minority)`)
+    } else if (player.bats === 'R' && existingRighties < existingLefties) {
+      platoonBonus = 1.05  // 5% bonus
+      console.log(`[CPU Draft] Platoon bonus: +5% for righty (minority)`)
+    } else if (player.bats === 'B') {
+      platoonBonus = 1.10  // 10% bonus (switch hitters valuable)
+      console.log(`[CPU Draft] Platoon bonus: +10% for switch hitter`)
+    }
+  }
+
   // Apply randomization (±10% by default)
   const randomness = 1 + (Math.random() * 2 - 1) * randomizationFactor
 
-  return rating * scarcityWeight * randomness
+  const finalScore = rating * scarcityWeight * platoonBonus * randomness
+
+  console.log(`[CPU Draft] Score calculation: rating=${rating} × scarcity=${scarcityWeight} × platoon=${platoonBonus} × random=${randomness.toFixed(3)} = ${finalScore.toFixed(2)}`)
+
+  return finalScore
 }
 
 /**
@@ -122,7 +183,8 @@ function calculateWeightedScore(
 export function selectBestPlayer(
   availablePlayers: PlayerSeason[],
   team: DraftTeam,
-  draftedPlayerIds: Set<string>
+  draftedPlayerIds: Set<string>,
+  currentRound: number = 1
 ): {
   player: PlayerSeason
   position: PositionCode
@@ -144,11 +206,16 @@ export function selectBestPlayer(
   let candidates: PlayerSeason[] = []
 
   if (unfilledPositions.length > 0) {
-    // Step 2: Weight positions by scarcity
-    const positionWeights = unfilledPositions.map(pos => ({
-      position: pos,
-      weight: POSITION_SCARCITY[pos] || 1.0,
-    }))
+    // Step 2: Weight positions by scarcity with round adjustment
+    const positionWeights = unfilledPositions.map(pos => {
+      const baseWeight = POSITION_SCARCITY[pos] || 1.0
+      const adjustedWeight = adjustScarcityByRound(baseWeight, currentRound)
+
+      return {
+        position: pos,
+        weight: adjustedWeight,
+      }
+    })
 
     // Sort by weight descending and pick the most scarce unfilled position
     positionWeights.sort((a, b) => b.weight - a.weight)
@@ -177,7 +244,7 @@ export function selectBestPlayer(
   // Step 5: Calculate weighted scores and select top player
   const scoredCandidates = candidates.map(player => ({
     player,
-    score: calculateWeightedScore(player, targetPosition),
+    score: calculateWeightedScore(player, targetPosition, team),
   }))
 
   // Sort by score descending
