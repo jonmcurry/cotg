@@ -361,7 +361,7 @@ If this persists, the database may be updating. Wait a few minutes and try again
 
       console.timeEnd('[CPU Draft] Total CPU pick time')
       setCpuThinking(false)
-    }, delay)
+    }, 0)
 
     return () => {
       clearTimeout(timeoutId)
