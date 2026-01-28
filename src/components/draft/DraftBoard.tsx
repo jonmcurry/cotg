@@ -302,10 +302,10 @@ If this persists, the database may be updating. Wait a few minutes and try again
       return
     }
 
-    // CPU makes pick after 1-2 second delay for realism
-    console.log(`[CPU Draft] ${currentTeam.name} is thinking...`)
+    // CPU makes pick immediately (artificial delay removed for performance)
+    // Browser throttling of setTimeout in inactive tabs made drafts extremely slow
+    console.log(`[CPU Draft] ${currentTeam.name} is picking...`)
     setCpuThinking(true)
-    const delay = 1000 + Math.random() * 1000
 
     const timeoutId = setTimeout(() => {
       console.time('[CPU Draft] Total CPU pick time')
