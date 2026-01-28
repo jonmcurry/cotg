@@ -14,6 +14,7 @@ import PickHistory from './PickHistory'
 import type { PlayerSeason } from '../../utils/cpuDraftLogic'
 import { selectBestPlayer } from '../../utils/cpuDraftLogic'
 import type { PositionCode } from '../../types/draft.types'
+import { TOTAL_ROUNDS } from '../../types/draft.types'
 
 interface Props {
   onExit: () => void
@@ -260,7 +261,7 @@ If this persists, the database may be updating. Wait a few minutes and try again
       playersCount: players.length,
       loading,
       currentPick: session?.currentPick,
-      totalPicks: session?.settings?.totalRounds,
+      totalPicks: TOTAL_ROUNDS,
     })
 
     if (!session) {

@@ -73,8 +73,9 @@ export interface PlayerSeasonStats {
  * 1 = Elite (Gold Glove), 9 = Poor
  *
  * APBA uses 1-9 defensive ratings. We estimate from fielding_pct and range_factor.
+ * NOTE: Currently unused but exported for future defensive rating calculations
  */
-function estimateDefensiveRating(
+export function estimateDefensiveRating(
   fielding_pct: number | null,
   range_factor: number | null,
   position: string
