@@ -40,6 +40,9 @@ export default function DraftBoard({ onExit }: Props) {
   // Prevent concurrent player loading (race condition guard)
   const loadingInProgress = useRef(false)
 
+  // Prevent concurrent draft operations (prevents duplicate pick database errors)
+  const draftInProgress = useRef(false)
+
   const currentTeam = getCurrentPickingTeam()
   const nextTeam = getNextPickingTeam()
 
@@ -284,6 +287,13 @@ If this persists, the database may be updating. Wait a few minutes and try again
       return
     }
 
+    // Prevent concurrent draft operations using ref guard
+    // This survives cleanup cycles and prevents duplicate database inserts
+    if (draftInProgress.current) {
+      console.log('[CPU Draft] Early return - draft operation already in progress')
+      return
+    }
+
     if (session.status !== 'in_progress') {
       console.log('[CPU Draft] Early return - session status is not in_progress:', session.status)
       return
@@ -305,68 +315,80 @@ If this persists, the database may be updating. Wait a few minutes and try again
     // CPU makes pick immediately (artificial delay removed for performance)
     // Browser throttling of setTimeout in inactive tabs made drafts extremely slow
     console.log(`[CPU Draft] ${currentTeam.name} is picking...`)
+
+    // Set guards BEFORE queueing async operation
+    draftInProgress.current = true
     setCpuThinking(true)
 
-    const timeoutId = setTimeout(() => {
-      console.time('[CPU Draft] Total CPU pick time')
-      console.time('[CPU Draft] 1. Build drafted player IDs')
+    const timeoutId = setTimeout(async () => {
+      try {
+        console.time('[CPU Draft] Total CPU pick time')
+        console.time('[CPU Draft] 1. Build drafted player IDs')
 
-      // Build Set of drafted player_id values (not playerSeasonId)
-      // This prevents the same player from being drafted multiple times for different seasons
-      // Example: If Christy Mathewson 1908 is drafted, ALL his other seasons are excluded
-      const draftedPlayerIds = new Set<string>()
+        // Build Set of drafted player_id values (not playerSeasonId)
+        // This prevents the same player from being drafted multiple times for different seasons
+        // Example: If Christy Mathewson 1908 is drafted, ALL his other seasons are excluded
+        const draftedPlayerIds = new Set<string>()
 
-      session.teams.forEach(team => {
-        team.roster.forEach(slot => {
-          if (slot.isFilled && slot.playerSeasonId) {
-            // Find the player in the players array to get their player_id
-            const player = players.find(p => p.id === slot.playerSeasonId)
-            if (player && player.player_id) {
-              draftedPlayerIds.add(player.player_id)
+        session.teams.forEach(team => {
+          team.roster.forEach(slot => {
+            if (slot.isFilled && slot.playerSeasonId) {
+              // Find the player in the players array to get their player_id
+              const player = players.find(p => p.id === slot.playerSeasonId)
+              if (player && player.player_id) {
+                draftedPlayerIds.add(player.player_id)
+              }
             }
-          }
+          })
         })
-      })
 
-      console.log(`[CPU Draft] Drafted players: ${draftedPlayerIds.size} unique players`)
-      console.timeEnd('[CPU Draft] 1. Build drafted player IDs')
+        console.log(`[CPU Draft] Drafted players: ${draftedPlayerIds.size} unique players`)
+        console.timeEnd('[CPU Draft] 1. Build drafted player IDs')
 
-      // Performance optimization: Filter undrafted players and only pass top 1000 by rating
-      // Players array is already sorted by apba_rating DESC from SQL query
-      // This reduces processing from 69,459 players to ~1000 per pick (98.5% reduction)
-      console.time('[CPU Draft] 2. Filter undrafted players')
-      const undraftedPlayers = players.filter(p => !draftedPlayerIds.has(p.player_id))
-      const topUndrafted = undraftedPlayers.slice(0, 1000)
-      console.timeEnd('[CPU Draft] 2. Filter undrafted players')
+        // Performance optimization: Filter undrafted players and only pass top 1000 by rating
+        // Players array is already sorted by apba_rating DESC from SQL query
+        // This reduces processing from 69,459 players to ~1000 per pick (98.5% reduction)
+        console.time('[CPU Draft] 2. Filter undrafted players')
+        const undraftedPlayers = players.filter(p => !draftedPlayerIds.has(p.player_id))
+        const topUndrafted = undraftedPlayers.slice(0, 1000)
+        console.timeEnd('[CPU Draft] 2. Filter undrafted players')
 
-      console.log(`[CPU Draft] Selecting from ${topUndrafted.length} top-rated undrafted players (${draftedPlayerIds.size} unique players already drafted, ${undraftedPlayers.length} player-seasons remaining)`)
+        console.log(`[CPU Draft] Selecting from ${topUndrafted.length} top-rated undrafted players (${draftedPlayerIds.size} unique players already drafted, ${undraftedPlayers.length} player-seasons remaining)`)
 
-      console.time('[CPU Draft] 3. selectBestPlayer()')
-      const selection = selectBestPlayer(topUndrafted, currentTeam, draftedPlayerIds, session.currentRound)
-      console.timeEnd('[CPU Draft] 3. selectBestPlayer()')
+        console.time('[CPU Draft] 3. selectBestPlayer()')
+        const selection = selectBestPlayer(topUndrafted, currentTeam, draftedPlayerIds, session.currentRound)
+        console.timeEnd('[CPU Draft] 3. selectBestPlayer()')
 
-      if (selection) {
-        console.log(`[CPU Draft] ${currentTeam.name} drafts: ${selection.player.display_name} (${selection.position}), bats: ${selection.player.bats || 'unknown'}`)
-        console.time('[CPU Draft] 4. makePick() - database write')
-        makePick(selection.player.id, selection.player.player_id, selection.position, selection.slotNumber, selection.player.bats)
-        console.timeEnd('[CPU Draft] 4. makePick() - database write')
-      } else {
-        console.error('[CPU Draft] CRITICAL ERROR - CPU could not find a player to draft!', {
-          playersAvailable: players.length,
-          alreadyDrafted: draftedPlayerIds.size,
-          teamRosterFilled: currentTeam.roster.filter(s => s.isFilled).length,
-        })
-        alert('CRITICAL ERROR: CPU could not find a player to draft. Check console for details.')
+        if (selection) {
+          console.log(`[CPU Draft] ${currentTeam.name} drafts: ${selection.player.display_name} (${selection.position}), bats: ${selection.player.bats || 'unknown'}`)
+          console.time('[CPU Draft] 4. makePick() - database write')
+          await makePick(selection.player.id, selection.player.player_id, selection.position, selection.slotNumber, selection.player.bats)
+          console.timeEnd('[CPU Draft] 4. makePick() - database write')
+        } else {
+          console.error('[CPU Draft] CRITICAL ERROR - CPU could not find a player to draft!', {
+            playersAvailable: players.length,
+            alreadyDrafted: draftedPlayerIds.size,
+            teamRosterFilled: currentTeam.roster.filter(s => s.isFilled).length,
+          })
+          alert('CRITICAL ERROR: CPU could not find a player to draft. Check console for details.')
+        }
+
+        console.timeEnd('[CPU Draft] Total CPU pick time')
+      } catch (error) {
+        console.error('[CPU Draft] ERROR during draft operation:', error)
+        alert('ERROR during CPU draft. Check console for details.')
+      } finally {
+        // Always reset guards, even if error occurred
+        draftInProgress.current = false
+        setCpuThinking(false)
       }
-
-      console.timeEnd('[CPU Draft] Total CPU pick time')
-      setCpuThinking(false)
     }, 0)
 
     return () => {
       clearTimeout(timeoutId)
-      // CRITICAL FIX: Reset cpuThinking if cleanup runs before timeout fires
-      // This prevents race condition where UI gets stuck showing "CPU is drafting"
+      // Reset UI state (cpuThinking) but NOT draftInProgress ref
+      // The ref must persist to prevent duplicate operations
+      // It will be reset when the async operation completes in the finally block
       setCpuThinking(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

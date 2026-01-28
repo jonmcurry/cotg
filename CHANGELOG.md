@@ -7,6 +7,95 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-01-28 (Draft Race Condition - Duplicate Pick Database Errors)
+
+**Problem:**
+- Database error: `duplicate key value violates unique constraint "draft_picks_draft_session_id_pick_number_key"`
+- User reported: "POST https://.../draft_picks 409 (Conflict)" and "duplicate key value violates unique constraint"
+- Same pick was being inserted into database multiple times, violating the unique constraint on (draft_session_id, pick_number)
+
+**Root Cause:**
+Race condition in DraftBoard.tsx useEffect where multiple CPU draft operations could execute concurrently:
+
+1. `setCpuThinking(true)` sets state guard
+2. `setTimeout(() => {...}, 0)` queues the draft operation
+3. **RACE CONDITION WINDOW**: Before timeout executes:
+   - Dependencies change (session.currentPick updates after makePick completes)
+   - Cleanup function runs
+   - Cleanup resets `cpuThinking = false` (line 370)
+   - New effect starts, sees `cpuThinking === false`, thinks it's safe to proceed
+   - Queues another setTimeout for the SAME pick number
+4. Both timeouts execute and call `makePick()` with the same `pick_number`
+5. Second database insert fails with unique constraint violation
+
+**Why State Guard Failed:**
+- `cpuThinking` is React state, not a ref
+- Cleanup function resets it before the async operation completes
+- Multiple timeouts get queued before any complete
+- State updates don't prevent already-queued callbacks from executing
+
+**Solution:**
+Added a **ref-based guard** (`draftInProgress`) that persists across effect cleanup cycles:
+
+```typescript
+const draftInProgress = useRef(false)  // Survives cleanup
+
+useEffect(() => {
+  // Check ref guard FIRST
+  if (draftInProgress.current) {
+    console.log('[CPU Draft] Early return - draft operation already in progress')
+    return
+  }
+
+  // Set ref guard BEFORE queueing async operation
+  draftInProgress.current = true
+  setCpuThinking(true)
+
+  const timeoutId = setTimeout(async () => {
+    try {
+      await makePick(...)
+    } catch (error) {
+      console.error('[CPU Draft] ERROR during draft operation:', error)
+    } finally {
+      // Always reset guards, even if error occurred
+      draftInProgress.current = false
+      setCpuThinking(false)
+    }
+  }, 0)
+
+  return () => {
+    clearTimeout(timeoutId)
+    setCpuThinking(false)
+    // DON'T reset draftInProgress - let operation complete naturally
+  }
+}, [session?.currentPick, ...])
+```
+
+**Key Differences from State Guard:**
+- Ref persists across cleanup cycles (doesn't get reset)
+- Only reset after makePick completes (in finally block)
+- try-finally ensures ref is always reset, even if error occurs
+- Cleanup doesn't interfere with in-flight operations
+
+**Why This Follows CLAUDE.md Rules:**
+- Rule 1: Did NOT remove the database unique constraint (feature)
+- Rule 2: Did NOT hide the error (fixed the root cause)
+- Rule 3: Errors are still loud (try-catch with console.error and alert)
+- Rule 8: Proper solution - fixed race condition, not workaround
+
+**Database Constraint (Preserved):**
+```sql
+UNIQUE(draft_session_id, pick_number)  -- Correct constraint, protects data integrity
+```
+
+This constraint is correct and should NOT be removed. The application code must respect it by preventing concurrent picks.
+
+**Impact:**
+- No more duplicate key violations during CPU drafts
+- Draft operations are properly serialized
+- Database integrity maintained
+- User experience improved (no more 409 errors)
+
 ### Performance - 2026-01-28 (Remove Artificial Draft Delay for Inactive Tabs)
 
 **Problem:**
