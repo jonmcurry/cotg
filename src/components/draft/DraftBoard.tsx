@@ -312,9 +312,15 @@ If this persists, the database may be updating. Wait a few minutes and try again
           .map(p => p.playerSeasonId!)
       )
 
-      console.log(`[CPU Draft] Selecting from ${players.length} players, ${draftedIds.size} already drafted`)
+      // Performance optimization: Filter undrafted players and only pass top 1000 by rating
+      // Players array is already sorted by apba_rating DESC from SQL query
+      // This reduces processing from 69,459 players to ~1000 per pick (98.5% reduction)
+      const undraftedPlayers = players.filter(p => !draftedIds.has(p.id))
+      const topUndrafted = undraftedPlayers.slice(0, 1000)
 
-      const selection = selectBestPlayer(players, currentTeam, draftedIds)
+      console.log(`[CPU Draft] Selecting from ${topUndrafted.length} top-rated undrafted players (${draftedIds.size} already drafted, ${undraftedPlayers.length} remaining)`)
+
+      const selection = selectBestPlayer(topUndrafted, currentTeam, draftedIds)
 
       if (selection) {
         console.log(`[CPU Draft] ${currentTeam.name} drafts: ${selection.player.display_name} (${selection.position})`)

@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Performance - 2026-01-28 (CPU Draft Speed Optimization)
+
+**Performance Improvement:** CPU draft was extremely slow, taking 2-5 seconds per pick
+
+**Problem:**
+- CPU draft paused for multiple seconds when selecting each player
+- User reported: "CPU draft is extremely slow when the CPU has to pick"
+- Draft with 8 CPU teams was nearly unusable
+
+**Root Cause:**
+The `selectBestPlayer()` function in [cpuDraftLogic.ts](src/utils/cpuDraftLogic.ts:122-211) processed ALL 69,459 players for every single pick:
+```typescript
+// BEFORE - Processed all 69,459 players every pick
+const undraftedPlayers = availablePlayers.filter(p => !draftedIds.has(p.id))
+candidates = undraftedPlayers.filter(player => playerQualifiesForPosition(...))
+const scoredCandidates = candidates.map(player => ({ score: calculateWeightedScore(...) }))
+scoredCandidates.sort((a, b) => b.score - a.score)  // Sort ALL candidates
+const topCandidates = scoredCandidates.slice(0, 5)  // Only use top 5!
+```
+
+**Why This Was Slow:**
+- Algorithm scored and sorted ALL candidates to get top 5
+- Multiple array operations (filter, filter, map, sort) on 69k items
+- Happened for EVERY CPU pick (potentially 200+ picks per draft)
+- JavaScript single-threaded execution blocked UI
+
+**Solution:**
+Pre-filter player pool to top 1000 undrafted players before passing to `selectBestPlayer()`:
+
+```typescript
+// AFTER - Only process top 1000 by rating (98.5% reduction)
+const undraftedPlayers = players.filter(p => !draftedIds.has(p.id))
+const topUndrafted = undraftedPlayers.slice(0, 1000)
+const selection = selectBestPlayer(topUndrafted, currentTeam, draftedIds)
+```
+
+**Why This Is Safe:**
+- Players array already sorted by `apba_rating DESC` in SQL query (line 127-128)
+- Top 1000 players include all star players worth drafting
+- Lower-rated players (rating <10) not competitive anyway
+- CPU still uses same selection algorithm, just on smaller pool
+
+**Performance Impact:**
+- Before: 69,459 players processed per pick
+- After: ~1,000 players processed per pick
+- Reduction: 98.5% less data processing
+- Expected result: CPU picks complete in <100ms (plus 1-2s artificial delay for realism)
+
+**Files Modified:**
+- [src/components/draft/DraftBoard.tsx](src/components/draft/DraftBoard.tsx:308-323) - Pre-filter to top 1000 undrafted players
+- [docs/plans/optimize-cpu-draft-performance.md](docs/plans/optimize-cpu-draft-performance.md) - Performance analysis and optimization plan
+
 ### Fixed - 2026-01-28 (Player Rating System Accuracy)
 
 **Bug Fix:** Player ratings were inaccurate due to position multipliers inflating ratings incorrectly
