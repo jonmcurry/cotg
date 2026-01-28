@@ -221,21 +221,38 @@ export default function DraftBoard({ onExit }: Props) {
       sessionStatus: session?.status,
       playersCount: players.length,
       loading,
+      currentPick: session?.currentPick,
+      totalPicks: session?.settings?.totalRounds,
     })
 
-    if (!session || !currentTeam || currentTeam.control !== 'cpu' || cpuThinking) {
-      console.log('[CPU Draft] Early return - conditions not met')
+    if (!session) {
+      console.log('[CPU Draft] Early return - no session')
+      return
+    }
+
+    if (!currentTeam) {
+      console.log('[CPU Draft] Early return - no current team')
+      return
+    }
+
+    if (currentTeam.control !== 'cpu') {
+      console.log('[CPU Draft] Early return - current team is human controlled')
+      return
+    }
+
+    if (cpuThinking) {
+      console.log('[CPU Draft] Early return - CPU already thinking')
       return
     }
 
     if (session.status !== 'in_progress') {
-      console.error('[CPU Draft] BLOCKED - Session status is not in_progress:', session.status)
+      console.log('[CPU Draft] Early return - session status is not in_progress:', session.status)
       return
     }
 
     // Wait for players to finish loading before checking if empty
     if (loading) {
-      console.log('[CPU Draft] Waiting for players to load...')
+      console.log('[CPU Draft] Early return - players still loading')
       return
     }
 
@@ -277,7 +294,12 @@ export default function DraftBoard({ onExit }: Props) {
       setCpuThinking(false)
     }, delay)
 
-    return () => clearTimeout(timeoutId)
+    return () => {
+      clearTimeout(timeoutId)
+      // CRITICAL FIX: Reset cpuThinking if cleanup runs before timeout fires
+      // This prevents race condition where UI gets stuck showing "CPU is drafting"
+      setCpuThinking(false)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     // Note: We only depend on values that should trigger a NEW draft decision:
     // - session?.currentPick: Re-run when pick advances to next team
