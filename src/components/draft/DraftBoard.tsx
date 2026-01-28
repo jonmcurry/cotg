@@ -4,7 +4,7 @@
  * Implements SRD UI requirement 7.3
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useDraftStore } from '../../stores/draftStore'
 import TabbedPlayerPool from './TabbedPlayerPool'
 import RosterView from './RosterView'
@@ -36,6 +36,9 @@ export default function DraftBoard({ onExit }: Props) {
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerSeason | null>(null)
   const [cpuThinking, setCpuThinking] = useState(false)
 
+  // Prevent concurrent player loading (race condition guard)
+  const loadingInProgress = useRef(false)
+
   const currentTeam = getCurrentPickingTeam()
   const nextTeam = getNextPickingTeam()
 
@@ -44,6 +47,13 @@ export default function DraftBoard({ onExit }: Props) {
     async function loadPlayers() {
       if (!session) return
 
+      // Prevent concurrent loads (race condition where session reference changes while loading)
+      if (loadingInProgress.current) {
+        console.log('[Player Load] BLOCKED - Already loading, skipping concurrent load')
+        return
+      }
+
+      loadingInProgress.current = true
       console.log('[Player Load] EFFECT TRIGGERED - Starting player load for seasons:', session.selectedSeasons)
       console.log('[Player Load] Current player count:', players.length)
       setLoading(true)
@@ -140,11 +150,12 @@ export default function DraftBoard({ onExit }: Props) {
           }
 
           // Update progress after parallel batches complete
-          // Use offset for smooth monotonic progress (not allPlayers.length which jumps as async results arrive)
+          // Use actual received data length (allPlayers.length) not requested offset
+          // Progress only updates after Promise.all completes, so no race condition between batches
           setLoadingProgress({
-            loaded: Math.min(offset, totalPlayers),
+            loaded: allPlayers.length,
             total: totalPlayers,
-            hasMore: offset < totalPlayers
+            hasMore: allPlayers.length < totalPlayers
           })
         }
 
@@ -192,6 +203,7 @@ export default function DraftBoard({ onExit }: Props) {
         alert(`CRITICAL ERROR: Exception while loading players.\n\nError: ${err}\n\nCheck console for details.`)
       } finally {
         setLoading(false)
+        loadingInProgress.current = false
       }
     }
 

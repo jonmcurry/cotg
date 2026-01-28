@@ -60,38 +60,66 @@ const isPositionPlayer = (player: PlayerSeason): boolean => {
 
 **Issue:** Progress indicator jumped erratically during player loading (68k → 62k → back up)
 
-- Fixed progress calculation to use offset-based tracking instead of array length
-  - Progress now advances smoothly and monotonically from 0 to total
-  - Eliminates jumping caused by asynchronous parallel batch completion
-  - Provides accurate, user-friendly loading feedback
+- Fixed concurrent effect execution causing race conditions in progress tracking
+  - Issue: If session object reference changed during load, useEffect would start a second concurrent load
+  - Multiple async loadPlayers() functions would run simultaneously, each updating progress
+  - Progress updates from different loads would conflict, causing backward jumps
+  - User saw: Load 1 at 68k → Load 2 starts and shows 62k → confusing backward progress
+- Solution: Added loading guard using useRef to prevent concurrent loads
+  - Only one load runs at a time, blocking concurrent attempts
+  - Progress now reliably tracks actual data received (allPlayers.length)
+  - Loading flag reset in finally block for proper cleanup
 
-**Before (Array Length-Based Progress - Jumpy):**
+**Before (No Guard - Race Conditions):**
 ```typescript
-// Progress jumps as async results arrive
-setLoadingProgress({
-  loaded: allPlayers.length,  // Updates unpredictably as batches complete
-  total: totalPlayers,
-  hasMore: allPlayers.length < totalPlayers
-})
+useEffect(() => {
+  async function loadPlayers() {
+    if (!session) return
+    // Load starts immediately, no guard against concurrent runs
+    const allPlayers = []
+    // ... fetch data ...
+    setLoadingProgress({ loaded: allPlayers.length, ... })
+  }
+  loadPlayers()
+}, [session])  // If session reference changes, starts second load!
 ```
 
-**After (Offset-Based Progress - Smooth):**
+**After (Guarded - No Races):**
 ```typescript
-// Progress advances smoothly as batches are started
-setLoadingProgress({
-  loaded: Math.min(offset, totalPlayers),  // Monotonic progression
-  total: totalPlayers,
-  hasMore: offset < totalPlayers
-})
+const loadingInProgress = useRef(false)
+
+useEffect(() => {
+  async function loadPlayers() {
+    if (!session) return
+
+    // Prevent concurrent loads
+    if (loadingInProgress.current) {
+      console.log('[Player Load] BLOCKED - Already loading')
+      return
+    }
+
+    loadingInProgress.current = true
+    try {
+      const allPlayers = []
+      // ... fetch data ...
+      setLoadingProgress({ loaded: allPlayers.length, ... })
+    } finally {
+      loadingInProgress.current = false  // Always cleanup
+    }
+  }
+  loadPlayers()
+}, [session])
 ```
 
 **Technical Details:**
-- Root cause: Parallel batch loading (3 batches at a time) advances `offset` immediately to reserve ranges, but `allPlayers.length` updates asynchronously as results arrive
-- Impact: User saw confusing progress like "68,000 players" → "62,000 players" → back up
-- Solution: Base progress on `offset` (which advances monotonically) instead of `allPlayers.length` (which updates asynchronously)
+- Root cause: Session object reference changes (rerenders) triggered concurrent useEffect runs
+- Multiple async functions running simultaneously caused conflicting progress updates
+- Impact: User saw jumps like "68,000 players" → "62,000 players" as different loads updated progress
+- Solution: useRef guard blocks concurrent loads, ensuring single source of truth for progress
+- Progress based on actual data received (allPlayers.length) after Promise.all completes
 
 **Files Modified:**
-- `src/components/draft/DraftBoard.tsx` - Changed progress tracking logic (lines 142-147)
+- [src/components/draft/DraftBoard.tsx](src/components/draft/DraftBoard.tsx) - Added loading guard and cleanup
 
 ### Added - 2026-01-27 (Two-Way Player Support)
 
