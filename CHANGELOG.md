@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Bug Fix - 2026-01-28 (Pitchers Being Drafted as Position Players)
+
+**Problem:**
+- Pitchers with low at-bats were being drafted for position player slots
+- Example: Nick Altrock (pitcher, 111 ABs) was being drafted as a first baseman
+- Caused by missing playing time validation for roster positions
+
+**Root Cause:**
+The `playerQualifiesForPosition()` function only checked if the player's `primary_position` matched the eligible positions for the roster slot. It did NOT check if the player met the minimum playing time requirements.
+
+A player like Nick Altrock could have:
+- `primary_position: '1B'` (played a few games at first base)
+- `at_bats: 111` (not enough to qualify as position player - needs 200+)
+- `innings_pitched_outs: 90+` (qualifies as pitcher)
+
+The old logic allowed him to be drafted as a first baseman because:
+1. His primary_position matched ('1B' is eligible for 1B slot)
+2. No validation checked if he had 200+ ABs
+
+**Solution:**
+Created new `meetsPlayingTimeRequirements()` function that validates:
+- **Position player slots** (C, 1B, 2B, SS, 3B, OF, DH): Must have 200+ at-bats
+- **Pitcher slots** (SP, RP, CL): Must have 30+ innings pitched (90+ outs)
+- **Bench** (BN): Either 200+ ABs OR 90+ outs
+
+Updated candidate filtering in `selectBestPlayer()` to check BOTH:
+1. Position eligibility: `playerQualifiesForPosition()`
+2. Playing time requirements: `meetsPlayingTimeRequirements()`
+
+Added warning logging when position-eligible players are filtered out due to playing time:
+```
+[CPU Draft] WARNING: Found X position-eligible players for 1B, but 0 met playing time requirements
+```
+
+**Impact:**
+- Pitchers with low ABs can no longer be drafted for position player slots
+- Position players with low ABs (< 200) can no longer be drafted for position slots
+- Pitchers with low innings (< 30 IP) can no longer be drafted for pitcher slots
+- Ensures all drafted players meet minimum playing time for their roster position
+- Bench slots accept either position players OR pitchers
+
+**Files Modified:**
+- [src/utils/cpuDraftLogic.ts](src/utils/cpuDraftLogic.ts) - Added `meetsPlayingTimeRequirements()` validation
+
+**Testing:**
+- Nick Altrock (111 ABs) will no longer be draftable as 1B
+- Only players with 200+ ABs can fill position player slots
+- Only players with 30+ IP can fill pitcher slots
+
+---
+
 ### Bug Fix - 2026-01-28 (Critical Draft Logic Fixes)
 
 **Bug Fix 1: Duplicate Player Drafting Prevented**

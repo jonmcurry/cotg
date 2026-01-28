@@ -128,6 +128,40 @@ export function playerQualifiesForPosition(
 }
 
 /**
+ * Check if player meets minimum playing time requirements for a roster position
+ * Position players (C, 1B, 2B, SS, 3B, OF, DH): Must have 200+ at-bats
+ * Pitchers (SP, RP, CL): Must have 30+ innings pitched (90+ outs)
+ * Bench (BN): Either position player OR pitcher qualifications
+ */
+export function meetsPlayingTimeRequirements(
+  player: PlayerSeason,
+  rosterPosition: PositionCode
+): boolean {
+  const atBats = player.at_bats || 0
+  const inningsPitchedOuts = player.innings_pitched_outs || 0
+
+  // Position player slots require 200+ at-bats
+  const isPositionPlayerSlot = ['C', '1B', '2B', 'SS', '3B', 'OF', 'DH'].includes(rosterPosition)
+  if (isPositionPlayerSlot) {
+    return atBats >= 200
+  }
+
+  // Pitcher slots require 30+ innings (90+ outs)
+  const isPitcherSlot = ['SP', 'RP', 'CL'].includes(rosterPosition)
+  if (isPitcherSlot) {
+    return inningsPitchedOuts >= 90
+  }
+
+  // Bench can be either position player OR pitcher
+  if (rosterPosition === 'BN') {
+    return atBats >= 200 || inningsPitchedOuts >= 90
+  }
+
+  // Fallback: allow if either qualification is met
+  return atBats >= 200 || inningsPitchedOuts >= 90
+}
+
+/**
  * Calculate weighted score for a player
  * Combines APBA Rating, position scarcity, platoon balance, and randomization
  * @param scarcityWeight - Optional pre-calculated scarcity weight (e.g., round-adjusted). If not provided, uses base weight.
@@ -230,18 +264,34 @@ export function selectBestPlayer(
     console.log(`[CPU Draft] Target position: ${targetPosition} (scarcity weight: ${targetScarcityWeight.toFixed(2)})`)
 
     // Step 3: Find players who qualify for this position
-    candidates = undraftedPlayers.filter(player =>
+    // Must match both position eligibility AND playing time requirements
+    const positionEligible = undraftedPlayers.filter(player =>
       playerQualifiesForPosition(player.primary_position, targetPosition)
     )
+    candidates = positionEligible.filter(player =>
+      meetsPlayingTimeRequirements(player, targetPosition)
+    )
+
+    if (positionEligible.length > 0 && candidates.length === 0) {
+      console.log(`[CPU Draft] WARNING: Found ${positionEligible.length} position-eligible players for ${targetPosition}, but 0 met playing time requirements`)
+    }
 
     // If no candidates for preferred position, try next position
     for (let i = 1; i < positionWeights.length && candidates.length === 0; i++) {
       targetPosition = positionWeights[i].position
       targetScarcityWeight = positionWeights[i].weight
       console.log(`[CPU Draft] No candidates for previous position, trying ${targetPosition} (scarcity weight: ${targetScarcityWeight.toFixed(2)})`)
-      candidates = undraftedPlayers.filter(player =>
+
+      const positionEligibleFallback = undraftedPlayers.filter(player =>
         playerQualifiesForPosition(player.primary_position, targetPosition)
       )
+      candidates = positionEligibleFallback.filter(player =>
+        meetsPlayingTimeRequirements(player, targetPosition)
+      )
+
+      if (positionEligibleFallback.length > 0 && candidates.length === 0) {
+        console.log(`[CPU Draft] WARNING: Found ${positionEligibleFallback.length} position-eligible players for ${targetPosition}, but 0 met playing time requirements`)
+      }
     }
   }
 
@@ -250,7 +300,10 @@ export function selectBestPlayer(
     targetPosition = 'BN'
     targetScarcityWeight = undefined  // Use base weight for bench
     console.log(`[CPU Draft] All positions filled, drafting for bench (BN)`)
-    candidates = undraftedPlayers
+    // Bench candidates must also meet playing time requirements (200+ ABs OR 30+ IP)
+    candidates = undraftedPlayers.filter(player =>
+      meetsPlayingTimeRequirements(player, targetPosition)
+    )
   }
 
   console.log(`[CPU Draft] Found ${candidates.length} candidates for ${targetPosition}`)
