@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Bug Fix - 2026-01-28 (Critical Draft Logic Fixes)
+
+**Bug Fix 1: Duplicate Player Drafting Prevented**
+
+**Problem:**
+- Same player could be drafted multiple times for different seasons
+- Example: Christy Mathewson 1908 could be drafted, but his 1909, 1910, etc. seasons remained available
+- Caused by tracking `playerSeasonId` (specific season) instead of `player_id` (the player)
+
+**Root Cause:**
+[src/components/draft/DraftBoard.tsx:312-316](src/components/draft/DraftBoard.tsx#L312-L316) built a Set of `playerSeasonId` values, then filtered by `p.id` (playerSeasonId), allowing other seasons of the same player to be drafted.
+
+**Solution:**
+- Changed to track `player_id` instead of `playerSeasonId`
+- Built Set by iterating through all teams' rosters and collecting player_id values
+- Filter now checks `!draftedPlayerIds.has(p.player_id)` to exclude ALL seasons of drafted players
+- Updated `selectBestPlayer()` and `getCPUDraftRecommendation()` signatures with JSDoc clarification
+
+**Impact:**
+- Once a player is drafted for any season, ALL their seasons are excluded from the draft pool
+- Prevents duplicate players on different teams
+- Maintains historical accuracy
+
+---
+
+**Bug Fix 2: Round-Adjusted Scarcity Weight Not Used in Scoring**
+
+**Problem:**
+- CPU was picking closers first despite catchers having higher scarcity
+- Round-adjusted scarcity weights were used to CHOOSE which position to target
+- But BASE scarcity weights were used to SCORE the candidates
+- Caused inconsistent behavior
+
+**Root Cause:**
+`adjustScarcityByRound()` calculated adjusted weights for position selection, but `calculateWeightedScore()` used base weights for scoring.
+
+**Solution:**
+- Modified `calculateWeightedScore()` to accept optional `scarcityWeight` parameter
+- Updated `selectBestPlayer()` to pass adjusted scarcity weight to scoring function
+- Added console logging: `[CPU Draft] Target position: C (scarcity weight: 1.80)`
+- Added logging for fallback positions and candidate counts
+
+**Impact:**
+- Early rounds (1-5): Scarce positions get +20% scoring boost (C, SS, CL prioritized)
+- Late rounds (16+): Scarce positions get -20% scoring penalty (BPA more important)
+- Position selection and player scoring now use consistent scarcity weights
+
+**Files Modified:**
+- [src/components/draft/DraftBoard.tsx](src/components/draft/DraftBoard.tsx)
+- [src/utils/cpuDraftLogic.ts](src/utils/cpuDraftLogic.ts)
+
+---
+
 ### Enhancement - 2026-01-28 (Platoon Awareness & Draft Round Awareness)
 
 **Feature Enhancement:** Added Platoon Awareness and Draft Round Awareness to CPU draft logic

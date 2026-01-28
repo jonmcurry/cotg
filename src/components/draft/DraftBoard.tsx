@@ -308,26 +308,40 @@ If this persists, the database may be updating. Wait a few minutes and try again
 
     const timeoutId = setTimeout(() => {
       console.time('[CPU Draft] Total CPU pick time')
-      console.time('[CPU Draft] 1. Build draftedIds Set')
-      const draftedIds = new Set(
-        session.picks
-          .filter(p => p.playerSeasonId !== null)
-          .map(p => p.playerSeasonId!)
-      )
-      console.timeEnd('[CPU Draft] 1. Build draftedIds Set')
+      console.time('[CPU Draft] 1. Build drafted player IDs')
+
+      // Build Set of drafted player_id values (not playerSeasonId)
+      // This prevents the same player from being drafted multiple times for different seasons
+      // Example: If Christy Mathewson 1908 is drafted, ALL his other seasons are excluded
+      const draftedPlayerIds = new Set<string>()
+
+      session.teams.forEach(team => {
+        team.roster.forEach(slot => {
+          if (slot.isFilled && slot.playerSeasonId) {
+            // Find the player in the players array to get their player_id
+            const player = players.find(p => p.id === slot.playerSeasonId)
+            if (player && player.player_id) {
+              draftedPlayerIds.add(player.player_id)
+            }
+          }
+        })
+      })
+
+      console.log(`[CPU Draft] Drafted players: ${draftedPlayerIds.size} unique players`)
+      console.timeEnd('[CPU Draft] 1. Build drafted player IDs')
 
       // Performance optimization: Filter undrafted players and only pass top 1000 by rating
       // Players array is already sorted by apba_rating DESC from SQL query
       // This reduces processing from 69,459 players to ~1000 per pick (98.5% reduction)
       console.time('[CPU Draft] 2. Filter undrafted players')
-      const undraftedPlayers = players.filter(p => !draftedIds.has(p.id))
+      const undraftedPlayers = players.filter(p => !draftedPlayerIds.has(p.player_id))
       const topUndrafted = undraftedPlayers.slice(0, 1000)
       console.timeEnd('[CPU Draft] 2. Filter undrafted players')
 
-      console.log(`[CPU Draft] Selecting from ${topUndrafted.length} top-rated undrafted players (${draftedIds.size} already drafted, ${undraftedPlayers.length} remaining)`)
+      console.log(`[CPU Draft] Selecting from ${topUndrafted.length} top-rated undrafted players (${draftedPlayerIds.size} unique players already drafted, ${undraftedPlayers.length} player-seasons remaining)`)
 
       console.time('[CPU Draft] 3. selectBestPlayer()')
-      const selection = selectBestPlayer(topUndrafted, currentTeam, draftedIds, session.currentRound)
+      const selection = selectBestPlayer(topUndrafted, currentTeam, draftedPlayerIds, session.currentRound)
       console.timeEnd('[CPU Draft] 3. selectBestPlayer()')
 
       if (selection) {

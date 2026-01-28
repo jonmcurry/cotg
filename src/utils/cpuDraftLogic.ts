@@ -130,15 +130,17 @@ export function playerQualifiesForPosition(
 /**
  * Calculate weighted score for a player
  * Combines APBA Rating, position scarcity, platoon balance, and randomization
+ * @param scarcityWeight - Optional pre-calculated scarcity weight (e.g., round-adjusted). If not provided, uses base weight.
  */
 function calculateWeightedScore(
   player: PlayerSeason,
   position: PositionCode,
   team: DraftTeam,
-  randomizationFactor: number = 0.1
+  randomizationFactor: number = 0.1,
+  scarcityWeight?: number
 ): number {
   const rating = player.apba_rating || 0  // Use APBA rating instead of WAR
-  const scarcityWeight = POSITION_SCARCITY[position] || 1.0
+  const effectiveScarcityWeight = scarcityWeight ?? (POSITION_SCARCITY[position] || 1.0)
 
   // Platoon bonus: reward balanced lineup
   let platoonBonus = 1.0
@@ -169,9 +171,9 @@ function calculateWeightedScore(
   // Apply randomization (±10% by default)
   const randomness = 1 + (Math.random() * 2 - 1) * randomizationFactor
 
-  const finalScore = rating * scarcityWeight * platoonBonus * randomness
+  const finalScore = rating * effectiveScarcityWeight * platoonBonus * randomness
 
-  console.log(`[CPU Draft] Score calculation: rating=${rating} × scarcity=${scarcityWeight} × platoon=${platoonBonus} × random=${randomness.toFixed(3)} = ${finalScore.toFixed(2)}`)
+  console.log(`[CPU Draft] Score calculation: rating=${rating} × scarcity=${effectiveScarcityWeight.toFixed(2)} × platoon=${platoonBonus} × random=${randomness.toFixed(3)} = ${finalScore.toFixed(2)}`)
 
   return finalScore
 }
@@ -179,6 +181,7 @@ function calculateWeightedScore(
 /**
  * Select best available player for CPU team
  * Follows SRD algorithm (FR-CPU-001 to FR-CPU-005)
+ * @param draftedPlayerIds - Set of player_id values (not playerSeasonId) to exclude ALL seasons of drafted players
  */
 export function selectBestPlayer(
   availablePlayers: PlayerSeason[],
@@ -190,9 +193,10 @@ export function selectBestPlayer(
   position: PositionCode
   slotNumber: number
 } | null {
-  // Filter out already drafted players
+  // Filter out already drafted players (by player_id, not playerSeasonId)
+  // This prevents the same player from being drafted multiple times for different seasons
   const undraftedPlayers = availablePlayers.filter(
-    p => !draftedPlayerIds.has(p.id)
+    p => !draftedPlayerIds.has(p.player_id)
   )
 
   if (undraftedPlayers.length === 0) {
@@ -203,6 +207,7 @@ export function selectBestPlayer(
   const unfilledPositions = getUnfilledPositions(team)
 
   let targetPosition: PositionCode = 'BN'
+  let targetScarcityWeight: number | undefined = undefined
   let candidates: PlayerSeason[] = []
 
   if (unfilledPositions.length > 0) {
@@ -220,6 +225,9 @@ export function selectBestPlayer(
     // Sort by weight descending and pick the most scarce unfilled position
     positionWeights.sort((a, b) => b.weight - a.weight)
     targetPosition = positionWeights[0].position
+    targetScarcityWeight = positionWeights[0].weight
+
+    console.log(`[CPU Draft] Target position: ${targetPosition} (scarcity weight: ${targetScarcityWeight.toFixed(2)})`)
 
     // Step 3: Find players who qualify for this position
     candidates = undraftedPlayers.filter(player =>
@@ -229,6 +237,8 @@ export function selectBestPlayer(
     // If no candidates for preferred position, try next position
     for (let i = 1; i < positionWeights.length && candidates.length === 0; i++) {
       targetPosition = positionWeights[i].position
+      targetScarcityWeight = positionWeights[i].weight
+      console.log(`[CPU Draft] No candidates for previous position, trying ${targetPosition} (scarcity weight: ${targetScarcityWeight.toFixed(2)})`)
       candidates = undraftedPlayers.filter(player =>
         playerQualifiesForPosition(player.primary_position, targetPosition)
       )
@@ -238,13 +248,17 @@ export function selectBestPlayer(
   // Step 4: If all required positions filled, draft best available for bench
   if (candidates.length === 0) {
     targetPosition = 'BN'
+    targetScarcityWeight = undefined  // Use base weight for bench
+    console.log(`[CPU Draft] All positions filled, drafting for bench (BN)`)
     candidates = undraftedPlayers
   }
+
+  console.log(`[CPU Draft] Found ${candidates.length} candidates for ${targetPosition}`)
 
   // Step 5: Calculate weighted scores and select top player
   const scoredCandidates = candidates.map(player => ({
     player,
-    score: calculateWeightedScore(player, targetPosition, team),
+    score: calculateWeightedScore(player, targetPosition, team, 0.1, targetScarcityWeight),
   }))
 
   // Sort by score descending
@@ -279,6 +293,7 @@ export function selectBestPlayer(
 
 /**
  * Get CPU draft recommendation with explanation
+ * @param draftedPlayerIds - Set of player_id values (not playerSeasonId) to exclude ALL seasons of drafted players
  */
 export function getCPUDraftRecommendation(
   availablePlayers: PlayerSeason[],
