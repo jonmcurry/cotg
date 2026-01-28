@@ -5,48 +5,59 @@ After implementing 200 at_bats threshold, the Supabase query returns 0 players f
 
 ## Root Cause Investigation
 
-### Current Query (DraftBoard.tsx:70, 127)
+### Attempted Fix #1 (FAILED)
 ```typescript
-.or('at_bats.gte.200,innings_pitched_outs.gte.30')
+// DraftBoard.tsx:70, 127 - Added ::int casting
+.or('at_bats::int.gte.200,innings_pitched_outs::int.gte.30')
 ```
+**Result:** 400 Bad Request error - PostgREST doesn't support PostgreSQL casting syntax in URL parameters
 
-### Hypothesis
-The database columns `at_bats` and `innings_pitched_outs` may be stored as TEXT type instead of INTEGER, causing Supabase/PostgreSQL to perform **string comparison** instead of **numeric comparison**.
+### Hypothesis (DISPROVEN)
+Initial thought: columns stored as TEXT requiring numeric casting
 
-**String comparison issues:**
-- "30" < "5" (alphabetically "3" < "5")
-- "200" > "199" but "200" < "50" (alphabetically)
-- This would make the filter reject nearly all valid players
+**Evidence examined:**
+- Lines 178, 186 in DraftBoard.tsx explicitly convert to Number after fetching
+- This suggested non-numeric storage (defensive programming)
 
-### Evidence
-- Lines 178, 186 in DraftBoard.tsx explicitly convert these fields to Number after fetching
-- This suggests they're not already numeric in the database
-- Query returns 0 results despite 125 seasons of data
+**Verification:**
+- Checked database schema: `supabase/migrations/002_create_player_seasons.sql`
+- Line 55: `at_bats INTEGER DEFAULT 0`
+- Line 96: `innings_pitched_outs INTEGER DEFAULT 0`
+- **Columns ARE INTEGER** - no casting needed!
+
+### Actual Root Cause
+PostgREST API doesn't support PostgreSQL casting syntax (`::int`) in URL query parameters. Since columns are already INTEGER, no casting is necessary.
 
 ## Resolution Plan
 
 ### Step 1: Verify Data Types ✅
 - Query sample records to check actual data types
 - Confirm if casting is needed
-- **Result:** Confirmed TEXT columns requiring numeric casting
+- **Result:** Columns are INTEGER (verified in schema), not TEXT
 
-### Step 2: Fix Query with Type Casting ✅
-- Use PostgreSQL casting syntax: `at_bats::int.gte.200,innings_pitched_outs::int.gte.30`
+### Step 2: Fix Query (ATTEMPT 1 FAILED) ❌
+- Attempted: PostgreSQL casting syntax `at_bats::int.gte.200`
+- Result: 400 Bad Request - PostgREST doesn't support casting in URLs
+- **Lesson:** PostgREST URL parameters have different syntax than raw SQL
+
+### Step 3: Fix Query (CORRECT FIX) ✅
+- Remove casting syntax entirely - columns are already INTEGER
+- Use plain `.gte()` operator: `at_bats.gte.200,innings_pitched_outs.gte.30`
 - Apply to both count query (line 70) and data query (line 127)
-- **Completed:** Both queries updated with `::int` casting
+- **Completed:** Both queries fixed
 
-### Step 3: Test Query ⏳
+### Step 4: Test Query ⏳
 - Verify count returns non-zero value
 - Verify actual data loads successfully
 - Test with multiple season configurations
 - **Status:** Ready for testing
 
-### Step 4: Documentation ✅
-- Update CHANGELOG.md with fix details
-- Document the data type issue for future reference
-- **Completed:** Added entry to CHANGELOG.md
+### Step 5: Documentation ✅
+- Update CHANGELOG.md with correct root cause
+- Document PostgREST limitation (no casting syntax in URLs)
+- **Completed:** Updated CHANGELOG.md with accurate analysis
 
-### Step 5: Commit ⏳
+### Step 6: Commit ⏳
 - Create commit following git commit guidelines
 - Push to GitHub per CLAUDE.md Rule 9
 - **Status:** Ready to commit

@@ -7,43 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed - 2026-01-28 (Player Loading Query Type Casting)
+### Fixed - 2026-01-28 (Player Loading Query Syntax Error)
 
-**Bug Fix:** Player loading returned 0 results due to string comparison in database query
+**Bug Fix:** Player loading returned 0 results due to invalid PostgREST query syntax
 
 **Problem:**
 - After implementing 200 at_bats threshold, query returned 0 players for all 125 seasons
 - Application showed "CRITICAL ERROR: No players found for selected seasons"
-- Database columns `at_bats` and `innings_pitched_outs` stored as TEXT type
-- Supabase performed string comparison instead of numeric comparison
-- String comparison failures: "30" < "5" (alphabetically "3" < "5"), "200" < "50"
-- Filter `.or('at_bats.gte.200,innings_pitched_outs.gte.30')` rejected all players
+- Supabase returned 400 Bad Request error
+- Initial fix attempt added PostgreSQL casting syntax `::int` which PostgREST doesn't support
+- PostgREST API doesn't parse PostgreSQL casting operators in URL query parameters
 
 **Root Cause:**
 ```typescript
-// DraftBoard.tsx lines 70, 127 - NO TYPE CASTING
-.or('at_bats.gte.200,innings_pitched_outs.gte.30')
-// Database columns are TEXT, causing alphabetic comparison
-// "30" fails .gte.30 check when compared as strings
+// DraftBoard.tsx lines 70, 127 - INCORRECT CASTING SYNTAX
+.or('at_bats::int.gte.200,innings_pitched_outs::int.gte.30')
+// PostgREST doesn't support ::int casting in URL parameters
+// This caused 400 Bad Request error
 ```
 
-**Evidence:**
-- Lines 178, 186 explicitly convert to Number after fetching (suggests non-numeric storage)
-- Query returned count = 0 despite 125 seasons of valid data
-- PostgreSQL TEXT columns require casting for numeric operations
+**Investigation:**
+- Initial hypothesis: columns stored as TEXT requiring numeric casting
+- Evidence against: Lines 178, 186 use Number() conversion (defensive programming)
+- Verification: Database schema shows INTEGER columns (002_create_player_seasons.sql lines 55, 96)
+- Conclusion: Columns already INTEGER, casting unnecessary and invalid for PostgREST
 
 **Solution:**
-Added PostgreSQL type casting to force numeric comparison:
+Removed invalid casting syntax since columns are already INTEGER:
 ```typescript
-// Cast TEXT columns to integers before comparison
-.or('at_bats::int.gte.200,innings_pitched_outs::int.gte.30')
+// No casting needed - columns are already INTEGER in database
+.or('at_bats.gte.200,innings_pitched_outs.gte.30')
 ```
 
 **Technical Details:**
-- PostgreSQL casting syntax: `column::type` converts value before comparison
-- `at_bats::int` casts TEXT to INTEGER for numeric comparison
-- Query now correctly identifies players with 200+ at_bats OR 30+ innings
-- Applied to both count query (line 70) and data query (line 127)
+- Database columns defined as INTEGER in schema (not TEXT)
+- PostgREST translates `.gte()` to PostgreSQL `>=` operator
+- No type conversion needed when columns are already numeric
+- Casting syntax `::type` is PostgreSQL-specific and not supported in PostgREST URL parameters
+- Query now executes correctly without 400 error
 
 **User Impact:**
 - Players now load successfully for all selected seasons
@@ -52,8 +53,8 @@ Added PostgreSQL type casting to force numeric comparison:
 - Both pitchers and position players appear correctly
 
 **Files Modified:**
-- [src/components/draft/DraftBoard.tsx](src/components/draft/DraftBoard.tsx:70) - Cast at_bats and innings_pitched_outs to int in count query
-- [src/components/draft/DraftBoard.tsx](src/components/draft/DraftBoard.tsx:127) - Cast at_bats and innings_pitched_outs to int in data query
+- [src/components/draft/DraftBoard.tsx](src/components/draft/DraftBoard.tsx:70) - Removed invalid ::int casting from count query
+- [src/components/draft/DraftBoard.tsx](src/components/draft/DraftBoard.tsx:127) - Removed invalid ::int casting from data query
 
 **Related Documentation:**
 - [docs/CRITICAL_FIX_PLAYER_LOADING.md](docs/CRITICAL_FIX_PLAYER_LOADING.md) - Investigation and resolution plan
