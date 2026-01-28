@@ -161,77 +161,71 @@ function mapWinsAndSavesToStarPoints(wins: number | null, saves: number | null):
 /**
  * Calculate APBA rating for a position player (batter)
  *
- * Formula:
- * Rating = (Batting × 0.7 + Fielding × 0.3) × Position_Scarcity
+ * PURELY OFFENSIVE RATING - Position does NOT affect individual player rating
  *
- * Batting component uses OPS, Runs Created, and Isolated Power (Bill James metrics)
- * Fielding component uses estimated 1-9 defensive rating
+ * Formula:
+ * Rating = Average(OPS × 100, RC/5, ISO × 100)
+ *
+ * Uses Bill James offensive metrics:
+ * - OPS (On-base Plus Slugging): Primary offensive value
+ * - Runs Created (Advanced): Run production ability
+ * - Isolated Power: Raw power measurement
+ *
+ * Position scarcity should ONLY be applied at draft selection time,
+ * not when calculating historical player ratings.
  */
 export function calculateBatterRating(player: PlayerSeasonStats): number {
-  const position = player.primary_position
+  // Calculate offensive rating components
+  const components: number[] = []
 
-  // Calculate batting component (0-100 scale)
-  let battingRating = 0
-
-  // Use OPS as primary offensive metric (scaled to 0-100)
+  // Component 1: OPS (scaled to 0-100)
+  // OPS of 1.000 = 100 points, 0.700 = 70 points
+  // Elite players: 1.100+ = 110 points (Babe Ruth, Ted Williams)
   if (player.ops !== null) {
-    // OPS of 1.000 = 100 points, 0.700 = 70 points, etc.
-    battingRating = player.ops * 100
+    components.push(player.ops * 100)
   }
 
-  // Boost for runs created (Bill James formula already in DB)
+  // Component 2: Runs Created (Advanced)
+  // Scaled by dividing by 5 to get 0-100 range
+  // Elite seasons: 150+ RC = 30 points
   if (player.runs_created_advanced !== null) {
-    // Add RC/5 to account for run creation ability
-    battingRating += player.runs_created_advanced / 5
+    components.push(player.runs_created_advanced / 5)
   }
 
-  // Boost for power (ISO - Isolated Power, already in DB)
+  // Component 3: Isolated Power
+  // ISO × 100 to scale to 0-100 range
+  // Elite power: ISO of 0.300+ = 30 points (Babe Ruth, Barry Bonds)
   if (player.isolated_power !== null) {
-    // ISO × 100 to scale to 0-50 range
-    battingRating += player.isolated_power * 100
+    components.push(player.isolated_power * 100)
   }
 
-  // Average the components if we have multiple
-  const components = [
-    player.ops !== null ? 1 : 0,
-    player.runs_created_advanced !== null ? 1 : 0,
-    player.isolated_power !== null ? 1 : 0,
-  ].reduce((a, b) => a + b, 0)
-
-  if (components > 1) {
-    battingRating = battingRating / components
+  // If no offensive stats available, return 0
+  if (components.length === 0) {
+    return 0
   }
 
-  // Calculate fielding component (0-100 scale)
-  const defensiveRating = estimateDefensiveRating(
-    player.fielding_pct,
-    player.range_factor,
-    position
-  )
-
-  // Convert 1-9 scale to 90-10 points (1 = 90, 9 = 10)
-  const fieldingRating = (10 - defensiveRating) * 10
-
-  // Combine batting (70%) and fielding (30%)
-  let combinedRating = (battingRating * 0.7) + (fieldingRating * 0.3)
-
-  // Apply position scarcity multiplier
-  const scarcityMultiplier = POSITION_SCARCITY[position] || 1.0
-  combinedRating *= scarcityMultiplier
+  // Average all available components
+  const offensiveRating = components.reduce((sum, val) => sum + val, 0) / components.length
 
   // Clamp to 0-100 range
-  return Math.max(0, Math.min(100, combinedRating))
+  return Math.max(0, Math.min(100, offensiveRating))
 }
 
 /**
  * Calculate APBA rating for a pitcher
  *
+ * PURELY PITCHING EFFECTIVENESS RATING - Role does NOT affect individual rating
+ *
  * Formula:
  * Rating = (Grade × 0.5) + (Control × 0.3) + (Stars × 0.2)
  *
- * Grade: ERA-based (A/B/C/D)
- * Control: K/BB ratio
- * Stars: Wins + Saves
+ * Components:
+ * - Grade: ERA-based effectiveness (A/B/C/D)
+ * - Control: K/BB ratio (command and control)
+ * - Stars: Wins + Saves (results and usage)
+ *
+ * Starter vs reliever distinctions should ONLY be applied at draft selection,
+ * not when calculating historical pitcher ratings.
  */
 export function calculatePitcherRating(player: PlayerSeasonStats): number {
   // Calculate grade points from ERA (0-100, weighted 50%)
@@ -246,21 +240,8 @@ export function calculatePitcherRating(player: PlayerSeasonStats): number {
   // Combine with weights
   const rating = (gradePoints * 0.5) + (controlPoints * 0.3) + (starPoints * 0.2)
 
-  // Determine if starter or reliever
-  // Starters have more innings, relievers have saves
-  const isReliever = (player.saves || 0) > 0 || (player.innings_pitched_outs || 0) < 300
-  const isEliteCloser = isReliever && (player.saves || 0) >= 20 && (player.era || 5.0) < 3.0
-
-  // Apply role multiplier
-  let finalRating = rating
-  if (isEliteCloser) {
-    finalRating *= 1.2  // Elite closers are very valuable
-  } else if (isReliever) {
-    finalRating *= 0.8  // Regular relievers less valuable than starters
-  }
-
-  // Clamp to 0-100 range
-  return Math.max(0, Math.min(100, finalRating))
+  // Clamp to 0-100 range (no role multipliers)
+  return Math.max(0, Math.min(100, rating))
 }
 
 /**

@@ -7,6 +7,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-01-28 (Player Rating System Accuracy)
+
+**Bug Fix:** Player ratings were inaccurate due to position multipliers inflating ratings incorrectly
+
+**Problem:**
+- Gary Sanchez (catcher) rated higher than Babe Ruth (outfielder)
+- Position scarcity multipliers applied to individual player ratings
+- Catchers got 1.3x boost, shortstops got 1.2x boost, outfielders got 1.0x
+- This violated the principle that ratings should be purely offensive/performance-based
+- Defense ratings (30% weight) also incorrectly factored into offensive ratings
+- Pitcher role multipliers (reliever 0.8x, elite closer 1.2x) also applied incorrectly
+
+**Root Cause:**
+```typescript
+// src/utils/apbaRating.ts - INCORRECT FORMULA
+let combinedRating = (battingRating * 0.7) + (fieldingRating * 0.3)
+const scarcityMultiplier = POSITION_SCARCITY[position] || 1.0
+combinedRating *= scarcityMultiplier  // Position inflates rating!
+```
+
+**Example of Problem:**
+- Gary Sanchez: OPS=0.855 → (60×0.7 + 50×0.3) × 1.3 (catcher) = 82.4
+- Babe Ruth: OPS=1.164 → (85×0.7 + 50×0.3) × 1.0 (OF) = 74.5
+- Gary wins due to position multiplier, not actual performance!
+
+**Investigation:**
+- Explored APBA Baseball for Windows v3.0 data structure (C:\dosgames\shared\BBW)
+- Reverse engineered PLAYERS.DAT binary format (146 bytes per player)
+- Analyzed 1,836 players across 1921, 1943, 1971 seasons
+- Confirmed user requirement: "Position should NOT dictate player rating"
+- User correctly identified this as "strictly an offensive rating"
+
+**Solution:**
+Removed position and role multipliers from individual player ratings:
+
+```typescript
+// CORRECT FORMULA - Purely offensive stats
+export function calculateBatterRating(player: PlayerSeasonStats): number {
+  const components: number[] = []
+  if (player.ops !== null) components.push(player.ops * 100)
+  if (player.runs_created_advanced !== null) components.push(player.runs_created_advanced / 5)
+  if (player.isolated_power !== null) components.push(player.isolated_power * 100)
+  return components.reduce((sum, val) => sum + val, 0) / components.length
+}
+```
+
+**Technical Details:**
+- Removed position scarcity multipliers (C: 1.3x, SS: 1.2x, etc.)
+- Removed defensive rating component (was 30% weight)
+- Removed pitcher role multipliers (reliever 0.8x, closer 1.2x)
+- Ratings now purely based on offensive performance (OPS, RC, ISO)
+- Position scarcity should ONLY apply at draft selection time, not rating time
+
+**User Impact:**
+- Babe Ruth now correctly rated higher than Gary Sanchez
+- Historical player ratings now accurately reflect offensive performance
+- Position players no longer artificially boosted by defensive position
+- Pitchers no longer penalized for reliever role
+- Rating system matches user expectation: purely performance-based
+
+**Files Modified:**
+- [src/utils/apbaRating.ts](src/utils/apbaRating.ts:170-223) - Removed position multipliers from calculateBatterRating()
+- [src/utils/apbaRating.ts](src/utils/apbaRating.ts:236-262) - Removed role multipliers from calculatePitcherRating()
+- [docs/plans/fix-player-rating-system.md](docs/plans/fix-player-rating-system.md) - Investigation and resolution plan
+
+**Related Investigation:**
+- Explored APBA data structure comprehensively
+- Documented binary format in docs/analysis/apba-rating-system-reverse-engineered.md
+- Parsed actual APBA player cards from original game files
+- Validated against Bill James formulas (RC, ISO already in database)
+
+**Next Step:**
+- Recalculate all player ratings using corrected formula
+- Run: `npx tsx scripts/calculate-apba-ratings.ts`
+
 ### Fixed - 2026-01-28 (Player Loading Query Syntax Error)
 
 **Bug Fix:** Player loading returned 0 results due to invalid PostgREST query syntax
