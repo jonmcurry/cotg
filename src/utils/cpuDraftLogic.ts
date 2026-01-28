@@ -23,7 +23,7 @@ export interface PlayerSeason {
   // Stats
   apba_rating: number | null  // APBA-style rating (0-100 scale) - primary metric for drafting
   war: number | null  // Keep for reference, but use apba_rating for drafting
-  at_bats: number | null  // Used to determine if player qualifies as position player (>= 50)
+  at_bats: number | null  // Used to determine if player qualifies as position player (>= 200, filters out NL pitchers pre-DH)
   batting_avg: number | null
   hits: number | null
   home_runs: number | null

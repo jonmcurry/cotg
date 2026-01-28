@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - 2026-01-27 (Two-Way Player Threshold)
+
+**Change:** Increased at_bats threshold from 50 to 200 for position player qualification
+
+- Prevents National League pitchers who batted before the DH rule from appearing as two-way players
+  - Before DH rule (introduced to NL in 2022), ALL NL pitchers had to bat
+  - With 50 at_bats threshold, many NL pitchers appeared in both Position Players and Pitchers tabs
+  - These were not genuine two-way players like Babe Ruth or Shohei Ohtani
+  - User impact: Pool contaminated with dozens/hundreds of pitchers who occasionally batted
+- New 200 at_bats threshold ensures only legitimate two-way players appear in both tabs
+  - Babe Ruth 1918-1919: ~400-500 at_bats while also pitching
+  - Shohei Ohtani 2021-2023: 500+ at_bats while also pitching
+  - Average NL pitcher pre-DH: 30-80 at_bats (filtered out by 200 threshold)
+  - Result: Clean separation between true two-way players and pitchers who had to bat
+
+**Before (50 at_bats threshold):**
+```typescript
+const isPositionPlayer = (player: PlayerSeason): boolean => {
+  return (player.at_bats || 0) >= 50  // Many NL pitchers qualify
+}
+```
+
+**After (200 at_bats threshold):**
+```typescript
+const isPositionPlayer = (player: PlayerSeason): boolean => {
+  return (player.at_bats || 0) >= 200  // Only genuine two-way players qualify
+}
+```
+
+**User Impact:**
+- Position Players tab now only shows true position players (no pitchers who had to bat)
+- Two-way players are truly exceptional: Babe Ruth, Shohei Ohtani, and a handful of others
+- Cleaner draft experience with proper player categorization
+- Pitchers tab no longer cluttered with players who had substantial batting careers
+
+**Technical Details:**
+- Threshold updated in 3 locations for consistency:
+  - TabbedPlayerPool.tsx: `isPositionPlayer()` function
+  - PositionAssignmentModal.tsx: Two-way player detection
+  - DraftBoard.tsx: Supabase query filter (`.or('at_bats.gte.200,innings_pitched_outs.gte.30')`)
+- Pitcher threshold remains at 30 innings_pitched_outs (unchanged)
+- Comments updated in cpuDraftLogic.ts PlayerSeason interface
+
+**Files Modified:**
+- [src/components/draft/TabbedPlayerPool.tsx](src/components/draft/TabbedPlayerPool.tsx) - Updated isPositionPlayer() threshold
+- [src/components/draft/PositionAssignmentModal.tsx](src/components/draft/PositionAssignmentModal.tsx) - Updated two-way detection threshold
+- [src/components/draft/DraftBoard.tsx](src/components/draft/DraftBoard.tsx) - Updated query filter (2 occurrences)
+- [src/utils/cpuDraftLogic.ts](src/utils/cpuDraftLogic.ts) - Updated interface comment
+
 ### Fixed - 2026-01-27 (Smooth Progress Indicator)
 
 **Issue:** Progress indicator jumped erratically during player loading (68k → 62k → back up)

@@ -57,7 +57,7 @@ export default function DraftBoard({ onExit }: Props) {
           .from('player_seasons')
           .select('id', { count: 'exact', head: true })
           .in('year', session.selectedSeasons)
-          .or('at_bats.gte.50,innings_pitched_outs.gte.30')
+          .or('at_bats.gte.200,innings_pitched_outs.gte.30')
 
         if (countError) {
           console.error('[Player Load] Error getting count:', countError)
@@ -114,7 +114,7 @@ export default function DraftBoard({ onExit }: Props) {
                   )
                 `)
                 .in('year', session.selectedSeasons)
-                .or('at_bats.gte.50,innings_pitched_outs.gte.30')
+                .or('at_bats.gte.200,innings_pitched_outs.gte.30')
                 .order('apba_rating', { ascending: false, nullsFirst: false })
                 .range(currentOffset, currentOffset + batchSize - 1)
             )

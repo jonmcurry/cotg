@@ -56,8 +56,9 @@ export default function PositionAssignmentModal({
   }
 
   // Detect two-way players (Babe Ruth, Shohei Ohtani) who both pitch and hit
+  // 200 at_bats threshold filters out NL pitchers who batted before DH rule
   const isPitcher = (player.innings_pitched_outs || 0) >= 30
-  const isPositionPlayer = (player.at_bats || 0) >= 50
+  const isPositionPlayer = (player.at_bats || 0) >= 200
   const isTwoWayPlayer = isPitcher && isPositionPlayer
 
   return (

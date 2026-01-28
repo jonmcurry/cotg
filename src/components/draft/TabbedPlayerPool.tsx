@@ -25,9 +25,10 @@ const isPitcher = (player: PlayerSeason): boolean => {
 }
 
 // Determine if a player qualifies as a position player based on batting activity
-// Uses at_bats >= 50 threshold (same as DraftBoard.tsx player filter)
+// Uses at_bats >= 200 threshold to filter out NL pitchers who batted before DH rule
+// This ensures only genuine two-way players (Babe Ruth, Shohei Ohtani) appear in both tabs
 const isPositionPlayer = (player: PlayerSeason): boolean => {
-  return (player.at_bats || 0) >= 50
+  return (player.at_bats || 0) >= 200
 }
 
 // Two-way players (like Babe Ruth 1919 or Shohei Ohtani 2021) appear in BOTH tabs
