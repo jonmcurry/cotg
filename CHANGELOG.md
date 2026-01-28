@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-01-27 (Relief Pitchers as Starting Pitchers)
+
+**Bug Fix:** Relief pitchers were being drafted into Starting Pitcher roster slots
+
+**Problem:**
+- ALL pitchers in database had `primary_position = 'P'` (generic pitcher)
+- SP roster slots accepted players with position 'P'
+- Therefore relief pitchers were eligible for SP slots
+- This violated baseball rules - relief pitchers cannot start games
+
+**Root Cause:**
+```typescript
+// import-lahman.ts line 376 - NO DIFFERENTIATION
+primary_position: 'P',  // Same for ALL pitchers!
+```
+
+**Solution:**
+Added intelligent pitcher classification based on actual role:
+```typescript
+if (season.primary_position === 'P' && season.games_pitched > 0) {
+  const startPercentage = season.games_started_pitcher / season.games_pitched
+
+  if (startPercentage >= 0.5) {
+    season.primary_position = 'SP'  // Starting Pitcher
+  } else if (season.saves >= 10) {
+    season.primary_position = 'CL'  // Closer
+  } else {
+    season.primary_position = 'RP'  // Relief Pitcher
+  }
+}
+```
+
+**Classification Rules:**
+- **SP (Starting Pitcher)**: 50%+ of games were starts
+- **CL (Closer)**: Significant saves (10+) in relief role
+- **RP (Relief Pitcher)**: Pure relief role (middle relievers, setup men)
+
+**Position Eligibility (unchanged):**
+- SP slots: Only accept 'P' or 'SP' → Now only true starters
+- RP slots: Accept 'P', 'RP' → Now only relievers
+- CL slots: Accept 'P', 'RP', 'CL' → Now correctly filtered
+
+**User Impact:**
+- Relief pitchers can no longer be drafted to SP slots
+- Starting pitchers correctly identified in database
+- Closers properly categorized for draft
+- CPU draft logic now follows baseball rules
+
+**Data Migration Required:**
+Run `npm run import:lahman` to re-import and reclassify all pitchers
+
+**Files Changed:**
+- scripts/import-lahman.ts: Added pitcher classification logic after stats calculation
+
 ### Fixed - 2026-01-27 (Position Player Filtering Type Safety)
 
 **Bug Fix:** Added explicit type conversion and debugging for at_bats filtering

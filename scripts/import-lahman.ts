@@ -548,6 +548,23 @@ async function importPlayerSeasons(
       } catch (e) {
         // Ignore calculation errors
       }
+
+      // Classify pitcher position based on actual role
+      // Prevents relief pitchers from being drafted as starting pitchers
+      if (season.primary_position === 'P' && season.games_pitched > 0) {
+        const startPercentage = season.games_started_pitcher / season.games_pitched
+
+        if (startPercentage >= 0.5) {
+          // 50%+ of games were starts = Starting Pitcher
+          season.primary_position = 'SP'
+        } else if (season.saves >= 10) {
+          // Significant saves + relief role = Closer
+          season.primary_position = 'CL'
+        } else {
+          // Pure relief role (middle relievers, setup men, etc.)
+          season.primary_position = 'RP'
+        }
+      }
     }
 
     // Fielding stats
