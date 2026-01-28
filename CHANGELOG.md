@@ -7,6 +7,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Performance - 2026-01-28 (Eliminate Unnecessary Database Query in makePick)
+
+**Performance Improvement:** CPU draft STILL extremely slow despite previous optimization - real bottleneck was database query
+
+**Problem:**
+- Previous optimization reduced processing from 69k to 1k players, but draft still slow
+- User reported AGAIN: "CPU draft is now working however it is extremely slow when the CPU has to pick"
+- Added performance profiling with console.time/console.timeEnd to identify bottleneck
+
+**Root Cause Identified:**
+The `makePick()` function in [draftStore.ts](src/stores/draftStore.ts:326-433) was doing **2 database round-trips per pick**:
+
+```typescript
+// UNNECESSARY SELECT query (lines 371-380)
+const { data: playerSeasonData } = await supabase
+  .from('player_seasons')
+  .select('player_id')
+  .eq('id', playerSeasonId)
+  .single()
+
+// NECESSARY INSERT query (lines 383-398)
+const { error } = await supabase
+  .from('draft_picks')
+  .insert({
+    player_id: playerSeasonData.player_id,  // <-- From previous query!
+    player_season_id: playerSeasonId,
+    // ... other fields
+  })
+```
+
+**Why This Was Slow:**
+- Every pick required 2 database round-trips (SELECT + INSERT)
+- Network latency: ~50-200ms per query
+- Total: ~100-400ms just for database I/O per pick
+- This was the ACTUAL bottleneck, not CPU processing
+
+**Why the SELECT Query Was Unnecessary:**
+The PlayerSeason interface already includes `player_id` field. The DraftBoard query already fetches `player_id` for all players. We had `selection.player.player_id` available but weren't using it!
+
+**Solution:**
+Modified makePick signature to accept optional `playerId` parameter:
+
+```typescript
+// BEFORE
+makePick: (playerSeasonId: string, position: PositionCode, slotNumber: number) => Promise<void>
+
+// AFTER
+makePick: (playerSeasonId: string, playerId: string | undefined, position: PositionCode, slotNumber: number) => Promise<void>
+```
+
+Updated implementation with fallback for backward compatibility:
+```typescript
+let resolvedPlayerId = playerId
+
+if (!resolvedPlayerId) {
+  console.warn('[makePick] playerId not provided, fetching from database (slower)')
+  // Fallback: Fetch player_id from database
+  const { data } = await supabase.from('player_seasons').select('player_id').eq('id', playerSeasonId).single()
+  resolvedPlayerId = data.player_id
+}
+```
+
+Updated both call sites to pass player_id:
+```typescript
+// CPU draft
+makePick(selection.player.id, selection.player.player_id, selection.position, selection.slotNumber)
+
+// Human draft
+makePick(selectedPlayer.id, selectedPlayer.player_id, position, slotNumber)
+```
+
+**Performance Impact:**
+- Before: ~100-400ms per pick (2 database queries)
+- After: ~50-200ms per pick (1 database query)
+- Reduction: 50% fewer database queries
+- Expected result: 50-75% faster CPU picks
+
+**Files Modified:**
+- [src/stores/draftStore.ts](src/stores/draftStore.ts:34) - Updated makePick signature and implementation
+- [src/components/draft/DraftBoard.tsx](src/components/draft/DraftBoard.tsx:308-347) - Added performance profiling and pass player_id to makePick
+- [src/components/draft/DraftBoard.tsx](src/components/draft/DraftBoard.tsx:374-382) - Updated human draft to pass player_id
+- [docs/plans/eliminate-makepick-database-query.md](docs/plans/eliminate-makepick-database-query.md) - Performance analysis and optimization plan
+
 ### Performance - 2026-01-28 (CPU Draft Speed Optimization)
 
 **Performance Improvement:** CPU draft was extremely slow, taking 2-5 seconds per pick

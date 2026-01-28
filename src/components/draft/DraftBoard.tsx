@@ -306,25 +306,34 @@ If this persists, the database may be updating. Wait a few minutes and try again
     const delay = 1000 + Math.random() * 1000
 
     const timeoutId = setTimeout(() => {
+      console.time('[CPU Draft] Total CPU pick time')
+      console.time('[CPU Draft] 1. Build draftedIds Set')
       const draftedIds = new Set(
         session.picks
           .filter(p => p.playerSeasonId !== null)
           .map(p => p.playerSeasonId!)
       )
+      console.timeEnd('[CPU Draft] 1. Build draftedIds Set')
 
       // Performance optimization: Filter undrafted players and only pass top 1000 by rating
       // Players array is already sorted by apba_rating DESC from SQL query
       // This reduces processing from 69,459 players to ~1000 per pick (98.5% reduction)
+      console.time('[CPU Draft] 2. Filter undrafted players')
       const undraftedPlayers = players.filter(p => !draftedIds.has(p.id))
       const topUndrafted = undraftedPlayers.slice(0, 1000)
+      console.timeEnd('[CPU Draft] 2. Filter undrafted players')
 
       console.log(`[CPU Draft] Selecting from ${topUndrafted.length} top-rated undrafted players (${draftedIds.size} already drafted, ${undraftedPlayers.length} remaining)`)
 
+      console.time('[CPU Draft] 3. selectBestPlayer()')
       const selection = selectBestPlayer(topUndrafted, currentTeam, draftedIds)
+      console.timeEnd('[CPU Draft] 3. selectBestPlayer()')
 
       if (selection) {
         console.log(`[CPU Draft] ${currentTeam.name} drafts: ${selection.player.display_name} (${selection.position})`)
-        makePick(selection.player.id, selection.position, selection.slotNumber)
+        console.time('[CPU Draft] 4. makePick() - database write')
+        makePick(selection.player.id, selection.player.player_id, selection.position, selection.slotNumber)
+        console.timeEnd('[CPU Draft] 4. makePick() - database write')
       } else {
         console.error('[CPU Draft] CRITICAL ERROR - CPU could not find a player to draft!', {
           playersAvailable: players.length,
@@ -334,6 +343,7 @@ If this persists, the database may be updating. Wait a few minutes and try again
         alert('CRITICAL ERROR: CPU could not find a player to draft. Check console for details.')
       }
 
+      console.timeEnd('[CPU Draft] Total CPU pick time')
       setCpuThinking(false)
     }, delay)
 
@@ -365,7 +375,7 @@ If this persists, the database may be updating. Wait a few minutes and try again
     async (position: PositionCode, slotNumber: number) => {
       if (!selectedPlayer) return
 
-      await makePick(selectedPlayer.id, position, slotNumber)
+      await makePick(selectedPlayer.id, selectedPlayer.player_id, position, slotNumber)
       setSelectedPlayer(null)
     },
     [selectedPlayer, makePick]

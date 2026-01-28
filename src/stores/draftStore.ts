@@ -31,7 +31,7 @@ interface DraftState {
   resumeDraft: () => void
 
   // Pick actions
-  makePick: (playerSeasonId: string, position: PositionCode, slotNumber: number) => Promise<void>
+  makePick: (playerSeasonId: string, playerId: string | undefined, position: PositionCode, slotNumber: number) => Promise<void>
   getCurrentPickingTeam: () => DraftTeam | null
   getNextPickingTeam: () => DraftTeam | null
 
@@ -323,7 +323,7 @@ export const useDraftStore = create<DraftState>()(
         get().saveSession()
       },
 
-      makePick: async (playerSeasonId: string, position: PositionCode, slotNumber: number) => {
+      makePick: async (playerSeasonId: string, playerId: string | undefined, position: PositionCode, slotNumber: number) => {
         const session = get().session
         if (!session) return
 
@@ -367,16 +367,25 @@ export const useDraftStore = create<DraftState>()(
           pickTime: new Date(),
         }
 
-        // Fetch player_id from player_seasons table
-        const { data: playerSeasonData, error: fetchError } = await supabase
-          .from('player_seasons')
-          .select('player_id')
-          .eq('id', playerSeasonId)
-          .single()
+        // Performance optimization: Use playerId if provided, otherwise fetch from database
+        // This eliminates unnecessary SELECT query when playerId is already available
+        let resolvedPlayerId = playerId
 
-        if (fetchError || !playerSeasonData) {
-          console.error('[makePick] Error fetching player_id from player_seasons:', fetchError)
-          return
+        if (!resolvedPlayerId) {
+          console.warn('[makePick] playerId not provided, fetching from database (slower)')
+          // Fallback: Fetch player_id from player_seasons table
+          const { data: playerSeasonData, error: fetchError } = await supabase
+            .from('player_seasons')
+            .select('player_id')
+            .eq('id', playerSeasonId)
+            .single()
+
+          if (fetchError || !playerSeasonData) {
+            console.error('[makePick] Error fetching player_id from player_seasons:', fetchError)
+            return
+          }
+
+          resolvedPlayerId = playerSeasonData.player_id
         }
 
         // Save pick to Supabase
@@ -385,7 +394,7 @@ export const useDraftStore = create<DraftState>()(
           .insert({
             draft_session_id: session.id,
             draft_team_id: team.id,
-            player_id: playerSeasonData.player_id, // Get from player_seasons table
+            player_id: resolvedPlayerId, // Use provided playerId or fetched from database
             player_season_id: playerSeasonId,
             pick_number: currentPick.pickNumber,
             round: currentPick.round,
