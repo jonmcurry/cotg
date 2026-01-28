@@ -295,15 +295,25 @@ export function selectBestPlayer(
     }
   }
 
-  // Step 4: If all required positions filled, draft best available for bench
+  // Step 4: If no candidates found for required positions, check if bench has available slots
   if (candidates.length === 0) {
-    targetPosition = 'BN'
-    targetScarcityWeight = undefined  // Use base weight for bench
-    console.log(`[CPU Draft] All positions filled, drafting for bench (BN)`)
-    // Bench candidates must also meet playing time requirements (200+ ABs OR 30+ IP)
-    candidates = undraftedPlayers.filter(player =>
-      meetsPlayingTimeRequirements(player, targetPosition)
-    )
+    // Check if bench has any available slots before trying to draft for it
+    const benchSlotsAvailable = team.roster.filter(
+      slot => slot.position === 'BN' && !slot.isFilled
+    ).length
+
+    if (benchSlotsAvailable > 0) {
+      targetPosition = 'BN'
+      targetScarcityWeight = undefined  // Use base weight for bench
+      console.log(`[CPU Draft] All required positions filled or no candidates found, drafting for bench (BN) - ${benchSlotsAvailable} slots available`)
+      // Bench candidates must also meet playing time requirements (200+ ABs OR 30+ IP)
+      candidates = undraftedPlayers.filter(player =>
+        meetsPlayingTimeRequirements(player, targetPosition)
+      )
+    } else {
+      console.log(`[CPU Draft] No candidates found for any position and bench is full. Roster complete.`)
+      return null
+    }
   }
 
   console.log(`[CPU Draft] Found ${candidates.length} candidates for ${targetPosition}`)

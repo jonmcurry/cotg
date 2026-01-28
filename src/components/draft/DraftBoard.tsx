@@ -352,7 +352,7 @@ If this persists, the database may be updating. Wait a few minutes and try again
       } else {
         console.error('[CPU Draft] CRITICAL ERROR - CPU could not find a player to draft!', {
           playersAvailable: players.length,
-          alreadyDrafted: draftedIds.size,
+          alreadyDrafted: draftedPlayerIds.size,
           teamRosterFilled: currentTeam.roster.filter(s => s.isFilled).length,
         })
         alert('CRITICAL ERROR: CPU could not find a player to draft. Check console for details.')

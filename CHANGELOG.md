@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Bug Fix - 2026-01-28 (Draft Completion Errors)
+
+**Bug Fix 1: ReferenceError - draftedIds is not defined**
+
+**Problem:**
+- Draft stopped with JavaScript error: "Uncaught ReferenceError: draftedIds is not defined at DraftBoard.tsx:355"
+- Prevented CPU draft from completing
+
+**Root Cause:**
+In commit 08c81ab, variable was renamed from `draftedIds` to `draftedPlayerIds` for clarity, but one reference in the error logging code at line 355 was missed.
+
+**Solution:**
+Updated line 355 to use `draftedPlayerIds.size` instead of `draftedIds.size`
+
+---
+
+**Bug Fix 2: CPU Draft Tries to Fill Already-Full Bench Slots**
+
+**Problem:**
+- CPU draft stopped with error: "No available slot found for position: BN"
+- Draft attempted to fill bench slots even when all bench slots were already filled
+- Caused draft to fail instead of completing gracefully
+
+**Root Cause:**
+The fallback logic in `selectBestPlayer()` at line 299-307 unconditionally tried to draft for bench (BN) when no candidates were found for required positions. It did NOT check if bench slots were available before attempting to draft for them.
+
+Scenario that triggered bug:
+1. All required positions (C, 1B, 2B, SS, 3B, OF, SP, RP, CL, DH) are filled
+2. All 4 bench slots are also filled
+3. No candidates meet playing time requirements for any position
+4. Code falls back to `targetPosition = 'BN'` without checking if BN has available slots
+5. Tries to find a BN slot but none exist → error
+
+**Solution:**
+Added check for available bench slots before falling back to BN:
+- Count unfilled BN slots: `team.roster.filter(slot => slot.position === 'BN' && !slot.isFilled).length`
+- Only draft for BN if slots are available
+- Return null if no positions have available slots (roster complete)
+- Added logging: "No candidates found for any position and bench is full. Roster complete."
+
+**Impact:**
+- Draft now completes gracefully when roster is full
+- CPU no longer attempts to overfill bench slots
+- Clear logging indicates when team roster is complete
+
+**Files Modified:**
+- [src/components/draft/DraftBoard.tsx](src/components/draft/DraftBoard.tsx) - Fixed variable reference
+- [src/utils/cpuDraftLogic.ts](src/utils/cpuDraftLogic.ts) - Added bench slot availability check
+
+**Testing:**
+- TypeScript compilation successful (Vite HMR confirmed)
+- Draft completes when all roster slots filled
+- Appropriate logging shows roster completion
+
+---
+
 ### Bug Fix - 2026-01-28 (Pitchers Being Drafted as Position Players)
 
 **Problem:**
