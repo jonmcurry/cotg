@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-01-27 (Position Player Filtering Type Safety)
+
+**Bug Fix:** Added explicit type conversion and debugging for at_bats filtering
+
+- Added explicit Number() conversion when checking at_bats threshold to prevent type coercion issues
+- Added debug logging to detect if pitchers with < 200 at_bats incorrectly appear in position players pool
+- Added explicit type conversion in DraftBoard data transformation from Supabase
+- Ensures at_bats and innings_pitched_outs are always proper numbers, not strings
+
+**Changes:**
+- TabbedPlayerPool.tsx:
+  - isPositionPlayer() now uses `Number(player.at_bats || 0) >= 200`
+  - Added console logging to detect filtering bugs
+- DraftBoard.tsx:
+  - Explicit Number() conversion when transforming Supabase data
+  - Prevents potential string vs number comparison issues
+
+**Testing:**
+- Console will log ERROR if any pitchers with < 200 AB appear in position players pool
+- Console will log INFO for each pitcher correctly filtered from position players
+
 ### Changed - 2026-01-27 (Two-Way Player Threshold)
 
 **Change:** Increased at_bats threshold from 50 to 200 for position player qualification

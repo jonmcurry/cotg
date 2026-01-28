@@ -28,7 +28,22 @@ const isPitcher = (player: PlayerSeason): boolean => {
 // Uses at_bats >= 200 threshold to filter out NL pitchers who batted before DH rule
 // This ensures only genuine two-way players (Babe Ruth, Shohei Ohtani) appear in both tabs
 const isPositionPlayer = (player: PlayerSeason): boolean => {
-  return (player.at_bats || 0) >= 200
+  const atBats = Number(player.at_bats || 0)
+  const qualifies = atBats >= 200
+
+  // Debug logging for pitchers who might incorrectly appear as position players
+  if (!qualifies && (player.innings_pitched_outs || 0) >= 30 && atBats > 0) {
+    console.log('[TabbedPlayerPool] Pitcher filtered from position players:', {
+      name: player.display_name || `${player.first_name} ${player.last_name}`,
+      at_bats: player.at_bats,
+      at_bats_type: typeof player.at_bats,
+      at_bats_parsed: atBats,
+      innings_pitched_outs: player.innings_pitched_outs,
+      primary_position: player.primary_position
+    })
+  }
+
+  return qualifies
 }
 
 // Two-way players (like Babe Ruth 1919 or Shohei Ohtani 2021) appear in BOTH tabs
@@ -63,7 +78,19 @@ export default function TabbedPlayerPool({
   // Split into position players and pitchers based on actual activity
   // Two-way players (Babe Ruth, Shohei Ohtani) appear in BOTH tabs
   const positionPlayers = useMemo(() => {
-    return availablePlayers.filter(p => isPositionPlayer(p))
+    const filtered = availablePlayers.filter(p => isPositionPlayer(p))
+
+    // Debug: Log any pitchers that made it through to position players (potential bug)
+    const pitchersInPositionPool = filtered.filter(p => (p.innings_pitched_outs || 0) >= 30 && (p.at_bats || 0) < 200)
+    if (pitchersInPositionPool.length > 0) {
+      console.error('[TabbedPlayerPool] BUG DETECTED - Pitchers with < 200 AB in position players pool:', pitchersInPositionPool.map(p => ({
+        name: p.display_name || `${p.first_name} ${p.last_name}`,
+        at_bats: p.at_bats,
+        innings_pitched_outs: p.innings_pitched_outs
+      })))
+    }
+
+    return filtered
   }, [availablePlayers])
 
   const pitchers = useMemo(() => {

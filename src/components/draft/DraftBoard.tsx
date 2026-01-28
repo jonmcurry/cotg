@@ -166,6 +166,7 @@ export default function DraftBoard({ onExit }: Props) {
         }
 
         // Transform data to include player names
+        // Ensure at_bats is explicitly converted to number to prevent string comparison issues
         const transformedPlayers = allPlayers.map((p: any) => ({
           id: p.id,
           player_id: p.player_id,
@@ -174,7 +175,7 @@ export default function DraftBoard({ onExit }: Props) {
           primary_position: p.primary_position,
           apba_rating: p.apba_rating,
           war: p.war,
-          at_bats: p.at_bats,
+          at_bats: p.at_bats !== null && p.at_bats !== undefined ? Number(p.at_bats) : null,
           batting_avg: p.batting_avg,
           hits: p.hits,
           home_runs: p.home_runs,
@@ -182,7 +183,7 @@ export default function DraftBoard({ onExit }: Props) {
           stolen_bases: p.stolen_bases,
           on_base_pct: p.on_base_pct,
           slugging_pct: p.slugging_pct,
-          innings_pitched_outs: p.innings_pitched_outs,
+          innings_pitched_outs: p.innings_pitched_outs !== null && p.innings_pitched_outs !== undefined ? Number(p.innings_pitched_outs) : null,
           wins: p.wins,
           losses: p.losses,
           era: p.era,
