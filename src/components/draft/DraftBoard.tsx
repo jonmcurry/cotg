@@ -42,6 +42,13 @@ export default function DraftBoard({ onExit }: Props) {
   const currentTeam = getCurrentPickingTeam()
   const nextTeam = getNextPickingTeam()
 
+  // Create stable reference to selected seasons for useEffect dependency
+  // Only changes when actual seasons change, not when picks are made
+  const selectedSeasonsKey = useMemo(
+    () => session?.selectedSeasons?.join(',') || '',
+    [session?.selectedSeasons]
+  )
+
   // Load players from Supabase
   useEffect(() => {
     async function loadPlayers() {
@@ -235,7 +242,11 @@ If this persists, the database may be updating. Wait a few minutes and try again
     }
 
     loadPlayers()
-  }, [session])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Note: We intentionally depend only on selectedSeasonsKey, not the entire session object
+    // This prevents reloading all players after every pick (which would interrupt CPU draft)
+    // The session object changes frequently (after each pick), but selectedSeasons rarely changes
+  }, [selectedSeasonsKey])
 
   // CPU auto-draft logic
   useEffect(() => {
