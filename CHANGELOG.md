@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-02 (Draft AI Player Selection - Closers Drafted Too Early)
+
+**Problem:**
+Aroldis Chapman (Closer) was selected with the first overall pick. Closers and relievers were overvalued because CL scarcity weight (1.3) was higher than SP (1.2), and no volume weighting existed. A 99-rated closer pitching 60 innings scored higher than a 95-rated ace pitching 220 innings.
+
+**Solution:**
+1. **Rebalanced Position Scarcity Weights:** Devalued CL (1.3 -> 0.8) and RP (0.8 -> 0.6). Boosted OF (0.9 -> 1.3), 2B/3B (1.1 -> 1.2), 1B (1.0 -> 1.1). Adjusted SP (1.2 -> 1.15) so aces rise via volume, not scarcity alone.
+2. **Added Volume Multiplier:** New `calculateVolumeMultiplier()` function rewards workhorses and penalizes low-volume players:
+   - Pitchers: >200 IP = 1.2x, >150 IP = 1.1x, <60 IP = 0.8x
+   - Position Players: >450 AB = 1.1x
+3. **Integrated into scoring formula:** `Rating x Scarcity x Volume x Platoon x Randomness`
+
+**Expected Impact:**
+- Chapman (CL, 95 rating, ~60 IP): `95 x 0.8 x 0.8 = ~60.8` (mid-round pick)
+- Walter Johnson (SP, 95 rating, ~320 IP): `95 x 1.15 x 1.2 = ~131.1` (top pick)
+
+**Files Changed:**
+- `src/utils/cpuDraftLogic.ts` - Scarcity weights rebalanced, volume multiplier added
+- `docs/trd-ai-draft-algorithm.md` - Updated to v2.1 with volume multiplier documentation
+- `docs/analysis/draft_ai_volume_weighting_plan.md` - Implementation plan
+- `docs/fix-draft-ai-logic.md` - Problem analysis and solution specification
+
 ### Fixed - 2026-02-02 (CPU Draft Stalls After One Pick)
 
 **Problem:**

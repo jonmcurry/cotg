@@ -1,6 +1,6 @@
 # Technical Requirements Document: CPU Draft AI Algorithm
 
-**Document Version:** 2.0
+**Document Version:** 2.1
 **Last Updated:** 2026-02-02
 **Module:** `src/utils/cpuDraftLogic.ts`
 
@@ -53,7 +53,8 @@ CPU Pick Request
 |    players             |
 |  - Score each:         |
 |    Rating x Scarcity   |
-|    x Platoon x Random  |
+|    x Volume x Platoon  |
+|    x Random            |
 +------------------------+
        |
        v
@@ -87,7 +88,7 @@ CPU Pick Request
 1. Filter out already-drafted players by `player_id`
 2. Get all unfilled positions from roster requirements (deduplicated)
 3. For EACH unfilled position, find all eligible candidates (position eligibility + playing time)
-4. Score every candidate: `APBA Rating x Scarcity x Platoon x Randomness`
+4. Score every candidate: `APBA Rating x Scarcity x Volume x Platoon x Randomness`
 5. Sort all candidates across all positions by score descending
 6. Randomly select from top 5 candidates
 
@@ -99,7 +100,7 @@ CPU Pick Request
 
 **Formula:**
 ```
-Score = APBA Rating x Scarcity Weight x Platoon Bonus x Randomness
+Score = APBA Rating x Scarcity Weight x Volume Multiplier x Platoon Bonus x Randomness
 ```
 
 ### 3.3 getCPUDraftRecommendation(availablePlayers, team, draftedPlayerIds, currentRound)
@@ -126,19 +127,43 @@ Applied as a **multiplier** to the APBA Rating score, not as a filter:
 
 | Position | Base Weight | Rationale |
 |----------|-------------|-----------|
-| C        | 1.5         | Catchers are scarce |
-| SS       | 1.4         | Premium shortstops are scarce |
-| CL       | 1.3         | Elite closers are scarce |
-| SP       | 1.2         | Starting pitchers are important |
-| 2B       | 1.1         | Moderate scarcity |
-| 3B       | 1.1         | Moderate scarcity |
-| 1B       | 1.0         | Baseline |
-| OF       | 0.9         | Lots of outfielders available |
-| RP       | 0.8         | Relief pitchers are abundant |
+| C        | 1.5         | Premium defense - scarce quality catchers |
+| SS       | 1.4         | Premium defense - scarce quality shortstops |
+| OF       | 1.3         | High demand (3 slots), CF premium |
+| 2B       | 1.2         | Middle infield premium |
+| 3B       | 1.2         | Corner infield premium |
+| 1B       | 1.1         | Solid but replaceable |
+| SP       | 1.15        | Aces rise via volume bonus; average SPs wait |
+| CL       | 0.8         | Devalued - low innings, late-round targets |
 | DH       | 0.7         | Can be any position |
+| RP       | 0.6         | Devalued - low innings, deep pool |
 | BN       | 0.5         | Bench - least priority |
 
-### 4.3 Round-Based Scarcity Adjustment
+### 4.3 Volume Multiplier
+
+Rewards high-volume players (workhorses) and penalizes low-volume players (relievers, closers). This prevents closers with elite ratings but 60 IP from outscoring ace starters with 220+ IP.
+
+**Pitchers** (based on `innings_pitched_outs`, which stores outs not innings):
+
+| Innings Pitched | Outs Threshold | Multiplier | Label |
+|-----------------|---------------|------------|-------|
+| > 200 IP        | > 600 outs    | 1.2x       | Workhorse ace |
+| > 150 IP        | > 450 outs    | 1.1x       | Solid starter |
+| 60-150 IP       | 180-450 outs  | 1.0x       | No adjustment |
+| < 60 IP         | < 180 outs    | 0.8x       | Low volume penalty |
+
+**Position Players** (based on `at_bats`):
+
+| At-Bats | Multiplier | Label |
+|---------|------------|-------|
+| > 450 AB | 1.1x     | Everyday player |
+| <= 450 AB | 1.0x    | No adjustment |
+
+**Example Impact:**
+- Aroldis Chapman (CL, Rating 95, ~60 IP): `95 x 0.8 x 0.8 = 60.8`
+- Walter Johnson (SP, Rating 95, ~320 IP): `95 x 1.15 x 1.2 = 131.1`
+
+### 4.4 Round-Based Scarcity Adjustment
 
 The scarcity weight is scaled by round to shift strategy:
 
@@ -150,7 +175,7 @@ The scarcity weight is scaled by round to shift strategy:
 
 **Rationale:** In early rounds, reducing scarcity impact means a 90-rated OF (score: ~81) still beats a 60-rated C (score: ~72). In late rounds, increasing scarcity ensures the team fills scarce positions like Catcher even if the available players are lower-rated.
 
-### 4.4 Platoon Bonus
+### 4.5 Platoon Bonus
 
 Rewards balanced lineup composition (position players only, not SP/RP/CL):
 
@@ -160,7 +185,7 @@ Rewards balanced lineup composition (position players only, not SP/RP/CL):
 | Right-handed batter when team has fewer righties than lefties | x1.05 (+5%) |
 | Switch hitter (always valuable) | x1.10 (+10%) |
 
-### 4.5 Randomization Factor
+### 4.6 Randomization Factor
 
 A +/-10% random factor applied to every score to add unpredictability:
 
@@ -265,6 +290,10 @@ Defined in `ROSTER_REQUIREMENTS` (from SRD 3.5):
 | Late scarcity multiplier | 1.2 | `adjustScarcityByRound()` |
 | Randomization factor | 0.1 (10%) | `selectBestPlayer()` |
 | Top candidates pool | 5 | `selectBestPlayer()` |
+| Workhorse IP threshold | 600 outs (200 IP) | `calculateVolumeMultiplier()` |
+| Solid starter IP threshold | 450 outs (150 IP) | `calculateVolumeMultiplier()` |
+| Low volume IP threshold | 180 outs (60 IP) | `calculateVolumeMultiplier()` |
+| Everyday player AB threshold | 450 AB | `calculateVolumeMultiplier()` |
 
 ---
 
@@ -288,3 +317,4 @@ Defined in `ROSTER_REQUIREMENTS` (from SRD 3.5):
 | 1.3 | 2026-01-23 | Added must-have position boosts (closer, catcher) |
 | 1.4 | 2026-01-23 | Fixed DH logic - any position player can fill DH slot |
 | 2.0 | 2026-02-02 | Major refactor: True BPA - score all candidates across all positions simultaneously. Switched from WAR to APBA Rating. Inverted early round scarcity (now reduces position bias in rounds 1-5). Updated file paths from JS to TS. |
+| 2.1 | 2026-02-02 | Rebalanced position scarcity weights: devalued CL (1.3->0.8) and RP (0.8->0.6), boosted OF (0.9->1.3), 2B/3B (1.1->1.2), 1B (1.0->1.1), SP (1.2->1.15). Added volume multiplier: pitchers >200IP get 1.2x, >150IP get 1.1x, <60IP get 0.8x penalty; position players >450AB get 1.1x. Prevents closers from being drafted in early rounds. |

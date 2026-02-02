@@ -5,7 +5,7 @@
  * Algorithm (True Best Player Available):
  * 1. Identify ALL unfilled required positions
  * 2. Find eligible candidates for EVERY unfilled position
- * 3. Score ALL candidates: Rating x Scarcity x Platoon x Randomness
+ * 3. Score ALL candidates: Rating x Scarcity x Volume x Platoon x Randomness
  *    - Early rounds (1-5): Scarcity reduced (-20%) so raw talent dominates
  *    - Mid rounds (6-15): Base scarcity weights
  *    - Late rounds (16+): Scarcity increased (+20%) to fill roster gaps
@@ -52,18 +52,20 @@ export interface PlayerSeason {
 }
 
 // Position scarcity weights (higher = more scarce = draft earlier)
+// Hitters weighted above pitchers; premium defensive positions prioritized
+// Aces rise via volume multiplier, not scarcity alone
 const POSITION_SCARCITY: Record<PositionCode, number> = {
-  'C': 1.5,   // Catchers are scarce
-  'SS': 1.4,  // Premium shortstops are scarce
-  '1B': 1.0,
-  '2B': 1.1,
-  '3B': 1.1,
-  'OF': 0.9,  // Lots of outfielders
-  'SP': 1.2,  // Starting pitchers are important
-  'RP': 0.8,
-  'CL': 1.3,  // Elite closers are scarce
-  'DH': 0.7,  // Can be any position
-  'BN': 0.5,  // Bench - least priority
+  'C': 1.5,    // Premium defense - scarce quality catchers
+  'SS': 1.4,   // Premium defense - scarce quality shortstops
+  'OF': 1.3,   // High demand (3 slots), CF premium
+  '2B': 1.2,   // Middle infield premium
+  '3B': 1.2,   // Corner infield premium
+  '1B': 1.1,   // Solid but replaceable
+  'SP': 1.15,  // Aces rise via volume bonus; average SPs wait
+  'CL': 0.8,   // Devalued - low innings, late-round targets
+  'DH': 0.7,   // Can be any position
+  'RP': 0.6,   // Devalued - low innings, deep pool
+  'BN': 0.5,   // Bench - least priority
 }
 
 /**
@@ -93,6 +95,50 @@ function adjustScarcityByRound(
   const adjusted = baseWeight * 1.2
   console.log(`[CPU Draft] Round ${currentRound} (late/fill): Scarcity ${baseWeight} -> ${adjusted.toFixed(2)} (+20%, position-first)`)
   return adjusted
+}
+
+/**
+ * Calculate volume multiplier based on playing time
+ * Rewards workhorses (high IP / high AB) and penalizes low-volume players (relievers)
+ * innings_pitched_outs field stores OUTS, not innings (e.g., 200 IP = 600 outs)
+ */
+function calculateVolumeMultiplier(
+  player: PlayerSeason,
+  position: PositionCode
+): number {
+  const isPitcherSlot = ['SP', 'RP', 'CL'].includes(position)
+
+  if (isPitcherSlot) {
+    const outs = player.innings_pitched_outs || 0
+    // >200 IP (600 outs): Workhorse ace bonus
+    if (outs > 600) {
+      console.log(`[CPU Draft] Volume: Workhorse pitcher (${(outs / 3).toFixed(0)} IP) -> 1.2x`)
+      return 1.2
+    }
+    // >150 IP (450 outs): Solid starter bonus
+    if (outs > 450) {
+      console.log(`[CPU Draft] Volume: Solid starter (${(outs / 3).toFixed(0)} IP) -> 1.1x`)
+      return 1.1
+    }
+    // <60 IP (180 outs): Low volume penalty (relievers, closers)
+    if (outs < 180) {
+      console.log(`[CPU Draft] Volume: Low volume pitcher (${(outs / 3).toFixed(0)} IP) -> 0.8x`)
+      return 0.8
+    }
+    // 60-150 IP: No adjustment
+    console.log(`[CPU Draft] Volume: Mid-volume pitcher (${(outs / 3).toFixed(0)} IP) -> 1.0x`)
+    return 1.0
+  }
+
+  // Position players: reward everyday players
+  const atBats = player.at_bats || 0
+  if (atBats > 450) {
+    console.log(`[CPU Draft] Volume: Everyday player (${atBats} AB) -> 1.1x`)
+    return 1.1
+  }
+
+  console.log(`[CPU Draft] Volume: Part-time player (${atBats} AB) -> 1.0x`)
+  return 1.0
 }
 
 /**
@@ -165,7 +211,8 @@ export function meetsPlayingTimeRequirements(
 
 /**
  * Calculate weighted score for a player
- * Combines APBA Rating, position scarcity, platoon balance, and randomization
+ * Combines APBA Rating, position scarcity, volume, platoon balance, and randomization
+ * Formula: Rating x Scarcity x Volume x Platoon x Randomness
  * @param scarcityWeight - Optional pre-calculated scarcity weight (e.g., round-adjusted). If not provided, uses base weight.
  */
 function calculateWeightedScore(
@@ -204,12 +251,15 @@ function calculateWeightedScore(
     }
   }
 
+  // Volume multiplier: rewards workhorses, penalizes low-volume players
+  const volumeMultiplier = calculateVolumeMultiplier(player, position)
+
   // Apply randomization (±10% by default)
   const randomness = 1 + (Math.random() * 2 - 1) * randomizationFactor
 
-  const finalScore = rating * effectiveScarcityWeight * platoonBonus * randomness
+  const finalScore = rating * effectiveScarcityWeight * volumeMultiplier * platoonBonus * randomness
 
-  console.log(`[CPU Draft] Score calculation: rating=${rating} × scarcity=${effectiveScarcityWeight.toFixed(2)} × platoon=${platoonBonus} × random=${randomness.toFixed(3)} = ${finalScore.toFixed(2)}`)
+  console.log(`[CPU Draft] Score calculation: rating=${rating} × scarcity=${effectiveScarcityWeight.toFixed(2)} × volume=${volumeMultiplier} × platoon=${platoonBonus} × random=${randomness.toFixed(3)} = ${finalScore.toFixed(2)}`)
 
   return finalScore
 }
