@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-02 (CPU Draft Strategy: Hitters First, Pitchers Late)
+- Fixed CPU drafting almost exclusively pitchers in early rounds, leaving all hitter positions empty
+- Root cause: top-1000 player pool sorted by APBA rating was pitcher-dominated, starving CPU of hitter candidates
+- Balanced candidate pool: 600 hitters + 400 pitchers ensures both are always available
+- Added round-based position type preference: hitters boosted in rounds 1-5 (1.25x), pitchers boosted in rounds 11+ (1.15x)
+- Equalized volume multipliers: everyday hitters and workhorse pitchers both get 1.15x (was 1.1x vs 1.2x)
+- Boosted premium defensive position scarcity: C from 1.5 to 1.6, SS from 1.4 to 1.5
+
 ### Changed - 2026-02-02 (Draft UX: Replace CPU Pick Modal with Ticker Banner)
 - Removed the full-screen CPU pick modal that blocked the UI during CPU drafting
 - Replaced with a non-blocking bottom ticker banner that shows the current CPU pick inline

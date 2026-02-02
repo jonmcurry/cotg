@@ -327,15 +327,21 @@ If this persists, the database may be updating. Wait a few minutes and try again
           console.log(`[CPU Draft] Drafted players: ${draftedPlayerIds.size} unique players`)
           console.timeEnd('[CPU Draft] 1. Build drafted player IDs')
 
-          // Performance optimization: Filter undrafted players and only pass top 1000 by rating
+          // Performance optimization: Filter undrafted players and pass a balanced pool
           // Players array is already sorted by apba_rating DESC from SQL query
-          // This reduces processing from 69,459 players to ~1000 per pick (98.5% reduction)
+          // Split into hitters and pitchers to guarantee both are represented in the pool
+          // (pitchers can dominate raw APBA ratings, starving the CPU of hitter candidates)
           console.time('[CPU Draft] 2. Filter undrafted players')
           const undraftedPlayers = players.filter(p => !draftedPlayerIds.has(p.player_id))
-          const topUndrafted = undraftedPlayers.slice(0, 1000)
+          const undraftedHitters = undraftedPlayers.filter(p => (p.at_bats || 0) >= 200)
+          const undraftedPitchers = undraftedPlayers.filter(p => (p.innings_pitched_outs || 0) >= 90 && (p.at_bats || 0) < 200)
+          const topUndrafted = [
+            ...undraftedHitters.slice(0, 600),
+            ...undraftedPitchers.slice(0, 400),
+          ]
           console.timeEnd('[CPU Draft] 2. Filter undrafted players')
 
-          console.log(`[CPU Draft] Selecting from ${topUndrafted.length} top-rated undrafted players (${draftedPlayerIds.size} unique players already drafted, ${undraftedPlayers.length} player-seasons remaining)`)
+          console.log(`[CPU Draft] Balanced pool: ${Math.min(undraftedHitters.length, 600)} hitters + ${Math.min(undraftedPitchers.length, 400)} pitchers = ${topUndrafted.length} candidates (${draftedPlayerIds.size} drafted, ${undraftedPlayers.length} remaining)`)
 
           console.time('[CPU Draft] 3. selectBestPlayer()')
           const selection = selectBestPlayer(topUndrafted, currentTeam, draftedPlayerIds, session.currentRound)

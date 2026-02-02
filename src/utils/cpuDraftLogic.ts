@@ -55,8 +55,8 @@ export interface PlayerSeason {
 // Hitters weighted above pitchers; premium defensive positions prioritized
 // Aces rise via volume multiplier, not scarcity alone
 const POSITION_SCARCITY: Record<PositionCode, number> = {
-  'C': 1.5,    // Premium defense - scarce quality catchers
-  'SS': 1.4,   // Premium defense - scarce quality shortstops
+  'C': 1.6,    // Premium defense - scarce quality catchers
+  'SS': 1.5,   // Premium defense - scarce quality shortstops
   'OF': 1.3,   // High demand (3 slots), CF premium
   '2B': 1.2,   // Middle infield premium
   '3B': 1.2,   // Corner infield premium
@@ -98,6 +98,32 @@ function adjustScarcityByRound(
 }
 
 /**
+ * Round-based position type preference
+ * Enforces the draft strategy: hitters first (rounds 1-5), balanced (6-10), pitching depth (11+)
+ */
+function getPositionTypeBonus(position: PositionCode, currentRound: number): number {
+  const isHitterSlot = ['C', '1B', '2B', 'SS', '3B', 'OF', 'DH'].includes(position)
+  const isPitcherSlot = ['SP', 'RP', 'CL'].includes(position)
+
+  // Rounds 1-5: Focus on acquiring high-quality hitters
+  if (currentRound <= 5) {
+    if (isHitterSlot) return 1.25
+    if (isPitcherSlot) return 0.75
+  }
+
+  // Rounds 6-10: Balanced - start mixing in pitching
+  if (currentRound <= 10) {
+    return 1.0
+  }
+
+  // Rounds 11+: Build pitching depth, fill remaining slots
+  if (isPitcherSlot) return 1.15
+  if (isHitterSlot) return 0.85
+
+  return 1.0
+}
+
+/**
  * Calculate volume multiplier based on playing time
  * Rewards workhorses (high IP / high AB) and penalizes low-volume players (relievers)
  * innings_pitched_outs field stores OUTS, not innings (e.g., 200 IP = 600 outs)
@@ -112,8 +138,8 @@ function calculateVolumeMultiplier(
     const outs = player.innings_pitched_outs || 0
     // >200 IP (600 outs): Workhorse ace bonus
     if (outs > 600) {
-      console.log(`[CPU Draft] Volume: Workhorse pitcher (${(outs / 3).toFixed(0)} IP) -> 1.2x`)
-      return 1.2
+      console.log(`[CPU Draft] Volume: Workhorse pitcher (${(outs / 3).toFixed(0)} IP) -> 1.15x`)
+      return 1.15
     }
     // >150 IP (450 outs): Solid starter bonus
     if (outs > 450) {
@@ -133,8 +159,8 @@ function calculateVolumeMultiplier(
   // Position players: reward everyday players
   const atBats = player.at_bats || 0
   if (atBats > 450) {
-    console.log(`[CPU Draft] Volume: Everyday player (${atBats} AB) -> 1.1x`)
-    return 1.1
+    console.log(`[CPU Draft] Volume: Everyday player (${atBats} AB) -> 1.15x`)
+    return 1.15
   }
 
   console.log(`[CPU Draft] Volume: Part-time player (${atBats} AB) -> 1.0x`)
@@ -220,7 +246,8 @@ function calculateWeightedScore(
   position: PositionCode,
   team: DraftTeam,
   randomizationFactor: number = 0.1,
-  scarcityWeight?: number
+  scarcityWeight?: number,
+  currentRound: number = 1
 ): number {
   const rating = player.apba_rating || 0  // Use APBA rating instead of WAR
   const effectiveScarcityWeight = scarcityWeight ?? (POSITION_SCARCITY[position] || 1.0)
@@ -254,12 +281,15 @@ function calculateWeightedScore(
   // Volume multiplier: rewards workhorses, penalizes low-volume players
   const volumeMultiplier = calculateVolumeMultiplier(player, position)
 
+  // Position type bonus: hitters first in early rounds, pitching depth later
+  const posTypeBonus = getPositionTypeBonus(position, currentRound)
+
   // Apply randomization (±10% by default)
   const randomness = 1 + (Math.random() * 2 - 1) * randomizationFactor
 
-  const finalScore = rating * effectiveScarcityWeight * volumeMultiplier * platoonBonus * randomness
+  const finalScore = rating * effectiveScarcityWeight * volumeMultiplier * platoonBonus * posTypeBonus * randomness
 
-  console.log(`[CPU Draft] Score calculation: rating=${rating} × scarcity=${effectiveScarcityWeight.toFixed(2)} × volume=${volumeMultiplier} × platoon=${platoonBonus} × random=${randomness.toFixed(3)} = ${finalScore.toFixed(2)}`)
+  console.log(`[CPU Draft] Score: rating=${rating} × scarcity=${effectiveScarcityWeight.toFixed(2)} × volume=${volumeMultiplier} × platoon=${platoonBonus} × posType=${posTypeBonus} × random=${randomness.toFixed(3)} = ${finalScore.toFixed(2)}`)
 
   return finalScore
 }
@@ -339,7 +369,7 @@ export function selectBestPlayer(
 
     // Score each eligible player for this position
     for (const player of eligible) {
-      const score = calculateWeightedScore(player, position, team, 0.1, adjustedWeight)
+      const score = calculateWeightedScore(player, position, team, 0.1, adjustedWeight, currentRound)
       allScoredCandidates.push({ player, position, score })
     }
   }
@@ -358,7 +388,7 @@ export function selectBestPlayer(
           meetsPlayingTimeRequirements(player, 'BN')
         )
         for (const player of benchCandidates) {
-          const score = calculateWeightedScore(player, 'BN', team, 0.1, benchWeight)
+          const score = calculateWeightedScore(player, 'BN', team, 0.1, benchWeight, currentRound)
           allScoredCandidates.push({ player, position: 'BN', score })
         }
       }
