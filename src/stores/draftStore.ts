@@ -443,28 +443,26 @@ export const useDraftStore = create<DraftState>()(
           resolvedPlayerId = playerSeasonData.player_id
         }
 
-        // Save pick to Supabase
+        // Save pick to Supabase using upsert for idempotency
+        // Uses onConflict on the unique constraint (draft_session_id, pick_number) so that
+        // duplicate calls (from StrictMode, page refresh, race conditions) update rather than fail
         const { error } = await supabase
           .from('draft_picks')
-          .insert({
+          .upsert({
             draft_session_id: session.id,
             draft_team_id: team.id,
-            player_id: resolvedPlayerId, // Use provided playerId or fetched from database
+            player_id: resolvedPlayerId,
             player_season_id: playerSeasonId,
             pick_number: currentPick.pickNumber,
             round: currentPick.round,
             pick_in_round: currentPick.pickInRound,
+          }, {
+            onConflict: 'draft_session_id,pick_number',
           })
 
         if (error) {
-          // 409 = conflict/duplicate: pick already saved (race condition on final pick)
-          // Treat as success since the data is already in the database
-          if (error.code === '23505' || error.message?.includes('duplicate') || (error as any).status === 409) {
-            console.warn('[makePick] Duplicate pick detected (already saved), continuing:', error.message)
-          } else {
-            console.error('[makePick] Error saving pick to Supabase:', error)
-            return
-          }
+          console.error('[makePick] Error saving pick to Supabase:', error)
+          return
         }
 
         // Advance to next pick

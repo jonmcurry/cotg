@@ -52,6 +52,9 @@ export default function DraftBoard({ onExit, onComplete }: Props) {
   // Prevent concurrent draft operations (prevents duplicate pick database errors)
   const draftInProgress = useRef(false)
 
+  // Prevent concurrent human pick submissions (double-click guard)
+  const humanPickInProgress = useRef(false)
+
   const currentTeam = getCurrentPickingTeam()
   const nextTeam = getNextPickingTeam()
 
@@ -236,11 +239,14 @@ If this persists, the database may be updating. Wait a few minutes and try again
   }, [selectedSeasonsKey])
 
   // CPU auto-draft logic
-  // Uses draftInProgress ref as sole concurrency guard (synchronous, not subject to React batching).
-  // cpuThinking state is in the dependency array so the effect re-triggers when a pick completes
-  // (setCpuThinking(false) in finally -> dependency changes -> effect re-runs -> picks up next team).
-  // No setTimeout used - async IIFE runs directly to avoid cleanup-related race conditions.
+  // Uses draftInProgress ref + cleanup cancelled flag as concurrency guards.
+  // The cancelled flag handles React 18 StrictMode double-execution: StrictMode
+  // simulates unmount/remount, creating new refs. Without cleanup, two async IIFEs
+  // would race and both call makePick for the same pick number (causing 409 duplicates).
+  // cpuThinking state is in the dependency array so the effect re-triggers when a pick completes.
   useEffect(() => {
+    let cancelled = false // StrictMode cleanup: set true on unmount to abort async work
+
     console.log('[CPU Draft] useEffect triggered', {
       hasSession: !!session,
       hasCurrentTeam: !!currentTeam,
@@ -268,10 +274,7 @@ If this persists, the database may be updating. Wait a few minutes and try again
       return
     }
 
-    // Sole concurrency guard: ref-based, synchronous, not subject to React batching
-    // Do NOT use cpuThinking state as a guard - it's a stale closure value that
-    // causes the draft to stall when makePick triggers an optimistic session update
-    // before the async operation completes.
+    // Ref-based concurrency guard: prevents re-entrant calls within the same mount
     if (draftInProgress.current) {
       console.log('[CPU Draft] Early return - draft operation already in progress (ref guard)')
       return
@@ -301,9 +304,15 @@ If this persists, the database may be updating. Wait a few minutes and try again
     draftInProgress.current = true
     setCpuThinking(true)
 
-      // Async IIFE - no setTimeout needed (avoids cleanup race conditions)
+      // Async IIFE - checks cancelled flag before side effects
       ; (async () => {
         try {
+          // Check if this effect instance was cancelled (StrictMode unmount)
+          if (cancelled) {
+            console.log('[CPU Draft] Cancelled before starting (StrictMode cleanup)')
+            return
+          }
+
           console.time('[CPU Draft] Total CPU pick time')
           console.time('[CPU Draft] 1. Build drafted player IDs')
 
@@ -343,9 +352,21 @@ If this persists, the database may be updating. Wait a few minutes and try again
 
           console.log(`[CPU Draft] Balanced pool: ${Math.min(undraftedHitters.length, 600)} hitters + ${Math.min(undraftedPitchers.length, 400)} pitchers = ${topUndrafted.length} candidates (${draftedPlayerIds.size} drafted, ${undraftedPlayers.length} remaining)`)
 
+          // Check cancelled again before the expensive selectBestPlayer call
+          if (cancelled) {
+            console.log('[CPU Draft] Cancelled before player selection (StrictMode cleanup)')
+            return
+          }
+
           console.time('[CPU Draft] 3. selectBestPlayer()')
           const selection = selectBestPlayer(topUndrafted, currentTeam, draftedPlayerIds, session.currentRound)
           console.timeEnd('[CPU Draft] 3. selectBestPlayer()')
+
+          // Final cancelled check before the critical makePick database write
+          if (cancelled) {
+            console.log('[CPU Draft] Cancelled before makePick (StrictMode cleanup)')
+            return
+          }
 
           if (selection) {
             console.log(`[CPU Draft] ${currentTeam.name} drafts: ${selection.player.display_name} (${selection.position}), bats: ${selection.player.bats || 'unknown'}`)
@@ -354,14 +375,16 @@ If this persists, the database may be updating. Wait a few minutes and try again
             console.timeEnd('[CPU Draft] 4. makePick() - database write')
 
             // Show inline ticker for this pick (clears after 3 seconds)
-            if (lastCpuPickTimer.current) clearTimeout(lastCpuPickTimer.current)
-            setLastCpuPick({
-              teamName: currentTeam.name,
-              playerName: selection.player.display_name || 'Unknown Player',
-              position: selection.position,
-              year: selection.player.year,
-            })
-            lastCpuPickTimer.current = setTimeout(() => setLastCpuPick(null), 3000)
+            if (!cancelled) {
+              if (lastCpuPickTimer.current) clearTimeout(lastCpuPickTimer.current)
+              setLastCpuPick({
+                teamName: currentTeam.name,
+                playerName: selection.player.display_name || 'Unknown Player',
+                position: selection.position,
+                year: selection.player.year,
+              })
+              lastCpuPickTimer.current = setTimeout(() => setLastCpuPick(null), 3000)
+            }
           } else {
             console.error('[CPU Draft] CRITICAL ERROR - CPU could not find a player to draft!', {
               playersAvailable: players.length,
@@ -376,15 +399,19 @@ If this persists, the database may be updating. Wait a few minutes and try again
           console.error('[CPU Draft] ERROR during draft operation:', error)
           alert('ERROR during CPU draft. Check console for details.')
         } finally {
-          // Reset ref guard first (synchronous), then state (triggers re-render -> effect re-runs)
-          draftInProgress.current = false
-          setCpuThinking(false)
+          // Only reset guards if this effect instance is still active (not cancelled by StrictMode)
+          if (!cancelled) {
+            draftInProgress.current = false
+            setCpuThinking(false)
+          }
         }
       })()
 
-    // No cleanup function - the ref guard prevents concurrent operations.
-    // Previously, cleanup was resetting cpuThinking which caused race conditions.
-    // The async operation completes naturally and resets guards in its finally block.
+    // Cleanup: cancel this effect instance on unmount (critical for StrictMode double-execution)
+    return () => {
+      cancelled = true
+      draftInProgress.current = false
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.currentPick, session?.status, currentTeam?.id, players.length, loading, makePick, cpuThinking])
 
@@ -399,9 +426,15 @@ If this persists, the database may be updating. Wait a few minutes and try again
   const handleConfirmPick = useCallback(
     async (position: PositionCode, slotNumber: number) => {
       if (!selectedPlayer) return
+      if (humanPickInProgress.current) return
+      humanPickInProgress.current = true
 
-      await makePick(selectedPlayer.id, selectedPlayer.player_id, position, slotNumber, selectedPlayer.bats)
-      setSelectedPlayer(null)
+      try {
+        await makePick(selectedPlayer.id, selectedPlayer.player_id, position, slotNumber, selectedPlayer.bats)
+        setSelectedPlayer(null)
+      } finally {
+        humanPickInProgress.current = false
+      }
     },
     [selectedPlayer, makePick]
   )

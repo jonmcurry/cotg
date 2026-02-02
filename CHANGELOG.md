@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-02 (409 Duplicate Pick Errors at Draft Start)
+- Root cause: React 18 StrictMode double-executes effects, creating two concurrent CPU draft operations that both call `makePick` for the same pick number
+- Added StrictMode-safe cleanup (`cancelled` flag) to the CPU draft `useEffect` so the first mount's async operation is aborted on unmount
+- Changed `draft_picks` insert to `upsert` with `onConflict: 'draft_session_id,pick_number'` for idempotent writes (defense-in-depth for page refresh, network retries)
+- Added `humanPickInProgress` ref guard to prevent double-click submissions on human picks
+
 ### Fixed - 2026-02-02 (Clubhouse/StatMaster 400 Error and Draft 409 Conflict)
 - Fixed Clubhouse and StatMaster failing to load players with 32 teams (672 players exceeded PostgREST URL length limit)
 - Batched `.in('id', seasonIds)` queries into chunks of 100 to stay within URL limits
