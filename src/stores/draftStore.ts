@@ -457,8 +457,14 @@ export const useDraftStore = create<DraftState>()(
           })
 
         if (error) {
-          console.error('[makePick] Error saving pick to Supabase:', error)
-          return
+          // 409 = conflict/duplicate: pick already saved (race condition on final pick)
+          // Treat as success since the data is already in the database
+          if (error.code === '23505' || error.message?.includes('duplicate') || (error as any).status === 409) {
+            console.warn('[makePick] Duplicate pick detected (already saved), continuing:', error.message)
+          } else {
+            console.error('[makePick] Error saving pick to Supabase:', error)
+            return
+          }
         }
 
         // Advance to next pick

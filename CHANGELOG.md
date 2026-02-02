@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-02 (Clubhouse/StatMaster 400 Error and Draft 409 Conflict)
+- Fixed Clubhouse and StatMaster failing to load players with 32 teams (672 players exceeded PostgREST URL length limit)
+- Batched `.in('id', seasonIds)` queries into chunks of 100 to stay within URL limits
+- Fixed 409 duplicate pick conflict on final draft pick: treat as non-fatal since the data is already saved
+
 ### Fixed - 2026-02-02 (CPU Draft Strategy: Hitters First, Pitchers Late)
 - Fixed CPU drafting almost exclusively pitchers in early rounds, leaving all hitter positions empty
 - Root cause: top-1000 player pool sorted by APBA rating was pitcher-dominated, starving CPU of hitter candidates
