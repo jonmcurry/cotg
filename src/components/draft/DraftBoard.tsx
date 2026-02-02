@@ -38,6 +38,13 @@ export default function DraftBoard({ onExit, onComplete }: Props) {
   const [loadingProgress, setLoadingProgress] = useState({ loaded: 0, total: 0, hasMore: true })
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerSeason | null>(null)
   const [cpuThinking, setCpuThinking] = useState(false)
+  const [lastCpuPick, setLastCpuPick] = useState<{
+    teamName: string
+    playerName: string
+    position: string
+    year: number
+  } | null>(null)
+  const lastCpuPickTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Prevent concurrent player loading (race condition guard)
   const loadingInProgress = useRef(false)
@@ -339,6 +346,16 @@ If this persists, the database may be updating. Wait a few minutes and try again
             console.time('[CPU Draft] 4. makePick() - database write')
             await makePick(selection.player.id, selection.player.player_id, selection.position, selection.slotNumber, selection.player.bats)
             console.timeEnd('[CPU Draft] 4. makePick() - database write')
+
+            // Show inline ticker for this pick (clears after 3 seconds)
+            if (lastCpuPickTimer.current) clearTimeout(lastCpuPickTimer.current)
+            setLastCpuPick({
+              teamName: currentTeam.name,
+              playerName: selection.player.display_name || 'Unknown Player',
+              position: selection.position,
+              year: selection.player.year,
+            })
+            lastCpuPickTimer.current = setTimeout(() => setLastCpuPick(null), 3000)
           } else {
             console.error('[CPU Draft] CRITICAL ERROR - CPU could not find a player to draft!', {
               playersAvailable: players.length,
@@ -561,24 +578,45 @@ If this persists, the database may be updating. Wait a few minutes and try again
         />
       )}
 
-      {/* CPU Thinking Overlay - Vintage Broadcast */}
-      {cpuThinking && currentTeam && (
-        <div className="fixed inset-0 bg-charcoal/80 backdrop-blur-sm flex items-center justify-center z-50 transition-all duration-300">
-          <div className="bg-charcoal px-12 py-8 border-y-2 border-gold/50 shadow-[0_0_50px_rgba(197,160,89,0.1)] text-center max-w-lg w-full mx-4">
-            <div className="flex items-center justify-center gap-3 mb-4">
-              <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.5)]"></div>
-              <span className="text-xs font-sans font-bold tracking-[0.2em] text-red-500 uppercase">
-                Wire Transmitting
-              </span>
+      {/* CPU Pick Ticker - inline banner instead of blocking modal */}
+      {(cpuThinking || lastCpuPick) && (
+        <div className="fixed bottom-0 left-0 right-0 z-40 pointer-events-none">
+          <div className="container mx-auto px-4 pb-4">
+            <div className="bg-charcoal/95 backdrop-blur-sm border border-gold/30 rounded-sm px-6 py-3 shadow-[0_0_30px_rgba(197,160,89,0.1)] flex items-center gap-4 max-w-2xl mx-auto">
+              {cpuThinking && currentTeam ? (
+                <>
+                  <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse flex-shrink-0"></div>
+                  <span className="text-xs font-sans font-bold tracking-[0.15em] text-red-400 uppercase flex-shrink-0">
+                    On the Wire
+                  </span>
+                  <div className="h-4 w-px bg-gold/20"></div>
+                  <span className="text-sm font-display font-bold text-gold truncate">
+                    {currentTeam.name}
+                  </span>
+                  <span className="text-sm font-serif italic text-cream/50 animate-pulse">
+                    selecting...
+                  </span>
+                </>
+              ) : lastCpuPick ? (
+                <>
+                  <div className="w-2 h-2 bg-gold rounded-full flex-shrink-0"></div>
+                  <span className="text-xs font-sans font-bold tracking-[0.15em] text-gold uppercase flex-shrink-0">
+                    Picked
+                  </span>
+                  <div className="h-4 w-px bg-gold/20"></div>
+                  <span className="text-sm font-display font-bold text-cream truncate">
+                    {lastCpuPick.teamName}
+                  </span>
+                  <span className="text-sm text-cream/40">drafts</span>
+                  <span className="text-sm font-display font-bold text-gold truncate">
+                    {lastCpuPick.playerName}
+                  </span>
+                  <span className="text-xs font-sans text-cream/40">
+                    {lastCpuPick.position} / {lastCpuPick.year}
+                  </span>
+                </>
+              ) : null}
             </div>
-
-            <h3 className="text-3xl font-display font-bold text-cream mb-2 tracking-tight">
-              {currentTeam.name}
-            </h3>
-            <div className="h-px w-24 bg-gold/30 mx-auto mb-4"></div>
-            <p className="text-gold/80 font-serif italic text-lg animate-pulse">
-              Selecting player...
-            </p>
           </div>
         </div>
       )}

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - 2026-02-02 (Draft UX: Replace CPU Pick Modal with Ticker Banner)
+- Removed the full-screen CPU pick modal that blocked the UI during CPU drafting
+- Replaced with a non-blocking bottom ticker banner that shows the current CPU pick inline
+- Ticker shows "On the Wire" while CPU is selecting, then briefly displays the pick result (team, player, position, year) before fading
+- Users can now browse the player pool uninterrupted while CPU teams draft
+
 ### Added - 2026-02-02 (League System, All-Star Game, Persistent Leagues)
 
 **Summary:**
