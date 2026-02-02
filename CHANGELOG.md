@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-02 (CPU Draft Stalls After One Pick)
+
+**Problem:**
+CPU draft makes exactly one pick then stalls with "CPU is drafting... Please wait." overlay stuck indefinitely. Console shows `[CPU Draft] Early return - CPU already thinking`.
+
+**Root Cause:**
+The `makePick` store function updates `session.currentPick` optimistically (before the database write completes). This triggers the CPU draft useEffect while the async operation is still in progress. The effect sees `cpuThinking = true` (stale closure) and early returns. When the operation completes and resets `cpuThinking` to `false`, the effect doesn't re-trigger because `cpuThinking` was intentionally excluded from the dependency array to prevent an earlier race condition.
+
+**Solution:**
+1. Removed `setTimeout(fn, 0)` pattern - replaced with async IIFE (eliminates cleanup-related race conditions)
+2. Removed `cpuThinking` state from effect guard checks (stale closure value, redundant with ref)
+3. Kept `draftInProgress.current` ref as sole concurrency guard (synchronous, not subject to React batching)
+4. Added `cpuThinking` and `loading` to dependency array so effect re-triggers when a pick completes
+5. Removed cleanup function that was resetting `setCpuThinking(false)` (was part of original race condition)
+6. Removed unused `TOTAL_ROUNDS` import
+
+**Files Changed:**
+- `src/components/draft/DraftBoard.tsx` - CPU auto-draft useEffect rewrite
+- `docs/analysis/cpu_draft_stall_fix.md` - Root cause analysis
+
 ### Changed - 2026-02-02 (UI Modernization - Modern Vintage Aesthetic)
 
 **Summary:**

@@ -14,7 +14,6 @@ import PickHistory from './PickHistory'
 import type { PlayerSeason } from '../../utils/cpuDraftLogic'
 import { selectBestPlayer } from '../../utils/cpuDraftLogic'
 import type { PositionCode } from '../../types/draft.types'
-import { TOTAL_ROUNDS } from '../../types/draft.types'
 
 interface Props {
   onExit: () => void
@@ -254,17 +253,21 @@ If this persists, the database may be updating. Wait a few minutes and try again
   }, [selectedSeasonsKey])
 
   // CPU auto-draft logic
+  // Uses draftInProgress ref as sole concurrency guard (synchronous, not subject to React batching).
+  // cpuThinking state is in the dependency array so the effect re-triggers when a pick completes
+  // (setCpuThinking(false) in finally -> dependency changes -> effect re-runs -> picks up next team).
+  // No setTimeout used - async IIFE runs directly to avoid cleanup-related race conditions.
   useEffect(() => {
     console.log('[CPU Draft] useEffect triggered', {
       hasSession: !!session,
       hasCurrentTeam: !!currentTeam,
       teamControl: currentTeam?.control,
       cpuThinking,
+      draftInProgress: draftInProgress.current,
       sessionStatus: session?.status,
       playersCount: players.length,
       loading,
       currentPick: session?.currentPick,
-      totalPicks: TOTAL_ROUNDS,
     })
 
     if (!session) {
@@ -282,15 +285,12 @@ If this persists, the database may be updating. Wait a few minutes and try again
       return
     }
 
-    if (cpuThinking) {
-      console.log('[CPU Draft] Early return - CPU already thinking')
-      return
-    }
-
-    // Prevent concurrent draft operations using ref guard
-    // This survives cleanup cycles and prevents duplicate database inserts
+    // Sole concurrency guard: ref-based, synchronous, not subject to React batching
+    // Do NOT use cpuThinking state as a guard - it's a stale closure value that
+    // causes the draft to stall when makePick triggers an optimistic session update
+    // before the async operation completes.
     if (draftInProgress.current) {
-      console.log('[CPU Draft] Early return - draft operation already in progress')
+      console.log('[CPU Draft] Early return - draft operation already in progress (ref guard)')
       return
     }
 
@@ -312,15 +312,14 @@ If this persists, the database may be updating. Wait a few minutes and try again
       return
     }
 
-    // CPU makes pick immediately (artificial delay removed for performance)
-    // Browser throttling of setTimeout in inactive tabs made drafts extremely slow
     console.log(`[CPU Draft] ${currentTeam.name} is picking...`)
 
-    // Set guards BEFORE queueing async operation
+    // Set guards BEFORE starting async operation
     draftInProgress.current = true
     setCpuThinking(true)
 
-    const timeoutId = setTimeout(async () => {
+    // Async IIFE - no setTimeout needed (avoids cleanup race conditions)
+    ;(async () => {
       try {
         console.time('[CPU Draft] Total CPU pick time')
         console.time('[CPU Draft] 1. Build drafted player IDs')
@@ -378,28 +377,17 @@ If this persists, the database may be updating. Wait a few minutes and try again
         console.error('[CPU Draft] ERROR during draft operation:', error)
         alert('ERROR during CPU draft. Check console for details.')
       } finally {
-        // Always reset guards, even if error occurred
+        // Reset ref guard first (synchronous), then state (triggers re-render -> effect re-runs)
         draftInProgress.current = false
         setCpuThinking(false)
       }
-    }, 0)
+    })()
 
-    return () => {
-      clearTimeout(timeoutId)
-      // Reset UI state (cpuThinking) but NOT draftInProgress ref
-      // The ref must persist to prevent duplicate operations
-      // It will be reset when the async operation completes in the finally block
-      setCpuThinking(false)
-    }
+    // No cleanup function - the ref guard prevents concurrent operations.
+    // Previously, cleanup was resetting cpuThinking which caused race conditions.
+    // The async operation completes naturally and resets guards in its finally block.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    // Note: We only depend on values that should trigger a NEW draft decision:
-    // - session?.currentPick: Re-run when pick advances to next team
-    // - session?.status: Re-run when draft starts/pauses
-    // - currentTeam?.id: Re-run when the picking team changes
-    // - players.length: Re-run when players become available (0 -> 1000)
-    // We intentionally do NOT depend on: session (full object), players (array reference), loading, cpuThinking
-    // Using players.length (primitive) instead of players (array) prevents false re-runs when array reference changes
-  }, [session?.currentPick, session?.status, currentTeam?.id, players.length, makePick])
+  }, [session?.currentPick, session?.status, currentTeam?.id, players.length, loading, makePick, cpuThinking])
 
   const handlePlayerSelect = useCallback((player: PlayerSeason) => {
     if (!currentTeam || currentTeam.control !== 'human') {
@@ -441,9 +429,9 @@ If this persists, the database may be updating. Wait a few minutes and try again
 
   if (!session) {
     return (
-      <div className="min-h-screen bg-cream flex items-center justify-center">
+      <div className="min-h-screen bg-charcoal flex items-center justify-center">
         <div className="text-center">
-          <h2 className="text-2xl font-display text-burgundy mb-4">No Active Draft</h2>
+          <h2 className="text-2xl font-display text-cream mb-4">No Active Draft</h2>
           <button onClick={onExit} className="btn-primary">
             Return to Configuration
           </button>
@@ -454,10 +442,10 @@ If this persists, the database may be updating. Wait a few minutes and try again
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-cream flex items-center justify-center">
+      <div className="min-h-screen bg-charcoal flex items-center justify-center">
         <div className="text-center max-w-md w-full px-8">
-          <h2 className="text-2xl font-display text-burgundy mb-4">Loading Players...</h2>
-          <p className="text-charcoal/60 font-serif mb-6">
+          <h2 className="text-2xl font-display text-cream mb-4">Loading Players...</h2>
+          <p className="text-cream/60 font-serif mb-6">
             Preparing {session.selectedSeasons.length} season(s)
           </p>
 
@@ -465,24 +453,24 @@ If this persists, the database may be updating. Wait a few minutes and try again
           <div className="mb-3">
             {loadingProgress.total > 0 ? (
               <>
-                <p className="text-lg font-display text-charcoal">
+                <p className="text-lg font-display text-gold">
                   {loadingProgress.loaded.toLocaleString()} of {loadingProgress.total.toLocaleString()} players
                 </p>
-                <p className="text-sm text-charcoal/60 font-serif mt-1">
+                <p className="text-sm text-cream/60 font-serif mt-1">
                   {Math.round((loadingProgress.loaded / loadingProgress.total) * 100)}% complete
                 </p>
               </>
             ) : (
-              <p className="text-lg font-display text-charcoal">
+              <p className="text-lg font-display text-gold">
                 Calculating total players...
               </p>
             )}
           </div>
 
           {/* Progress Bar */}
-          <div className="w-full bg-charcoal/10 rounded-full h-3 overflow-hidden">
+          <div className="w-full bg-white/10 rounded-full h-1 overflow-hidden">
             <div
-              className="bg-burgundy h-full rounded-full transition-all duration-300 ease-out relative"
+              className="bg-gold h-full rounded-full transition-all duration-300 ease-out relative"
               style={{
                 width: loadingProgress.total > 0
                   ? `${Math.min((loadingProgress.loaded / loadingProgress.total) * 100, 100)}%`
@@ -493,7 +481,7 @@ If this persists, the database may be updating. Wait a few minutes and try again
               {/* Shimmer effect while loading */}
               {loadingProgress.hasMore && (
                 <div
-                  className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent"
+                  className="absolute inset-0 bg-gradient-to-r from-transparent via-white/50 to-transparent"
                   style={{
                     animation: 'shimmer 1.5s infinite'
                   }}
@@ -502,8 +490,8 @@ If this persists, the database may be updating. Wait a few minutes and try again
             </div>
           </div>
 
-          <p className="text-xs text-charcoal/50 font-serif mt-3">
-            {loadingProgress.hasMore ? 'Loading player data...' : 'Complete!'}
+          <p className="text-xs text-cream/40 font-serif mt-3 tracking-widest uppercase">
+            {loadingProgress.hasMore ? 'Retrieving Archives...' : 'Complete'}
           </p>
 
           <style>{`
@@ -519,16 +507,17 @@ If this persists, the database may be updating. Wait a few minutes and try again
 
   if (session.status === 'completed') {
     return (
-      <div className="min-h-screen bg-cream flex items-center justify-center">
-        <div className="text-center max-w-2xl mx-auto p-8">
-          <h1 className="text-4xl font-display font-bold text-burgundy mb-4">
-            Draft Complete!
+      <div className="min-h-screen bg-charcoal flex items-center justify-center relative overflow-hidden">
+        {/* Confetti or celebration bg could go here */}
+        <div className="text-center max-w-2xl mx-auto p-12 bg-charcoal-light border border-gold/20 rounded-sm shadow-2xl relative z-10">
+          <h1 className="text-4xl font-display font-bold text-gold mb-4">
+            Draft Complete
           </h1>
-          <p className="text-xl font-serif text-charcoal mb-8">
-            All {session.numTeams} teams have completed their rosters.
+          <p className="text-xl font-serif text-cream/80 mb-8 italic">
+            "The rosters are set. The legends are ready. Let the games begin."
           </p>
           <div className="space-x-4">
-            <button onClick={onExit} className="btn-primary">
+            <button onClick={onExit} className="btn-primary px-8">
               Return to Home
             </button>
           </div>
@@ -538,22 +527,27 @@ If this persists, the database may be updating. Wait a few minutes and try again
   }
 
   return (
-    <div className="min-h-screen bg-cream flex flex-col">
-      {/* Draft Controls */}
-      <DraftControls
-        session={session}
-        currentTeam={currentTeam}
-        nextTeam={nextTeam}
-        onPause={pauseDraft}
-        onResume={resumeDraft}
-        onSave={saveSession}
-      />
+    <div className="min-h-screen bg-charcoal flex flex-col relative">
+      {/* Background Texture Overlay */}
+      <div className="absolute inset-0 pointer-events-none opacity-[0.03] bg-[url('https://www.transparenttextures.com/patterns/wood-pattern.png')]"></div>
 
-      {/* Main Content */}
-      <div className="flex-1 container mx-auto px-4 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
-          {/* Left Column: Player Pool */}
-          <div className="lg:col-span-2">
+      {/* Draft Controls */}
+      <div className="relative z-10">
+        <DraftControls
+          session={session}
+          currentTeam={currentTeam}
+          nextTeam={nextTeam}
+          onPause={pauseDraft}
+          onResume={resumeDraft}
+          onSave={saveSession}
+        />
+      </div>
+
+      {/* Main Content - War Room Desk */}
+      <div className="flex-1 container mx-auto px-4 py-8 relative z-10">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 h-full">
+          {/* Left Column: Player Pool (The Ledger) */}
+          <div className="lg:col-span-8 h-full max-h-[calc(100vh-160px)] flex flex-col">
             <TabbedPlayerPool
               players={players}
               draftedPlayerIds={draftedPlayerIds}
@@ -562,8 +556,8 @@ If this persists, the database may be updating. Wait a few minutes and try again
             />
           </div>
 
-          {/* Right Column: Roster & History */}
-          <div className="space-y-6">
+          {/* Right Column: Roster & History (The Clipboard) */}
+          <div className="lg:col-span-4 space-y-6 h-full overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
             {currentTeam && (
               <RosterView team={currentTeam} players={players} />
             )}
@@ -586,15 +580,23 @@ If this persists, the database may be updating. Wait a few minutes and try again
         />
       )}
 
-      {/* CPU Thinking Overlay */}
+      {/* CPU Thinking Overlay - Vintage Broadcast */}
       {cpuThinking && currentTeam && (
-        <div className="fixed inset-0 bg-charcoal/30 flex items-center justify-center z-40">
-          <div className="bg-cream rounded-lg shadow-2xl p-8 text-center max-w-md">
-            <h3 className="text-xl font-display text-burgundy mb-2">
-              {currentTeam.name} is drafting...
+        <div className="fixed inset-0 bg-charcoal/80 backdrop-blur-sm flex items-center justify-center z-50 transition-all duration-300">
+          <div className="bg-charcoal px-12 py-8 border-y-2 border-gold/50 shadow-[0_0_50px_rgba(197,160,89,0.1)] text-center max-w-lg w-full mx-4">
+            <div className="flex items-center justify-center gap-3 mb-4">
+              <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.5)]"></div>
+              <span className="text-xs font-sans font-bold tracking-[0.2em] text-red-500 uppercase">
+                Wire Transmitting
+              </span>
+            </div>
+
+            <h3 className="text-3xl font-display font-bold text-cream mb-2 tracking-tight">
+              {currentTeam.name}
             </h3>
-            <p className="text-charcoal/60 font-serif text-sm">
-              Evaluating available players
+            <div className="h-px w-24 bg-gold/30 mx-auto mb-4"></div>
+            <p className="text-gold/80 font-serif italic text-lg animate-pulse">
+              Selecting player...
             </p>
           </div>
         </div>
