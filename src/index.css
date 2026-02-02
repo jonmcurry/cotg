@@ -2,53 +2,99 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer components {
-  /* Card component */
-  .card {
-    @apply bg-white rounded-lg shadow-md p-6 border border-charcoal/10;
+/* ===== Entry Animation ===== */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
   }
-
-  /* Button styles */
-  .btn-primary {
-    @apply bg-burgundy text-cream font-semibold px-6 py-3 rounded-lg
-           hover:bg-burgundy-dark transition-colors shadow-md
-           active:transform active:scale-95;
-  }
-
-  .btn-secondary {
-    @apply bg-charcoal/10 text-charcoal font-semibold px-6 py-3 rounded-lg
-           hover:bg-charcoal/20 transition-colors
-           active:transform active:scale-95;
-  }
-
-  /* Input field styles */
-  .input-field {
-    @apply border border-charcoal/20 rounded-lg px-4 py-2
-           focus:outline-none focus:ring-2 focus:ring-burgundy/50 focus:border-burgundy
-           bg-white text-charcoal;
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
+/* ===== Base Layer ===== */
 @layer base {
   body {
     @apply bg-cream text-charcoal font-sans;
   }
 
+  /* Subtle grain texture overlay */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0.5;
+  }
+
   h1, h2, h3, h4, h5, h6 {
     @apply font-display;
   }
+
+  /* Gold selection highlight */
+  ::selection {
+    background-color: #C5A059;
+    color: #121212;
+  }
+
+  /* Page entry fade-in */
+  #root {
+    animation: fadeIn 0.4s ease-out;
+  }
 }
 
+/* ===== Component Layer ===== */
 @layer components {
+  /* Primary Button - sleek, premium feel */
   .btn-primary {
-    @apply bg-burgundy hover:bg-burgundy-dark text-cream px-6 py-2 rounded-md font-semibold transition-colors;
+    @apply bg-burgundy text-cream font-semibold px-6 py-3
+           uppercase tracking-widest text-sm
+           rounded-sm
+           shadow-soft
+           transition-all duration-200
+           hover:bg-burgundy-dark hover:shadow-lift hover:-translate-y-0.5
+           active:translate-y-0 active:shadow-soft;
   }
 
+  /* Secondary Button */
   .btn-secondary {
-    @apply bg-gold hover:bg-gold-dark text-charcoal px-6 py-2 rounded-md font-semibold transition-colors;
+    @apply bg-transparent text-charcoal font-semibold px-6 py-3
+           uppercase tracking-widest text-sm
+           rounded-sm
+           border border-charcoal/20
+           transition-all duration-200
+           hover:bg-charcoal/5 hover:border-charcoal/40 hover:-translate-y-0.5 hover:shadow-soft
+           active:translate-y-0;
   }
 
+  /* Card - paper texture, soft shadow */
   .card {
-    @apply bg-white rounded-lg shadow-md p-6 border border-charcoal/10;
+    @apply bg-cream-light rounded-sm p-6
+           border border-charcoal/10
+           shadow-soft
+           transition-shadow duration-200;
+  }
+
+  /* Glass card variant for modals/overlays */
+  .card-glass {
+    @apply rounded-sm p-6
+           border border-white/20
+           shadow-lift;
+    background: rgba(245, 245, 240, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  /* Input field styles */
+  .input-field {
+    @apply border border-charcoal/20 rounded-sm px-4 py-2.5
+           bg-white text-charcoal
+           transition-all duration-200
+           focus:outline-none focus:ring-2 focus:ring-burgundy/50 focus:border-burgundy
+           placeholder:text-charcoal/25;
   }
 }

@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - 2026-02-02 (UI Modernization - Modern Vintage Aesthetic)
+
+**Summary:**
+Overhauled the UI design system to create a "Modern Vintage" baseball aesthetic - marrying 1900s nostalgia with 2025 visual fidelity.
+
+**Changes:**
+1. **Design System** (`tailwind.config.js`):
+   - Deepened charcoal to #121212 (near-black) for higher contrast
+   - Shifted burgundy to #800020 (deeper crimson)
+   - Muted gold to #C5A059 (metallic vintage)
+   - Adjusted cream to #F5F5F0 (newsprint)
+   - Added `leather` accent color (#8B4513)
+   - Added custom `shadow-soft` and `shadow-lift` box shadows
+   - Added SVG grain texture background utility
+
+2. **Global Styles** (`src/index.css`):
+   - Removed duplicate component definitions (btn-primary, btn-secondary, card)
+   - Added subtle CSS noise/grain overlay on body
+   - Added gold ::selection highlight
+   - Added page entry fade-in animation
+   - Modernized buttons: uppercase, wide tracking, rounded-sm, hover lift + shadow
+   - Modernized cards: paper-like bg (cream-light), thin border, soft diffused shadow
+   - Added glass card variant (`.card-glass`) for modals/overlays
+   - Refined input field styling with transitions
+
+3. **App Layout** (`src/App.tsx`):
+   - Massive centered hero typography: "CENTURY / of the / GAME"
+   - Mixed serif italics (Crimson Text) and bold display (Playfair Display)
+   - Minimalist header bar with "Est. 1901" and "APBA Baseball"
+   - Feature cards with category labels and hover lift effect
+   - Status indicators with styled round badges
+   - Footer with leather accent border
+
+**Files Changed:**
+- `tailwind.config.js` - Color palette, shadows, grain texture
+- `src/index.css` - Complete overhaul, removed duplicates
+- `src/App.tsx` - Hero section and layout polish
+- `docs/ui_modernization_implementation.md` - Implementation plan
+
 ### Changed - 2026-02-02 (Draft AI - True Best Player Available Refactor)
 
 **Problem:**
