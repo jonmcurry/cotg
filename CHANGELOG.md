@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - 2026-02-02 (League System, All-Star Game, Persistent Leagues)
+
+**Summary:**
+Implemented the full league workflow: Create League -> Configure Draft -> Draft -> Clubhouse -> StatMaster. Leagues are persisted to Supabase and can be resumed across sessions. Added an All-Star Game at mid-season.
+
+**New Features:**
+1. **League Setup screen:** Configure league name, DH rule, games per season (81/120/162), and playoff format before entering the draft.
+2. **League List screen:** Browse, resume, and delete saved leagues from Supabase.
+3. **Persistent leagues:** Leagues saved to Supabase `leagues` table with draft session linkage.
+4. **All-Star Game:** Mid-season exhibition game with roster selection (top hitters by OPS, pitchers by ERA) split into "Stars" vs "Legends" squads. Does not affect standings.
+5. **DraftConfig league context:** Pre-fills team count and shows league name when creating draft from a league.
+
+**New Files:**
+- `src/types/league.types.ts` - League type definitions
+- `src/stores/leagueStore.ts` - Zustand store with Supabase persistence
+- `src/components/league/LeagueSetup.tsx` - League creation form
+- `src/components/league/LeagueList.tsx` - League browser
+- `src/utils/allStarGame.ts` - All-Star roster selection and simulation
+- `supabase/migrations/20260202_add_league_columns.sql` - DB migration
+
+**Modified Files:**
+- `src/App.tsx` - New routing for league screens, league-draft linkage
+- `src/components/draft/DraftConfig.tsx` - Accepts league context props
+- `src/components/statmaster/StatMaster.tsx` - All-Star Game UI and simulation handler
+- `src/types/schedule.types.ts` - Added `isAllStarGame` field
+- `src/utils/scheduleGenerator.ts` - Inserts All-Star Game, excludes from standings
+- `src/utils/statMaster.ts` - Skips All-Star Game in regular simulation
+- `docs/analysis/league_system_plan.md` - Implementation plan
+
 ### Fixed - 2026-02-02 (Clubhouse Code Review Fixes)
 
 **Summary:**

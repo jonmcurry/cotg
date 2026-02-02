@@ -101,8 +101,25 @@ export function generateSchedule(
             // Check for All-Star break
             if (!allStarDate && gameNumber >= allStarGameNumber) {
                 allStarDate = new Date(currentDate)
-                // Add 3-day All-Star break
-                currentDate.setDate(currentDate.getDate() + 3)
+                // Day 1: Off day before All-Star Game
+                currentDate.setDate(currentDate.getDate() + 1)
+
+                // Day 2: All-Star Game
+                const allStarGame: ScheduledGame = {
+                    id: 'all-star-game',
+                    gameNumber: 0, // Does not count in regular season
+                    homeTeamId: 'all-star-home',
+                    awayTeamId: 'all-star-away',
+                    date: new Date(currentDate),
+                    seriesId: 'all-star',
+                    gameInSeries: 1,
+                    isAllStarGame: true,
+                }
+                games.push(allStarGame)
+                currentDate.setDate(currentDate.getDate() + 1)
+
+                // Day 3: Off day after All-Star Game
+                currentDate.setDate(currentDate.getDate() + 1)
             }
 
             const game: ScheduledGame = {
@@ -230,8 +247,8 @@ export function calculateStandings(schedule: SeasonSchedule, teams: DraftTeam[])
         })
     })
 
-    // Process completed games
-    const completedGames = schedule.games.filter(g => g.result)
+    // Process completed games (exclude All-Star Game from standings)
+    const completedGames = schedule.games.filter(g => g.result && !g.isAllStarGame)
 
     for (const game of completedGames) {
         if (!game.result) continue

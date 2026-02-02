@@ -428,8 +428,9 @@ export function simulateGames(
     for (let i = 0; i < updatedGames.length && simulated < count; i++) {
         const game = updatedGames[i]
 
-        // Skip already-played games
+        // Skip already-played games and All-Star Game (simulated separately)
         if (game.result) continue
+        if (game.isAllStarGame) continue
 
         const homeTeam = teams.find(t => t.id === game.homeTeamId)
         const awayTeam = teams.find(t => t.id === game.awayTeamId)

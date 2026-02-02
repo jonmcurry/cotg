@@ -8,21 +8,21 @@ import type { DraftConfig, TeamControl } from '../../types/draft.types'
 
 interface Props {
   onStartDraft: (config: DraftConfig) => void
-  onLoadDraft: () => void
+  leagueNumTeams?: number
+  leagueName?: string
 }
 
-export default function DraftConfig({ onStartDraft, onLoadDraft }: Props) {
-  const [numTeams, setNumTeams] = useState(8)
-  const [teams, setTeams] = useState<Array<{ name: string; control: TeamControl }>>([
-    { name: 'Team Alpha', control: 'human' },
-    { name: 'Team Beta', control: 'cpu' },
-    { name: 'Team Gamma', control: 'human' },
-    { name: 'Team Delta', control: 'cpu' },
-    { name: 'Team Epsilon', control: 'cpu' },
-    { name: 'Team Zeta', control: 'cpu' },
-    { name: 'Team Eta', control: 'cpu' },
-    { name: 'Team Theta', control: 'cpu' },
-  ])
+export default function DraftConfig({ onStartDraft, leagueNumTeams, leagueName }: Props) {
+  const initialTeamCount = leagueNumTeams || 8
+  const [numTeams, setNumTeams] = useState(initialTeamCount)
+
+  const defaultTeamNames = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta', 'Iota', 'Kappa', 'Lambda', 'Mu']
+  const [teams, setTeams] = useState<Array<{ name: string; control: TeamControl }>>(() =>
+    Array.from({ length: initialTeamCount }, (_, i) => ({
+      name: `Team ${defaultTeamNames[i] || String.fromCharCode(65 + i)}`,
+      control: i === 0 ? 'human' as TeamControl : 'cpu' as TeamControl,
+    }))
+  )
   const [selectedSeasons, setSelectedSeasons] = useState<number[]>([])
   const [seasonMode, setSeasonMode] = useState<'all' | 'era' | 'specific'>('specific')
   const [eraSelection, setEraSelection] = useState('modern')
@@ -122,15 +122,11 @@ export default function DraftConfig({ onStartDraft, onLoadDraft }: Props) {
               Draft Configuration
             </h1>
             <p className="text-charcoal/70 font-serif">
-              Set up your fantasy draft parameters
+              {leagueName
+                ? `Configure the draft for ${leagueName}`
+                : 'Set up your fantasy draft parameters'}
             </p>
           </div>
-          <button
-            onClick={onLoadDraft}
-            className="btn-secondary"
-          >
-            Load Saved Draft
-          </button>
         </div>
 
         <div className="space-y-8">

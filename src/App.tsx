@@ -1,38 +1,97 @@
 /**
- * Main Application Component with Draft System
- * Orchestrates draft configuration and draft board screens
+ * Main Application Component
+ * Orchestrates the full workflow: League -> Draft Config -> Draft -> Clubhouse -> StatMaster
  */
 
 import { useState } from 'react'
 import { useDraftStore } from './stores/draftStore'
+import { useLeagueStore } from './stores/leagueStore'
+import LeagueSetup from './components/league/LeagueSetup'
+import LeagueList from './components/league/LeagueList'
 import DraftConfig from './components/draft/DraftConfig'
 import DraftBoard from './components/draft/DraftBoard'
 import Clubhouse from './components/clubhouse/Clubhouse'
 import StatMaster from './components/statmaster/StatMaster'
 import type { DraftConfig as DraftConfigType } from './types/draft.types'
+import type { League, LeagueConfig } from './types/league.types'
 
-type Screen = 'home' | 'config' | 'draft' | 'clubhouse' | 'statmaster'
+type Screen = 'home' | 'league-setup' | 'league-list' | 'config' | 'draft' | 'clubhouse' | 'statmaster'
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('home')
   const { session, createSession, startDraft, resetSession } = useDraftStore()
+  const { currentLeague, createLeague, setCurrentLeague, loadLeague, linkDraftSession, updateLeagueStatus } = useLeagueStore()
+
+  const handleCreateLeague = async (config: LeagueConfig) => {
+    const seasonYear = new Date().getFullYear()
+    const league = await createLeague(config, seasonYear)
+    console.log('[App] League created:', league.id, league.name)
+    setScreen('config')
+  }
+
+  const handleSelectLeague = async (league: League) => {
+    await loadLeague(league.id)
+
+    // Route to appropriate screen based on league status
+    switch (league.status) {
+      case 'draft':
+        if (league.draftSessionId) {
+          // If we have a matching session in local storage, use it
+          if (session?.id === league.draftSessionId) {
+            if (session.status === 'completed' || session.status === 'clubhouse') {
+              setScreen('clubhouse')
+            } else {
+              setScreen('draft')
+            }
+          } else {
+            // TODO: Implement full load draft from Supabase when loadSession is ready
+            alert('Draft session not found in local storage. Load from database is not yet implemented.')
+            setScreen('config')
+          }
+        } else {
+          setScreen('config')
+        }
+        break
+      case 'in_season':
+      case 'playoffs':
+        if (session) {
+          setScreen('statmaster')
+        } else {
+          alert('Session data not found in local storage. Load from database is not yet implemented.')
+          setScreen('config')
+        }
+        break
+      case 'completed':
+        if (session) {
+          setScreen('statmaster')
+        } else {
+          alert('Session data not found in local storage. Load from database is not yet implemented.')
+          setScreen('home')
+        }
+        break
+      default:
+        setScreen('config')
+    }
+  }
 
   const handleStartDraft = async (config: DraftConfigType) => {
     await createSession(config)
+
+    // Link draft session to current league
+    const draftSession = useDraftStore.getState().session
+    if (currentLeague && draftSession) {
+      await linkDraftSession(currentLeague.id, draftSession.id)
+    }
+
     setScreen('draft')
-    // Give a moment for state to update, then start the draft
     setTimeout(() => {
       startDraft()
     }, 100)
   }
 
-  const handleLoadDraft = () => {
-    // TODO: Implement load draft from Supabase
-    alert('Load draft functionality coming soon!')
-  }
-
-  const handleExitDraft = () => {
+  const handleExitToHome = () => {
     resetSession()
+    setCurrentLeague(null)
     setScreen('home')
   }
 
@@ -40,11 +99,18 @@ export default function App() {
     setScreen('clubhouse')
   }
 
+  const handleStartSeason = async () => {
+    if (currentLeague) {
+      await updateLeagueStatus(currentLeague.id, 'in_season')
+    }
+    setScreen('statmaster')
+  }
+
   // Home Screen
   if (screen === 'home') {
     return (
       <div className="min-h-screen bg-cream flex flex-col">
-        {/* Navigation - Minimalist & Elegant */}
+        {/* Navigation */}
         <header className="py-6 border-b border-charcoal/10 relative z-10">
           <div className="container mx-auto px-6 flex justify-between items-center">
             <div className="flex items-center gap-3">
@@ -83,20 +149,20 @@ export default function App() {
 
             <div className="flex flex-col sm:flex-row gap-6 justify-center items-center mb-24">
               <button
-                onClick={() => setScreen('config')}
+                onClick={() => setScreen('league-setup')}
                 className="btn-primary text-base px-10 py-4 min-w-[200px]"
               >
-                Start New Draft
+                Create New League
               </button>
               <button
-                onClick={handleLoadDraft}
+                onClick={() => setScreen('league-list')}
                 className="btn-secondary text-base px-10 py-4 min-w-[200px]"
               >
-                Load Saved Draft
+                Load League
               </button>
             </div>
 
-            {/* Features Grid - Clean, Typography Focus */}
+            {/* Features Grid */}
             <div className="grid md:grid-cols-3 gap-12 border-t border-charcoal/10 pt-16">
               <div className="text-left group">
                 <div className="text-4xl font-display text-charcoal/20 mb-4 group-hover:text-burgundy/30 transition-colors">01</div>
@@ -123,11 +189,11 @@ export default function App() {
               </div>
             </div>
 
-            {/* Development Status - Subtle */}
+            {/* Development Status */}
             <div className="mt-24 inline-flex items-center gap-3 px-6 py-3 bg-charcoal/5 rounded-full border border-charcoal/5">
               <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
               <span className="text-xs font-sans font-semibold tracking-wider uppercase text-charcoal/60">
-                System Active • Database Loaded
+                System Active -- Database Loaded
               </span>
             </div>
           </div>
@@ -142,12 +208,33 @@ export default function App() {
     )
   }
 
+  // League Setup Screen
+  if (screen === 'league-setup') {
+    return (
+      <LeagueSetup
+        onCreateLeague={handleCreateLeague}
+        onBack={() => setScreen('home')}
+      />
+    )
+  }
+
+  // League List Screen
+  if (screen === 'league-list') {
+    return (
+      <LeagueList
+        onSelectLeague={handleSelectLeague}
+        onBack={() => setScreen('home')}
+      />
+    )
+  }
+
   // Configuration Screen
   if (screen === 'config') {
     return (
       <DraftConfig
         onStartDraft={handleStartDraft}
-        onLoadDraft={handleLoadDraft}
+        leagueNumTeams={currentLeague?.numTeams}
+        leagueName={currentLeague?.name}
       />
     )
   }
@@ -156,7 +243,7 @@ export default function App() {
   if (screen === 'draft' && session) {
     return (
       <DraftBoard
-        onExit={handleExitDraft}
+        onExit={handleExitToHome}
         onComplete={handleDraftComplete}
       />
     )
@@ -167,8 +254,8 @@ export default function App() {
     return (
       <Clubhouse
         session={session}
-        onExit={handleExitDraft}
-        onStartSeason={() => setScreen('statmaster')}
+        onExit={handleExitToHome}
+        onStartSeason={handleStartSeason}
       />
     )
   }

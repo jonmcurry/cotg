@@ -11,6 +11,7 @@ export interface ScheduledGame {
     seriesId: string
     gameInSeries: number
     isAllStarBreak?: boolean
+    isAllStarGame?: boolean
     result?: GameResult
 }
 
