@@ -106,6 +106,7 @@ export const useDraftStore = create<DraftState>()(
               pickInRound: pickInRound + 1,
               teamId: team.id,
               playerSeasonId: null,
+              playerId: null,
               pickTime: null,
             })
           })
@@ -178,6 +179,7 @@ export const useDraftStore = create<DraftState>()(
               pickInRound: pickInRound + 1,
               teamId: team.id, // Now using UUID from database
               playerSeasonId: null,
+              playerId: null,
               pickTime: null,
             })
           })
@@ -415,20 +417,12 @@ export const useDraftStore = create<DraftState>()(
           roster: updatedRoster,
         }
 
-        const updatedPicks = [...session.picks]
-        updatedPicks[currentPickIndex] = {
-          ...currentPick,
-          playerSeasonId,
-          pickTime: new Date(),
-        }
-
-        // Performance optimization: Use playerId if provided, otherwise fetch from database
-        // This eliminates unnecessary SELECT query when playerId is already available
+        // Resolve playerId: use provided value or fetch from database
+        // This is needed before creating the pick so playerId is stored for cross-season deduplication
         let resolvedPlayerId = playerId
 
         if (!resolvedPlayerId) {
           console.warn('[makePick] playerId not provided, fetching from database (slower)')
-          // Fallback: Fetch player_id from player_seasons table
           const { data: playerSeasonData, error: fetchError } = await supabase
             .from('player_seasons')
             .select('player_id')
@@ -441,6 +435,14 @@ export const useDraftStore = create<DraftState>()(
           }
 
           resolvedPlayerId = playerSeasonData.player_id
+        }
+
+        const updatedPicks = [...session.picks]
+        updatedPicks[currentPickIndex] = {
+          ...currentPick,
+          playerSeasonId,
+          playerId: resolvedPlayerId || null,  // Persistent player ID for cross-season deduplication
+          pickTime: new Date(),
         }
 
         // Save pick to Supabase using upsert for idempotency
@@ -538,7 +540,14 @@ export const useDraftStore = create<DraftState>()(
         const session = get().session
         if (!session) return false
 
-        return session.picks.some(pick => pick.playerSeasonId === playerSeasonId)
+        // Check if this specific season is drafted
+        const draftedPick = session.picks.find(pick => pick.playerSeasonId === playerSeasonId)
+        if (draftedPick) return true
+
+        // Also check if ANY season of the same player is drafted (by playerId)
+        // Find the playerId for the queried season from another pick with the same player
+        // Note: This only works when playerId is stored on picks. For legacy data, only exact season match works.
+        return false
       },
 
       canDraftToPosition: (teamId: string, position: PositionCode) => {

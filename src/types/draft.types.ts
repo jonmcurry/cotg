@@ -31,6 +31,7 @@ export interface DraftPick {
   pickInRound: number
   teamId: string
   playerSeasonId: string | null
+  playerId: string | null  // Persistent player ID (across all seasons) for deduplication
   pickTime: Date | null
 }
 

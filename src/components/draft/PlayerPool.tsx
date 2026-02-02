@@ -38,7 +38,7 @@ export default function PlayerPool({
 
     // Filter by availability
     if (showAvailableOnly) {
-      result = result.filter(p => !draftedPlayerIds.has(p.id))
+      result = result.filter(p => !draftedPlayerIds.has(p.player_id))
     }
 
     // Filter by position
@@ -193,7 +193,7 @@ export default function PlayerPool({
               </tr>
             ) : (
               paginatedPlayers.map((player) => {
-                const isDrafted = draftedPlayerIds.has(player.id)
+                const isDrafted = draftedPlayerIds.has(player.player_id)
                 const canDraft = currentTeamControl === 'human' && !isDrafted
 
                 return (

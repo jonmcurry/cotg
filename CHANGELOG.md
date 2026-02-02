@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-02 (Drafted Players Not Removed From Pool Across Seasons)
+- Fixed players being draftable multiple times across different seasons (e.g., Babe Ruth 1927 and Babe Ruth 1923)
+- Root cause: `draftedPlayerIds` relied on fragile indirect lookup from `playerSeasonId` -> `players` array -> `player_id`; if lookup failed silently, the player remained in the pool
+- Added `playerId` field to `DraftPick` type to store the persistent player ID directly on each pick
+- Both UI and CPU draft now read `pick.playerId` directly for deduplication (with fallback for legacy data)
+- Fixed `PlayerPool.tsx` comparing `p.id` (season UUID) against `player_id` set (would never match)
+
 ### Fixed - 2026-02-02 (409 Duplicate Pick Errors at Draft Start)
 - Root cause: React 18 StrictMode double-executes effects, creating two concurrent CPU draft operations that both call `makePick` for the same pick number
 - Added StrictMode-safe cleanup (`cancelled` flag) to the CPU draft `useEffect` so the first mount's async operation is aborted on unmount

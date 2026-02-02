@@ -319,18 +319,20 @@ If this persists, the database may be updating. Wait a few minutes and try again
           // Build Set of drafted player_id values (not playerSeasonId)
           // This prevents the same player from being drafted multiple times for different seasons
           // Example: If Christy Mathewson 1908 is drafted, ALL his other seasons are excluded
+          // Uses playerId directly from picks when available, falls back to roster lookup for legacy data
           const draftedPlayerIds = new Set<string>()
 
-          session.teams.forEach(team => {
-            team.roster.forEach(slot => {
-              if (slot.isFilled && slot.playerSeasonId) {
-                // Find the player in the players array to get their player_id
-                const player = players.find(p => p.id === slot.playerSeasonId)
-                if (player && player.player_id) {
-                  draftedPlayerIds.add(player.player_id)
-                }
+          // Primary: get player IDs directly from completed picks (most reliable)
+          session.picks.forEach(pick => {
+            if (pick.playerId) {
+              draftedPlayerIds.add(pick.playerId)
+            } else if (pick.playerSeasonId) {
+              // Fallback: lookup from players array (legacy picks without playerId)
+              const player = players.find(p => p.id === pick.playerSeasonId)
+              if (player?.player_id) {
+                draftedPlayerIds.add(player.player_id)
               }
-            })
+            }
           })
 
           console.log(`[CPU Draft] Drafted players: ${draftedPlayerIds.size} unique players`)
@@ -440,21 +442,27 @@ If this persists, the database may be updating. Wait a few minutes and try again
   )
 
   const draftedPlayerIds = useMemo(() => {
-    // Get all drafted season IDs
-    const draftedSeasonIds = new Set(
-      session?.picks
-        .filter(p => p.playerSeasonId !== null)
-        .map(p => p.playerSeasonId!) || []
-    )
+    const completedPicks = session?.picks.filter(p => p.playerSeasonId !== null) || []
 
-    // Convert season IDs to player IDs so all seasons of a drafted player are filtered out
-    const playerIds = new Set(
-      players
-        .filter(p => draftedSeasonIds.has(p.id))
-        .map(p => p.player_id)
-    )
+    // Build player ID set directly from picks (no lookup needed when playerId is stored)
+    const playerIds = new Set<string>()
 
-    console.log('[DraftBoard] Drafted seasons:', draftedSeasonIds.size, '| Unique players drafted:', playerIds.size)
+    for (const pick of completedPicks) {
+      if (pick.playerId) {
+        // Direct: playerId stored on the pick (new drafts)
+        playerIds.add(pick.playerId)
+      } else if (pick.playerSeasonId) {
+        // Fallback: lookup player_id from players array (legacy drafts without playerId on pick)
+        const player = players.find(p => p.id === pick.playerSeasonId)
+        if (player?.player_id) {
+          playerIds.add(player.player_id)
+        } else {
+          console.warn('[DraftBoard] Could not resolve player_id for drafted season:', pick.playerSeasonId)
+        }
+      }
+    }
+
+    console.log('[DraftBoard] Drafted picks:', completedPicks.length, '| Unique players drafted:', playerIds.size)
 
     return playerIds
   }, [session?.picks, players])
