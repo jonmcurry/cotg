@@ -2,12 +2,14 @@
  * CPU Draft AI Logic
  * Implements intelligent auto-drafting based on SRD requirements (FR-CPU-001 to FR-CPU-005)
  *
- * Algorithm:
- * 1. Identify unfilled required positions
- * 2. Weight positions by scarcity (C, SS weighted higher)
- * 3. Find top 3-5 players at needed positions by APBA Rating
- * 4. Apply randomization factor (±10% rating weight)
- * 5. Select highest weighted player
+ * Algorithm (True Best Player Available):
+ * 1. Identify ALL unfilled required positions
+ * 2. Find eligible candidates for EVERY unfilled position
+ * 3. Score ALL candidates: Rating x Scarcity x Platoon x Randomness
+ *    - Early rounds (1-5): Scarcity reduced (-20%) so raw talent dominates
+ *    - Mid rounds (6-15): Base scarcity weights
+ *    - Late rounds (16+): Scarcity increased (+20%) to fill roster gaps
+ * 4. Select from top 5 scored candidates (adds unpredictability)
  */
 
 import type { DraftTeam, PositionCode } from '../types/draft.types'
@@ -66,30 +68,30 @@ const POSITION_SCARCITY: Record<PositionCode, number> = {
 
 /**
  * Adjust position scarcity weight based on draft round
- * Early rounds: Emphasize scarcity (+20%)
- * Mid rounds: Use base weights
- * Late rounds: De-emphasize scarcity (-20%), focus on BPA
+ * Early rounds: REDUCE scarcity so raw talent (Rating) dominates (True BPA)
+ * Mid rounds: Use base weights (balanced)
+ * Late rounds: INCREASE scarcity to fill remaining roster gaps
  */
 function adjustScarcityByRound(
   baseWeight: number,
   currentRound: number
 ): number {
-  // Early rounds (1-5): Emphasize scarcity more
+  // Early rounds (1-5): Reduce scarcity impact - let raw Rating dominate (True BPA)
   if (currentRound <= 5) {
-    const adjusted = baseWeight * 1.2
-    console.log(`[CPU Draft] Round ${currentRound} (early): Scarcity ${baseWeight} → ${adjusted.toFixed(2)} (+20%)`)
+    const adjusted = baseWeight * 0.8
+    console.log(`[CPU Draft] Round ${currentRound} (early/BPA): Scarcity ${baseWeight} -> ${adjusted.toFixed(2)} (-20%, talent-first)`)
     return adjusted
   }
 
-  // Mid rounds (6-15): Use base weights
+  // Mid rounds (6-15): Use base weights (balanced approach)
   if (currentRound <= 15) {
     console.log(`[CPU Draft] Round ${currentRound} (mid): Scarcity ${baseWeight} (base)`)
     return baseWeight
   }
 
-  // Late rounds (16+): Reduce scarcity emphasis, focus on BPA
-  const adjusted = baseWeight * 0.8
-  console.log(`[CPU Draft] Round ${currentRound} (late): Scarcity ${baseWeight} → ${adjusted.toFixed(2)} (-20%)`)
+  // Late rounds (16+): Increase scarcity emphasis to fill roster gaps
+  const adjusted = baseWeight * 1.2
+  console.log(`[CPU Draft] Round ${currentRound} (late/fill): Scarcity ${baseWeight} -> ${adjusted.toFixed(2)} (+20%, position-first)`)
   return adjusted
 }
 
@@ -237,99 +239,100 @@ export function selectBestPlayer(
     return null
   }
 
-  // Step 1: Identify unfilled required positions
+  // Step 1: Identify unfilled required positions (deduplicated for scoring)
   const unfilledPositions = getUnfilledPositions(team)
 
-  let targetPosition: PositionCode = 'BN'
-  let targetScarcityWeight: number | undefined = undefined
-  let candidates: PlayerSeason[] = []
+  // Deduplicate positions (getUnfilledPositions returns one entry per slot, e.g. OF x3)
+  const uniqueUnfilledPositions = [...new Set(unfilledPositions)]
 
-  if (unfilledPositions.length > 0) {
-    // Step 2: Weight positions by scarcity with round adjustment
-    const positionWeights = unfilledPositions.map(pos => {
-      const baseWeight = POSITION_SCARCITY[pos] || 1.0
-      const adjustedWeight = adjustScarcityByRound(baseWeight, currentRound)
-
-      return {
-        position: pos,
-        weight: adjustedWeight,
-      }
-    })
-
-    // Sort by weight descending and pick the most scarce unfilled position
-    positionWeights.sort((a, b) => b.weight - a.weight)
-    targetPosition = positionWeights[0].position
-    targetScarcityWeight = positionWeights[0].weight
-
-    console.log(`[CPU Draft] Target position: ${targetPosition} (scarcity weight: ${targetScarcityWeight.toFixed(2)})`)
-
-    // Step 3: Find players who qualify for this position
-    // Must match both position eligibility AND playing time requirements
-    const positionEligible = undraftedPlayers.filter(player =>
-      playerQualifiesForPosition(player.primary_position, targetPosition)
-    )
-    candidates = positionEligible.filter(player =>
-      meetsPlayingTimeRequirements(player, targetPosition)
-    )
-
-    if (positionEligible.length > 0 && candidates.length === 0) {
-      console.log(`[CPU Draft] WARNING: Found ${positionEligible.length} position-eligible players for ${targetPosition}, but 0 met playing time requirements`)
-    }
-
-    // If no candidates for preferred position, try next position
-    for (let i = 1; i < positionWeights.length && candidates.length === 0; i++) {
-      targetPosition = positionWeights[i].position
-      targetScarcityWeight = positionWeights[i].weight
-      console.log(`[CPU Draft] No candidates for previous position, trying ${targetPosition} (scarcity weight: ${targetScarcityWeight.toFixed(2)})`)
-
-      const positionEligibleFallback = undraftedPlayers.filter(player =>
-        playerQualifiesForPosition(player.primary_position, targetPosition)
-      )
-      candidates = positionEligibleFallback.filter(player =>
-        meetsPlayingTimeRequirements(player, targetPosition)
-      )
-
-      if (positionEligibleFallback.length > 0 && candidates.length === 0) {
-        console.log(`[CPU Draft] WARNING: Found ${positionEligibleFallback.length} position-eligible players for ${targetPosition}, but 0 met playing time requirements`)
-      }
-    }
-  }
-
-  // Step 4: If no candidates found for required positions, check if bench has available slots
-  if (candidates.length === 0) {
-    // Check if bench has any available slots before trying to draft for it
+  // If no unfilled positions, check bench
+  if (uniqueUnfilledPositions.length === 0) {
     const benchSlotsAvailable = team.roster.filter(
       slot => slot.position === 'BN' && !slot.isFilled
     ).length
 
     if (benchSlotsAvailable > 0) {
-      targetPosition = 'BN'
-      targetScarcityWeight = undefined  // Use base weight for bench
-      console.log(`[CPU Draft] All required positions filled or no candidates found, drafting for bench (BN) - ${benchSlotsAvailable} slots available`)
-      // Bench candidates must also meet playing time requirements (200+ ABs OR 30+ IP)
-      candidates = undraftedPlayers.filter(player =>
-        meetsPlayingTimeRequirements(player, targetPosition)
-      )
+      uniqueUnfilledPositions.push('BN')
     } else {
-      console.log(`[CPU Draft] No candidates found for any position and bench is full. Roster complete.`)
+      console.log(`[CPU Draft] All positions and bench filled. Roster complete.`)
       return null
     }
   }
 
-  console.log(`[CPU Draft] Found ${candidates.length} candidates for ${targetPosition}`)
+  console.log(`[CPU Draft] Round ${currentRound} - Unfilled positions: ${uniqueUnfilledPositions.join(', ')}`)
 
-  // Step 5: Calculate weighted scores and select top player
-  const scoredCandidates = candidates.map(player => ({
-    player,
-    score: calculateWeightedScore(player, targetPosition, team, 0.1, targetScarcityWeight),
-  }))
+  // Step 2: Score ALL candidates across ALL unfilled positions simultaneously (True BPA)
+  // Instead of picking a target position first, we evaluate every eligible player
+  // for every unfilled position and pick the highest overall score.
+  interface ScoredCandidate {
+    player: PlayerSeason
+    position: PositionCode
+    score: number
+  }
 
-  // Sort by score descending
-  scoredCandidates.sort((a, b) => b.score - a.score)
+  const allScoredCandidates: ScoredCandidate[] = []
+
+  for (const position of uniqueUnfilledPositions) {
+    const baseWeight = POSITION_SCARCITY[position] || 1.0
+    const adjustedWeight = adjustScarcityByRound(baseWeight, currentRound)
+
+    // Find players who qualify for this position (eligibility + playing time)
+    const eligible = undraftedPlayers.filter(player =>
+      playerQualifiesForPosition(player.primary_position, position) &&
+      meetsPlayingTimeRequirements(player, position)
+    )
+
+    if (eligible.length === 0) {
+      console.log(`[CPU Draft] WARNING: No eligible candidates for ${position}`)
+      continue
+    }
+
+    // Score each eligible player for this position
+    for (const player of eligible) {
+      const score = calculateWeightedScore(player, position, team, 0.1, adjustedWeight)
+      allScoredCandidates.push({ player, position, score })
+    }
+  }
+
+  if (allScoredCandidates.length === 0) {
+    // Fallback: try bench if we haven't already
+    if (!uniqueUnfilledPositions.includes('BN')) {
+      const benchSlotsAvailable = team.roster.filter(
+        slot => slot.position === 'BN' && !slot.isFilled
+      ).length
+
+      if (benchSlotsAvailable > 0) {
+        console.log(`[CPU Draft] No candidates for required positions, trying bench (${benchSlotsAvailable} slots available)`)
+        const benchWeight = adjustScarcityByRound(POSITION_SCARCITY['BN'] || 0.5, currentRound)
+        const benchCandidates = undraftedPlayers.filter(player =>
+          meetsPlayingTimeRequirements(player, 'BN')
+        )
+        for (const player of benchCandidates) {
+          const score = calculateWeightedScore(player, 'BN', team, 0.1, benchWeight)
+          allScoredCandidates.push({ player, position: 'BN', score })
+        }
+      }
+    }
+
+    if (allScoredCandidates.length === 0) {
+      console.log(`[CPU Draft] No candidates found for any position. Roster may be complete.`)
+      return null
+    }
+  }
+
+  // Step 3: Sort all candidates by score descending and select
+  allScoredCandidates.sort((a, b) => b.score - a.score)
+
+  // Log top candidates for visibility
+  const topForLog = allScoredCandidates.slice(0, 5)
+  console.log(`[CPU Draft] Top candidates across all positions:`)
+  topForLog.forEach((c, i) => {
+    console.log(`  ${i + 1}. ${c.player.display_name || c.player.player_id} (${c.position}) - Rating: ${c.player.apba_rating}, Score: ${c.score.toFixed(2)}`)
+  })
 
   // Take top 3-5 candidates and randomly pick one (adds unpredictability)
-  const topCount = Math.min(5, scoredCandidates.length)
-  const topCandidates = scoredCandidates.slice(0, topCount)
+  const topCount = Math.min(5, allScoredCandidates.length)
+  const topCandidates = allScoredCandidates.slice(0, topCount)
   const selectedIndex = Math.floor(Math.random() * topCandidates.length)
   const selected = topCandidates[selectedIndex]
 
@@ -339,17 +342,19 @@ export function selectBestPlayer(
 
   // Find the first available slot for this position
   const availableSlot = team.roster.find(
-    slot => slot.position === targetPosition && !slot.isFilled
+    slot => slot.position === selected.position && !slot.isFilled
   )
 
   if (!availableSlot) {
-    console.error('No available slot found for position:', targetPosition)
+    console.error(`[CPU Draft] ERROR: No available slot found for position: ${selected.position}`)
     return null
   }
 
+  console.log(`[CPU Draft] Selected: ${selected.player.display_name || selected.player.player_id} for ${selected.position} (score: ${selected.score.toFixed(2)})`)
+
   return {
     player: selected.player,
-    position: targetPosition,
+    position: selected.position,
     slotNumber: availableSlot.slotNumber,
   }
 }
@@ -361,14 +366,15 @@ export function selectBestPlayer(
 export function getCPUDraftRecommendation(
   availablePlayers: PlayerSeason[],
   team: DraftTeam,
-  draftedPlayerIds: Set<string>
+  draftedPlayerIds: Set<string>,
+  currentRound: number = 1
 ): {
   player: PlayerSeason
   position: PositionCode
   slotNumber: number
   reasoning: string
 } | null {
-  const selection = selectBestPlayer(availablePlayers, team, draftedPlayerIds)
+  const selection = selectBestPlayer(availablePlayers, team, draftedPlayerIds, currentRound)
 
   if (!selection) {
     return null

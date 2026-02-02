@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - 2026-02-02 (Draft AI - True Best Player Available Refactor)
+
+**Problem:**
+The CPU Draft AI claimed to use "Best Player Available" (BPA) but actually used "Best Player at Most Scarce Position". The algorithm picked a target position first, then found the best player at that position - never comparing players across positions. Additionally, early round scarcity weights were inverted: rounds 1-5 increased scarcity impact (+20%) when they should have decreased it to let raw talent dominate.
+
+**Root Cause:**
+1. `selectBestPlayer` filtered candidates to a single target position before scoring, preventing cross-position comparison
+2. `adjustScarcityByRound` multiplied scarcity by 1.2 in early rounds (more position-biased) instead of 0.8 (less position-biased)
+3. `getCPUDraftRecommendation` did not pass `currentRound` to `selectBestPlayer`, defaulting to round 1
+
+**Solution:**
+1. Refactored `selectBestPlayer` to score ALL candidates across ALL unfilled positions simultaneously. Score = Rating x Scarcity x Platoon x Randomness. The highest score wins regardless of position.
+2. Inverted early round scarcity: rounds 1-5 now use 0.8x multiplier (talent-first), late rounds 16+ use 1.2x (position-first)
+3. Fixed `getCPUDraftRecommendation` to accept and forward `currentRound` parameter
+4. Updated `docs/trd-ai-draft-algorithm.md` to v2.0 reflecting APBA Rating-based True BPA implementation
+
+**Files Changed:**
+- `src/utils/cpuDraftLogic.ts` - Core algorithm refactor
+- `docs/trd-ai-draft-algorithm.md` - Documentation v2.0 rewrite
+- `docs/analysis/draft_ai_bpa_refactor_plan.md` - Implementation plan
+
 ### Fixed - 2026-01-28 (Draft Race Condition - Duplicate Pick Database Errors)
 
 **Problem:**
