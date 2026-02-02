@@ -80,7 +80,7 @@ export default function DraftControls({
         {/* Controls */}
         <div className="flex items-center gap-3">
           {session.status === 'in_progress' ? (
-            <button onClick={onPause} className="btn-secondary">
+            <button onClick={onPause} className="btn-secondary-dark">
               ⏸ Pause
             </button>
           ) : session.status === 'paused' ? (
@@ -89,7 +89,7 @@ export default function DraftControls({
             </button>
           ) : null}
 
-          <button onClick={onSave} className="btn-secondary">
+          <button onClick={onSave} className="btn-secondary-dark">
             💾 Save
           </button>
         </div>

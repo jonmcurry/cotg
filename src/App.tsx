@@ -7,9 +7,11 @@ import { useState } from 'react'
 import { useDraftStore } from './stores/draftStore'
 import DraftConfig from './components/draft/DraftConfig'
 import DraftBoard from './components/draft/DraftBoard'
+import Clubhouse from './components/clubhouse/Clubhouse'
+import StatMaster from './components/statmaster/StatMaster'
 import type { DraftConfig as DraftConfigType } from './types/draft.types'
 
-type Screen = 'home' | 'config' | 'draft'
+type Screen = 'home' | 'config' | 'draft' | 'clubhouse' | 'statmaster'
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('home')
@@ -32,6 +34,10 @@ export default function App() {
   const handleExitDraft = () => {
     resetSession()
     setScreen('home')
+  }
+
+  const handleDraftComplete = () => {
+    setScreen('clubhouse')
   }
 
   // Home Screen
@@ -148,7 +154,28 @@ export default function App() {
 
   // Draft Screen
   if (screen === 'draft' && session) {
-    return <DraftBoard onExit={handleExitDraft} />
+    return (
+      <DraftBoard
+        onExit={handleExitDraft}
+        onComplete={handleDraftComplete}
+      />
+    )
+  }
+
+  // Clubhouse Screen
+  if (screen === 'clubhouse' && session) {
+    return (
+      <Clubhouse
+        session={session}
+        onExit={handleExitDraft}
+        onStartSeason={() => setScreen('statmaster')}
+      />
+    )
+  }
+
+  // StatMaster Screen
+  if (screen === 'statmaster' && session) {
+    return <StatMaster session={session} onExit={() => setScreen('clubhouse')} />
   }
 
   // Fallback

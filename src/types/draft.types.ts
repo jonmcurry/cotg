@@ -4,7 +4,7 @@
  */
 
 export type TeamControl = 'human' | 'cpu'
-export type DraftStatus = 'setup' | 'in_progress' | 'paused' | 'completed' | 'abandoned'
+export type DraftStatus = 'setup' | 'in_progress' | 'paused' | 'completed' | 'abandoned' | 'clubhouse'
 export type PositionCode = 'C' | '1B' | '2B' | 'SS' | '3B' | 'OF' | 'SP' | 'RP' | 'CL' | 'DH' | 'BN'
 
 export interface DraftTeam {
@@ -14,6 +14,7 @@ export interface DraftTeam {
   draftPosition: number
   roster: RosterSlot[]
   draftSessionId: string
+  depthChart?: TeamDepthChart
 }
 
 export interface RosterSlot {
@@ -45,6 +46,7 @@ export interface DraftSession {
   selectedSeasons: number[]
   createdAt: Date
   updatedAt: Date
+  schedule?: import('./schedule.types').SeasonSchedule
 }
 
 export interface DraftConfig {
@@ -105,4 +107,27 @@ export const POSITION_ELIGIBILITY: Record<PositionCode, string[]> = {
   'CL': ['P', 'RP', 'CL'],
   'DH': ['C', '1B', '2B', 'SS', '3B', 'OF', 'LF', 'CF', 'RF', 'P', 'SP', 'RP', 'CL', 'DH'],
   'BN': ['C', '1B', '2B', 'SS', '3B', 'OF', 'LF', 'CF', 'RF', 'P', 'SP', 'RP', 'DH'],
+}
+
+// Post-Draft / Clubhouse Types
+
+export interface LineupSlot {
+  slotNumber: number // 1-9
+  playerSeasonId: string | null
+  position: PositionCode // C, 1B, etc.
+}
+
+export interface RotationSlot {
+  slotNumber: number // 1-5
+  playerSeasonId: string | null
+}
+
+export interface TeamDepthChart {
+  lineupVS_RHP: LineupSlot[]
+  lineupVS_LHP: LineupSlot[]
+  rotation: RotationSlot[]
+  bullpen: {
+    closer: string | null
+    setup: string[]
+  }
 }
