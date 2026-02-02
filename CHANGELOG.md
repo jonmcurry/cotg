@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-02 (Clubhouse Code Review Fixes)
+
+**Summary:**
+Resolved 9 issues from clubhouse code review spanning critical, moderate, and minor severity.
+
+**Critical Fixes:**
+1. **`generateSeasonSchedule` fire-and-forget:** Refactored store action to `async`, replaced `setTimeout` hack with proper `await`/`try`/`catch`/`finally` in Clubhouse. Errors now surface loudly instead of being silently swallowed.
+2. **External URL dependency:** Removed `transparenttextures.com` runtime texture load from LineupEditor.
+
+**Moderate Fixes:**
+3. **Season start validation:** Added `validateTeamReadiness()` that checks all teams have 9-player lineups (both vs RHP/LHP), 4+ starters, and a closer. "Enter StatMaster" button is disabled with hover tooltip showing missing items.
+4. **Stale data on re-mount:** Replaced `loadedRef` guard with `useMemo`-derived cache key from roster season IDs. Re-fetches when roster composition actually changes.
+5. **Shared player transform:** Extracted `transformPlayerSeasonData()` utility to `src/utils/transformPlayerData.ts`. Replaced duplicate transforms in DraftBoard and Clubhouse. Also fixes missing `bats` field in DraftBoard's transform.
+
+**Low/Minor Fixes:**
+6. **Setup men cap:** Added `MAX_SETUP_MEN = 4` limit in RotationEditor. "Add" button hidden when full.
+7. **Removed `getSlotDisplay` wrapper:** Inlined `players.find()` in LineupEditor.
+8. **Defensive rotation check:** Added optional chaining for `rotation?.length` in RotationEditor init guard.
+
+**Files Changed:**
+- `src/stores/draftStore.ts` - `generateSeasonSchedule` refactored to async
+- `src/components/clubhouse/Clubhouse.tsx` - Async schedule, validation, cache key, shared transform
+- `src/components/clubhouse/LineupEditor.tsx` - Removed external URL, inlined getSlotDisplay
+- `src/components/clubhouse/RotationEditor.tsx` - Setup men cap, defensive rotation check
+- `src/components/draft/DraftBoard.tsx` - Uses shared transformPlayerSeasonData (fixes missing bats)
+- `src/utils/transformPlayerData.ts` - New shared utility
+- `docs/analysis/clubhouse_code_review.md` - Review document
+- `docs/analysis/clubhouse_fixes_plan.md` - Implementation plan
+
 ### Fixed - 2026-02-02 (Draft AI Player Selection - Closers Drafted Too Early)
 
 **Problem:**

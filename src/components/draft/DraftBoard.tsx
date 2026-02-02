@@ -13,13 +13,16 @@ import DraftControls from './DraftControls'
 import PickHistory from './PickHistory'
 import type { PlayerSeason } from '../../utils/cpuDraftLogic'
 import { selectBestPlayer } from '../../utils/cpuDraftLogic'
+import { transformPlayerSeasonData } from '../../utils/transformPlayerData'
 import type { PositionCode } from '../../types/draft.types'
 
 interface Props {
   onExit: () => void
+  onComplete?: () => void
 }
 
-export default function DraftBoard({ onExit }: Props) {
+export default function DraftBoard({ onExit, onComplete }: Props) {
+
   const {
     session,
     getCurrentPickingTeam,
@@ -202,36 +205,9 @@ If this persists, the database may be updating. Wait a few minutes and try again
           return
         }
 
-        // Transform data to include player names
-        // Ensure at_bats is explicitly converted to number to prevent string comparison issues
-        const transformedPlayers = allPlayers.map((p: any) => ({
-          id: p.id,
-          player_id: p.player_id,
-          year: p.year,
-          team_id: p.team_id,
-          primary_position: p.primary_position,
-          apba_rating: p.apba_rating,
-          war: p.war,
-          at_bats: p.at_bats !== null && p.at_bats !== undefined ? Number(p.at_bats) : null,
-          batting_avg: p.batting_avg,
-          hits: p.hits,
-          home_runs: p.home_runs,
-          rbi: p.rbi,
-          stolen_bases: p.stolen_bases,
-          on_base_pct: p.on_base_pct,
-          slugging_pct: p.slugging_pct,
-          innings_pitched_outs: p.innings_pitched_outs !== null && p.innings_pitched_outs !== undefined ? Number(p.innings_pitched_outs) : null,
-          wins: p.wins,
-          losses: p.losses,
-          era: p.era,
-          strikeouts_pitched: p.strikeouts_pitched,
-          saves: p.saves,
-          shutouts: p.shutouts,
-          whip: p.whip,
-          display_name: p.players.display_name,
-          first_name: p.players.first_name,
-          last_name: p.players.last_name,
-        }))
+        // Transform data to typed PlayerSeason objects (shared utility)
+        // Handles numeric coercion for at_bats/innings_pitched_outs and flattens player join data
+        const transformedPlayers = allPlayers.map(transformPlayerSeasonData)
 
         console.log(`[Player Load] SUCCESS - Loaded ${transformedPlayers.length} total players across all batches`)
         console.log(`[Player Load] Setting players state (will trigger TabbedPlayerPool re-render)`)
@@ -318,70 +294,70 @@ If this persists, the database may be updating. Wait a few minutes and try again
     draftInProgress.current = true
     setCpuThinking(true)
 
-    // Async IIFE - no setTimeout needed (avoids cleanup race conditions)
-    ;(async () => {
-      try {
-        console.time('[CPU Draft] Total CPU pick time')
-        console.time('[CPU Draft] 1. Build drafted player IDs')
+      // Async IIFE - no setTimeout needed (avoids cleanup race conditions)
+      ; (async () => {
+        try {
+          console.time('[CPU Draft] Total CPU pick time')
+          console.time('[CPU Draft] 1. Build drafted player IDs')
 
-        // Build Set of drafted player_id values (not playerSeasonId)
-        // This prevents the same player from being drafted multiple times for different seasons
-        // Example: If Christy Mathewson 1908 is drafted, ALL his other seasons are excluded
-        const draftedPlayerIds = new Set<string>()
+          // Build Set of drafted player_id values (not playerSeasonId)
+          // This prevents the same player from being drafted multiple times for different seasons
+          // Example: If Christy Mathewson 1908 is drafted, ALL his other seasons are excluded
+          const draftedPlayerIds = new Set<string>()
 
-        session.teams.forEach(team => {
-          team.roster.forEach(slot => {
-            if (slot.isFilled && slot.playerSeasonId) {
-              // Find the player in the players array to get their player_id
-              const player = players.find(p => p.id === slot.playerSeasonId)
-              if (player && player.player_id) {
-                draftedPlayerIds.add(player.player_id)
+          session.teams.forEach(team => {
+            team.roster.forEach(slot => {
+              if (slot.isFilled && slot.playerSeasonId) {
+                // Find the player in the players array to get their player_id
+                const player = players.find(p => p.id === slot.playerSeasonId)
+                if (player && player.player_id) {
+                  draftedPlayerIds.add(player.player_id)
+                }
               }
-            }
+            })
           })
-        })
 
-        console.log(`[CPU Draft] Drafted players: ${draftedPlayerIds.size} unique players`)
-        console.timeEnd('[CPU Draft] 1. Build drafted player IDs')
+          console.log(`[CPU Draft] Drafted players: ${draftedPlayerIds.size} unique players`)
+          console.timeEnd('[CPU Draft] 1. Build drafted player IDs')
 
-        // Performance optimization: Filter undrafted players and only pass top 1000 by rating
-        // Players array is already sorted by apba_rating DESC from SQL query
-        // This reduces processing from 69,459 players to ~1000 per pick (98.5% reduction)
-        console.time('[CPU Draft] 2. Filter undrafted players')
-        const undraftedPlayers = players.filter(p => !draftedPlayerIds.has(p.player_id))
-        const topUndrafted = undraftedPlayers.slice(0, 1000)
-        console.timeEnd('[CPU Draft] 2. Filter undrafted players')
+          // Performance optimization: Filter undrafted players and only pass top 1000 by rating
+          // Players array is already sorted by apba_rating DESC from SQL query
+          // This reduces processing from 69,459 players to ~1000 per pick (98.5% reduction)
+          console.time('[CPU Draft] 2. Filter undrafted players')
+          const undraftedPlayers = players.filter(p => !draftedPlayerIds.has(p.player_id))
+          const topUndrafted = undraftedPlayers.slice(0, 1000)
+          console.timeEnd('[CPU Draft] 2. Filter undrafted players')
 
-        console.log(`[CPU Draft] Selecting from ${topUndrafted.length} top-rated undrafted players (${draftedPlayerIds.size} unique players already drafted, ${undraftedPlayers.length} player-seasons remaining)`)
+          console.log(`[CPU Draft] Selecting from ${topUndrafted.length} top-rated undrafted players (${draftedPlayerIds.size} unique players already drafted, ${undraftedPlayers.length} player-seasons remaining)`)
 
-        console.time('[CPU Draft] 3. selectBestPlayer()')
-        const selection = selectBestPlayer(topUndrafted, currentTeam, draftedPlayerIds, session.currentRound)
-        console.timeEnd('[CPU Draft] 3. selectBestPlayer()')
+          console.time('[CPU Draft] 3. selectBestPlayer()')
+          const selection = selectBestPlayer(topUndrafted, currentTeam, draftedPlayerIds, session.currentRound)
+          console.timeEnd('[CPU Draft] 3. selectBestPlayer()')
 
-        if (selection) {
-          console.log(`[CPU Draft] ${currentTeam.name} drafts: ${selection.player.display_name} (${selection.position}), bats: ${selection.player.bats || 'unknown'}`)
-          console.time('[CPU Draft] 4. makePick() - database write')
-          await makePick(selection.player.id, selection.player.player_id, selection.position, selection.slotNumber, selection.player.bats)
-          console.timeEnd('[CPU Draft] 4. makePick() - database write')
-        } else {
-          console.error('[CPU Draft] CRITICAL ERROR - CPU could not find a player to draft!', {
-            playersAvailable: players.length,
-            alreadyDrafted: draftedPlayerIds.size,
-            teamRosterFilled: currentTeam.roster.filter(s => s.isFilled).length,
-          })
-          alert('CRITICAL ERROR: CPU could not find a player to draft. Check console for details.')
+          if (selection) {
+            console.log(`[CPU Draft] ${currentTeam.name} drafts: ${selection.player.display_name} (${selection.position}), bats: ${selection.player.bats || 'unknown'}`)
+            console.time('[CPU Draft] 4. makePick() - database write')
+            await makePick(selection.player.id, selection.player.player_id, selection.position, selection.slotNumber, selection.player.bats)
+            console.timeEnd('[CPU Draft] 4. makePick() - database write')
+          } else {
+            console.error('[CPU Draft] CRITICAL ERROR - CPU could not find a player to draft!', {
+              playersAvailable: players.length,
+              alreadyDrafted: draftedPlayerIds.size,
+              teamRosterFilled: currentTeam.roster.filter(s => s.isFilled).length,
+            })
+            alert('CRITICAL ERROR: CPU could not find a player to draft. Check console for details.')
+          }
+
+          console.timeEnd('[CPU Draft] Total CPU pick time')
+        } catch (error) {
+          console.error('[CPU Draft] ERROR during draft operation:', error)
+          alert('ERROR during CPU draft. Check console for details.')
+        } finally {
+          // Reset ref guard first (synchronous), then state (triggers re-render -> effect re-runs)
+          draftInProgress.current = false
+          setCpuThinking(false)
         }
-
-        console.timeEnd('[CPU Draft] Total CPU pick time')
-      } catch (error) {
-        console.error('[CPU Draft] ERROR during draft operation:', error)
-        alert('ERROR during CPU draft. Check console for details.')
-      } finally {
-        // Reset ref guard first (synchronous), then state (triggers re-render -> effect re-runs)
-        draftInProgress.current = false
-        setCpuThinking(false)
-      }
-    })()
+      })()
 
     // No cleanup function - the ref guard prevents concurrent operations.
     // Previously, cleanup was resetting cpuThinking which caused race conditions.
@@ -517,9 +493,14 @@ If this persists, the database may be updating. Wait a few minutes and try again
             "The rosters are set. The legends are ready. Let the games begin."
           </p>
           <div className="space-x-4">
-            <button onClick={onExit} className="btn-primary px-8">
+            <button onClick={onExit} className="btn-secondary-dark px-8">
               Return to Home
             </button>
+            {onComplete && (
+              <button onClick={onComplete} className="btn-primary px-8">
+                Manage Rosters (Clubhouse)
+              </button>
+            )}
           </div>
         </div>
       </div>

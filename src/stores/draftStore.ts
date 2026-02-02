@@ -12,6 +12,7 @@ import type {
   DraftConfig,
   RosterSlot,
   PositionCode,
+  TeamDepthChart,
 } from '../types/draft.types'
 import { ROSTER_REQUIREMENTS, TOTAL_ROUNDS } from '../types/draft.types'
 import { supabase } from '../lib/supabaseClient'
@@ -29,6 +30,10 @@ interface DraftState {
   startDraft: () => void
   pauseDraft: () => void
   resumeDraft: () => void
+
+  // Management actions
+  updateTeamDepthChart: (teamId: string, depthChart: TeamDepthChart) => void
+  generateSeasonSchedule: (gamesPerTeam?: number) => Promise<void>
 
   // Pick actions
   makePick: (playerSeasonId: string, playerId: string | undefined, position: PositionCode, slotNumber: number, bats?: 'L' | 'R' | 'B' | null) => Promise<void>
@@ -321,6 +326,55 @@ export const useDraftStore = create<DraftState>()(
 
         set({ session: updatedSession })
         get().saveSession()
+      },
+
+      updateTeamDepthChart: (teamId: string, depthChart: TeamDepthChart) => {
+        const session = get().session
+        if (!session) return
+
+        const teamIndex = session.teams.findIndex(t => t.id === teamId)
+        if (teamIndex === -1) return
+
+        const updatedTeams = [...session.teams]
+        updatedTeams[teamIndex] = {
+          ...updatedTeams[teamIndex],
+          depthChart,
+        }
+
+        const updatedSession: DraftSession = {
+          ...session,
+          teams: updatedTeams,
+          updatedAt: new Date(),
+        }
+
+        set({ session: updatedSession })
+        // We generally shouldn't auto-save on every dnd move if it's frequent, 
+        // but for now let's save to be safe or maybe debounce this later.
+        // For line-up building which is interactive, we might want explicit save.
+        // But for now, let's just update local state and let user click 'Save' if we add one,
+        // or just accept react state is enough until valid. 
+        // Actually, let's NOT save to supabase immediately to avoid thrashing.
+        // We'll rely on a manual save or "Exit" trigger eventually.
+        // Wait, the store persists to local storage, so that helps.
+      },
+
+      generateSeasonSchedule: async (gamesPerTeam: number = 162) => {
+        const session = get().session
+        if (!session) {
+          throw new Error('[DraftStore] Cannot generate schedule - no active session')
+        }
+
+        const { generateSchedule } = await import('../utils/scheduleGenerator')
+        const schedule = generateSchedule(session, gamesPerTeam, new Date())
+
+        const updatedSession: DraftSession = {
+          ...session,
+          schedule,
+          updatedAt: new Date(),
+        }
+
+        set({ session: updatedSession })
+        console.log('[DraftStore] Schedule generated:', schedule.games.length, 'games')
       },
 
       makePick: async (playerSeasonId: string, playerId: string | undefined, position: PositionCode, slotNumber: number, bats?: 'L' | 'R' | 'B' | null) => {
