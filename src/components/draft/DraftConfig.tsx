@@ -144,7 +144,7 @@ export default function DraftConfig({ onStartDraft, leagueNumTeams, leagueName }
                 onChange={(e) => handleTeamCountChange(parseInt(e.target.value))}
                 className="input-field w-48"
               >
-                {Array.from({ length: 29 }, (_, i) => i + 2).map(num => (
+                {Array.from({ length: 31 }, (_, i) => i + 2).map(num => (
                   <option key={num} value={num}>{num}</option>
                 ))}
               </select>

@@ -12,7 +12,6 @@ export interface LeagueConfig {
   numTeams: number
   gamesPerSeason: number
   playoffFormat: PlayoffFormat
-  useDH: boolean
   useApbaRules: boolean
   injuryEnabled: boolean
   weatherEffects: boolean
@@ -26,7 +25,6 @@ export interface League {
   numTeams: number
   gamesPerSeason: number
   playoffFormat: PlayoffFormat
-  useDH: boolean
   useApbaRules: boolean
   injuryEnabled: boolean
   weatherEffects: boolean

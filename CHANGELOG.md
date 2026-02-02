@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Implemented the full league workflow: Create League -> Configure Draft -> Draft -> Clubhouse -> StatMaster. Leagues are persisted to Supabase and can be resumed across sessions. Added an All-Star Game at mid-season.
 
 **New Features:**
-1. **League Setup screen:** Configure league name, DH rule, games per season (81/120/162), and playoff format before entering the draft.
+1. **League Setup screen:** Configure league name, games per season (81/120/162), and playoff format before entering the draft.
 2. **League List screen:** Browse, resume, and delete saved leagues from Supabase.
 3. **Persistent leagues:** Leagues saved to Supabase `leagues` table with draft session linkage.
 4. **All-Star Game:** Mid-season exhibition game with roster selection (top hitters by OPS, pitchers by ERA) split into "Stars" vs "Legends" squads. Does not affect standings.

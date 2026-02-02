@@ -17,7 +17,6 @@ export default function LeagueSetup({ onCreateLeague, onBack }: Props) {
   const [numTeams, setNumTeams] = useState(8)
   const [gamesPerSeason, setGamesPerSeason] = useState(162)
   const [playoffFormat, setPlayoffFormat] = useState<PlayoffFormat>('none')
-  const [useDH, setUseDH] = useState(true)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -37,7 +36,6 @@ export default function LeagueSetup({ onCreateLeague, onBack }: Props) {
         numTeams,
         gamesPerSeason,
         playoffFormat,
-        useDH,
         useApbaRules: true,
         injuryEnabled: false,
         weatherEffects: false,
@@ -118,12 +116,12 @@ export default function LeagueSetup({ onCreateLeague, onBack }: Props) {
               <label className="block text-xs font-sans font-bold text-charcoal/50 uppercase tracking-widest mb-2">
                 Number of Teams
               </label>
-              <div className="flex gap-2">
-                {[4, 6, 8, 10, 12].map(n => (
+              <div className="flex flex-wrap gap-2">
+                {[4, 6, 8, 10, 12, 16, 20, 24, 28, 32].map(n => (
                   <button
                     key={n}
                     onClick={() => setNumTeams(n)}
-                    className={`flex-1 py-3 font-display font-bold text-lg border-2 rounded-sm transition-all ${
+                    className={`w-16 py-3 font-display font-bold text-lg border-2 rounded-sm transition-all ${
                       numTeams === n
                         ? 'bg-charcoal text-gold border-charcoal'
                         : 'bg-white text-charcoal/50 border-charcoal/10 hover:border-charcoal/30'
@@ -176,28 +174,6 @@ export default function LeagueSetup({ onCreateLeague, onBack }: Props) {
                 <option value="division">Division Series (Top 6 Teams)</option>
                 <option value="expanded">Expanded (Top 8 Teams)</option>
               </select>
-            </div>
-
-            {/* DH Rule */}
-            <div className="flex items-center justify-between p-4 bg-white border-2 border-charcoal/10 rounded-sm">
-              <div>
-                <div className="font-display font-bold text-charcoal">Designated Hitter</div>
-                <div className="text-sm font-serif text-charcoal/50 italic">
-                  Pitchers bat when DH is off
-                </div>
-              </div>
-              <button
-                onClick={() => setUseDH(!useDH)}
-                className={`w-14 h-8 rounded-full transition-colors relative ${
-                  useDH ? 'bg-burgundy' : 'bg-charcoal/20'
-                }`}
-              >
-                <div
-                  className={`w-6 h-6 bg-white rounded-full shadow-sm absolute top-1 transition-transform ${
-                    useDH ? 'translate-x-7' : 'translate-x-1'
-                  }`}
-                />
-              </button>
             </div>
 
             {/* Error Display */}
