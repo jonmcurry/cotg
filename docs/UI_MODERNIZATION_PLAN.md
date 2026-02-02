@@ -62,4 +62,8 @@ Transform the current functional UI into a "Sleek, Sexy, Cool" Vintage Baseball 
 - [x] Layout & Page Polish
     - [x] Hero Section (Impactful typography, modern layout)
     - [x] Header/Footer (Simple, elegant)
-    - [ ] Draft Interface (If time permits/requested)
+    - [ ] Draft Interface
+        - [ ] Draft Board "War Room" Layout (Background, Ticker)
+        - [ ] Player Pool "Stat Sheet" (Table styling, Card view toggle)
+        - [ ] Roster View "Lineup Card" (Handwritten styling, Stamps)
+        - [ ] Visual Feedback (Colors, Animations)

@@ -6,7 +6,7 @@
 
 import { useMemo } from 'react'
 import type { DraftTeam, PositionCode } from '../../types/draft.types'
-import { POSITION_NAMES, ROSTER_REQUIREMENTS } from '../../types/draft.types'
+import { ROSTER_REQUIREMENTS } from '../../types/draft.types'
 import type { PlayerSeason } from '../../utils/cpuDraftLogic'
 
 interface Props {
@@ -68,8 +68,10 @@ export default function RosterView({ team, players }: Props) {
 
     if (!player) {
       return (
-        <div className="flex items-center justify-between py-2 px-3 bg-charcoal/5 rounded">
-          <span className="text-charcoal/40 font-serif text-sm">[Empty]</span>
+        <div className="flex items-center justify-between py-2 px-3 border-b border-charcoal/10 min-h-[42px]">
+          <span className="text-charcoal/30 font-serif italic text-sm tracking-wide">
+            ......................................................
+          </span>
         </div>
       )
     }
@@ -77,23 +79,21 @@ export default function RosterView({ team, players }: Props) {
     const isPitcher = ['SP', 'RP', 'CL', 'P'].includes(player.primary_position)
 
     return (
-      <div className="flex items-center justify-between py-2 px-3 bg-gold/10 border border-gold/30 rounded">
+      <div className="flex items-center justify-between py-1 px-2 border-b border-charcoal/10 bg-gold/5 min-h-[42px] group hover:bg-gold/10 transition-colors">
         <div className="flex-1 min-w-0">
-          <div className="font-semibold text-charcoal text-sm truncate">
-            {player.display_name}
+          <div className="font-display font-bold text-charcoal text-sm truncate uppercase tracking-wide">
+            {player.last_name}, {player.first_name}
           </div>
-          <div className="text-xs text-charcoal/60">
-            {player.team_id} ({player.year})
+          <div className="text-xs text-charcoal/60 font-serif flex gap-2">
+            <span>{player.team_id} '{player.year.toString().slice(-2)}</span>
+            <span className="text-burgundy font-semibold">WAR {player.war?.toFixed(1) || '-'}</span>
           </div>
         </div>
         <div className="ml-3 text-right">
-          <div className="text-xs font-semibold text-burgundy">
-            WAR {player.war?.toFixed(1) || 'N/A'}
-          </div>
-          <div className="text-xs text-charcoal/60">
+          <div className="text-xs font-mono text-charcoal/70 bg-cream px-1 rounded border border-charcoal/10">
             {isPitcher
-              ? `ERA ${player.era?.toFixed(2) || 'N/A'}`
-              : `AVG ${player.batting_avg?.toFixed(3) || 'N/A'}`}
+              ? `${player.era?.toFixed(2)} ERA`
+              : `.${Math.floor((player.batting_avg || 0) * 1000)}`}
           </div>
         </div>
       </div>
@@ -101,44 +101,43 @@ export default function RosterView({ team, players }: Props) {
   }
 
   return (
-    <div className="card h-full flex flex-col">
+    <div className="card h-full flex flex-col bg-cream-light relative overflow-hidden">
+      {/* "Hole Punch" decoration */}
+      <div className="absolute top-4 left-4 w-3 h-3 rounded-full bg-charcoal/10 shadow-inner"></div>
+      <div className="absolute top-4 right-4 w-3 h-3 rounded-full bg-charcoal/10 shadow-inner"></div>
+
       {/* Header */}
-      <div className="mb-4">
-        <h2 className="text-xl font-display text-burgundy mb-1">
-          {team.name}
+      <div className="mb-6 text-center border-b-2 border-charcoal pb-4 mt-2">
+        <h2 className="text-2xl font-display font-bold text-charcoal uppercase tracking-[0.1em]">
+          Official Roster
         </h2>
-        <div className="flex items-center gap-2 text-sm">
-          <span className="font-serif text-charcoal/70">
-            {totalFilled}/{totalSlots} Players
-          </span>
-          <span className={`px-2 py-1 rounded text-xs font-semibold ${
-            team.control === 'human'
-              ? 'bg-gold/20 text-gold-dark'
-              : 'bg-charcoal/10 text-charcoal/70'
-          }`}>
-            {team.control.toUpperCase()}
-          </span>
+        <div className="flex justify-center items-center gap-3 mt-1 text-sm font-serif italic text-charcoal/60">
+          <span>{team.name}</span>
+          <span>•</span>
+          <span>{totalFilled} / {totalSlots} Assigned</span>
         </div>
       </div>
 
       {/* Roster Slots */}
-      <div className="flex-1 overflow-auto space-y-4">
+      <div className="flex-1 overflow-auto space-y-6 pr-2">
         {/* Infielders */}
         <div>
-          <h3 className="text-sm font-display text-charcoal/60 mb-2 uppercase tracking-wide">
+          <h3 className="text-xs font-sans font-bold text-charcoal/40 mb-2 uppercase tracking-widest border-b border-charcoal/10">
             Infield
           </h3>
-          <div className="space-y-1">
+          <div className="space-y-0">
             {(['C', '1B', '2B', 'SS', '3B'] as PositionCode[]).map(position => (
-              <div key={position}>
-                <div className="text-xs font-semibold text-burgundy mb-1">
-                  {POSITION_NAMES[position]}:
+              <div key={position} className="flex hover:bg-charcoal/5">
+                <div className="w-12 py-2 flex items-center justify-center border-r border-charcoal/10 text-xs font-bold text-charcoal/50 bg-charcoal/5">
+                  {position}
                 </div>
-                {groupedRoster[position].map((slot, idx) => (
-                  <div key={`${position}-${idx}`} className="mb-2">
-                    {renderSlot(slot)}
-                  </div>
-                ))}
+                <div className="flex-1">
+                  {groupedRoster[position].map((slot, idx) => (
+                    <div key={`${position}-${idx}`}>
+                      {renderSlot(slot)}
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
@@ -146,78 +145,82 @@ export default function RosterView({ team, players }: Props) {
 
         {/* Outfield */}
         <div>
-          <h3 className="text-sm font-display text-charcoal/60 mb-2 uppercase tracking-wide">
+          <h3 className="text-xs font-sans font-bold text-charcoal/40 mb-2 uppercase tracking-widest border-b border-charcoal/10">
             Outfield
           </h3>
-          <div className="space-y-1">
-            <div className="text-xs font-semibold text-burgundy mb-1">
-              {POSITION_NAMES['OF']}:
-            </div>
-            {groupedRoster['OF'].map((slot, idx) => (
-              <div key={`OF-${idx}`} className="mb-2">
-                {renderSlot(slot)}
+          <div className="space-y-0">
+            <div className="flex hover:bg-charcoal/5">
+              <div className="w-12 flex items-center justify-center border-r border-charcoal/10 text-xs font-bold text-charcoal/50 bg-charcoal/5">
+                OF
               </div>
-            ))}
+              <div className="flex-1">
+                {groupedRoster['OF'].map((slot, idx) => (
+                  <div key={`OF-${idx}`}>
+                    {renderSlot(slot)}
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
 
         {/* Pitchers */}
         <div>
-          <h3 className="text-sm font-display text-charcoal/60 mb-2 uppercase tracking-wide">
-            Pitching
+          <h3 className="text-xs font-sans font-bold text-charcoal/40 mb-2 uppercase tracking-widest border-b border-charcoal/10">
+            Pitching Staff
           </h3>
-          <div className="space-y-1">
+          <div className="space-y-0">
             {(['SP', 'RP', 'CL'] as PositionCode[]).map(position => (
-              <div key={position}>
-                <div className="text-xs font-semibold text-burgundy mb-1">
-                  {POSITION_NAMES[position]}:
+              <div key={position} className="flex hover:bg-charcoal/5">
+                <div className="w-12 flex items-center justify-center border-r border-charcoal/10 text-xs font-bold text-charcoal/50 bg-charcoal/5">
+                  {position}
                 </div>
-                {groupedRoster[position].map((slot, idx) => (
-                  <div key={`${position}-${idx}`} className="mb-2">
-                    {renderSlot(slot)}
-                  </div>
-                ))}
+                <div className="flex-1">
+                  {groupedRoster[position].map((slot, idx) => (
+                    <div key={`${position}-${idx}`}>
+                      {renderSlot(slot)}
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
         </div>
 
-        {/* DH & Bench */}
+        {/* Other */}
         <div>
-          <h3 className="text-sm font-display text-charcoal/60 mb-2 uppercase tracking-wide">
-            Other
+          <h3 className="text-xs font-sans font-bold text-charcoal/40 mb-2 uppercase tracking-widest border-b border-charcoal/10">
+            Reserves
           </h3>
-          <div className="space-y-1">
+          <div className="space-y-0">
             {(['DH', 'BN'] as PositionCode[]).map(position => (
-              <div key={position}>
-                <div className="text-xs font-semibold text-burgundy mb-1">
-                  {POSITION_NAMES[position]}:
+              <div key={position} className="flex hover:bg-charcoal/5">
+                <div className="w-12 flex items-center justify-center border-r border-charcoal/10 text-xs font-bold text-charcoal/50 bg-charcoal/5">
+                  {position === 'BN' ? 'BEN' : position}
                 </div>
-                {groupedRoster[position].map((slot, idx) => (
-                  <div key={`${position}-${idx}`} className="mb-2">
-                    {renderSlot(slot)}
-                  </div>
-                ))}
+                <div className="flex-1">
+                  {groupedRoster[position].map((slot, idx) => (
+                    <div key={`${position}-${idx}`}>
+                      {renderSlot(slot)}
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Position Summary */}
-      <div className="mt-4 pt-4 border-t border-charcoal/10">
-        <h3 className="text-xs font-display text-charcoal/60 mb-2 uppercase tracking-wide">
-          Position Breakdown
-        </h3>
-        <div className="grid grid-cols-3 gap-2 text-xs font-serif">
+      {/* Position Summary - Footer */}
+      <div className="mt-4 pt-4 border-t-2 border-charcoal/20 bg-charcoal/5 -mx-6 -mb-6 px-6 pb-2">
+        <div className="grid grid-cols-4 gap-2 text-[10px] font-sans uppercase tracking-wider">
           {Object.entries(positionCounts).map(([position, counts]) => (
-            <div key={position} className="flex justify-between">
-              <span className="text-charcoal/70">{position}:</span>
-              <span className={`font-semibold ${
-                counts.filled === counts.total
-                  ? 'text-green-600'
-                  : 'text-burgundy'
-              }`}>
+            <div key={position} className="flex justify-between items-center bg-white/50 px-2 py-1 rounded">
+              <span className="text-charcoal/60">{position}</span>
+              <span className={`font-bold ${counts.filled === counts.total
+                ? 'text-green-700'
+                : 'text-burgundy'
+                }`}>
                 {counts.filled}/{counts.total}
               </span>
             </div>

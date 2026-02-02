@@ -37,7 +37,8 @@
       "Bash(players found\" issue that appeared after rating recalculation. Backend tests \nconfirm all queries work correctly with both service role and anon keys, \nreturning 69,459 players for all 125 seasons.\n\nChanges:\n- Added detailed logging before and after count query to show exactly what''s \n  being sent to Supabase and what''s returned\n- Added warning when totalPlayers is 0 with full debugging context\n- Improved error message with troubleshooting steps: hard refresh, clear \n  cache, clear localStorage \\(draft session is persisted via zustand\\)\n- Created 4 diagnostic scripts to verify backend queries work correctly\n\nRoot cause appears to be browser-specific issue \\(possibly cached state or \nstale localStorage\\). All backend queries verified working correctly.\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(find:*)",
       "Bash(du:*)",
-      "Bash(dir \"C:\\\\dosgames\\\\shared\\\\BJEBEW\" /s /b)"
+      "Bash(dir \"C:\\\\dosgames\\\\shared\\\\BJEBEW\" /s /b)",
+      "Bash(npx vite build:*)"
     ]
   }
 }

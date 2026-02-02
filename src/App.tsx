@@ -38,121 +38,99 @@ export default function App() {
   if (screen === 'home') {
     return (
       <div className="min-h-screen bg-cream flex flex-col">
-        {/* Minimalist Header */}
-        <header className="bg-charcoal text-cream py-4">
-          <div className="container mx-auto px-4 flex items-center justify-between">
-            <span className="text-sm font-sans uppercase tracking-[0.3em] text-gold/80">
-              Est. 1901
-            </span>
-            <span className="text-sm font-sans uppercase tracking-[0.3em] text-cream-dark">
-              APBA Baseball
-            </span>
+        {/* Navigation - Minimalist & Elegant */}
+        <header className="py-6 border-b border-charcoal/10 relative z-10">
+          <div className="container mx-auto px-6 flex justify-between items-center">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-charcoal text-gold flex items-center justify-center font-display font-bold text-xl rounded-sm">
+                CG
+              </div>
+              <h1 className="text-2xl font-display font-bold text-charcoal tracking-tight">
+                Century of the Game
+              </h1>
+            </div>
+            <nav className="hidden md:flex gap-8 font-sans text-sm font-semibold tracking-widest uppercase text-charcoal/70">
+              <button className="hover:text-burgundy transition-colors">History</button>
+              <button className="hover:text-burgundy transition-colors">Rules</button>
+              <button className="hover:text-burgundy transition-colors">Community</button>
+            </nav>
           </div>
         </header>
 
-        <main className="flex-1">
-          {/* Hero Section - massive centered typography */}
-          <section className="bg-charcoal text-cream py-20 md:py-28">
-            <div className="container mx-auto px-4 text-center max-w-4xl">
-              <p className="text-sm font-sans uppercase tracking-[0.4em] text-gold mb-6">
-                Every Era. Every Legend. Your Lineup.
-              </p>
-              <h1 className="font-display font-bold text-6xl md:text-8xl lg:text-9xl text-cream leading-none mb-2">
-                CENTURY
-              </h1>
-              <p className="font-serif italic text-2xl md:text-3xl text-gold/80 mb-1">
-                of the
-              </p>
-              <h1 className="font-display font-bold text-6xl md:text-8xl lg:text-9xl text-cream leading-none mb-10">
-                GAME
-              </h1>
-              <p className="text-lg font-serif text-cream-dark/80 max-w-xl mx-auto mb-10">
-                Build your fantasy roster from over 125 years of baseball history.
-                63,000+ player-seasons spanning 1901&ndash;2025.
-              </p>
-              <div className="flex gap-5 justify-center">
-                <button
-                  onClick={() => setScreen('config')}
-                  className="btn-primary text-base px-10 py-4"
-                >
-                  New Draft
-                </button>
-                <button
-                  onClick={handleLoadDraft}
-                  className="btn-secondary text-base px-10 py-4 border-cream/20 text-cream hover:bg-cream/10 hover:border-cream/40"
-                >
-                  Load Draft
-                </button>
+        <main className="flex-1 container mx-auto px-6 py-16 lg:py-24 relative">
+          <div className="max-w-5xl mx-auto text-center relative z-10">
+            {/* Hero Section */}
+            <h2 className="text-xl md:text-2xl font-serif italic text-burgundy mb-6">
+              1901 — 2025
+            </h2>
+            <h1 className="text-6xl md:text-8xl font-display font-bold text-charcoal mb-8 leading-[0.9] tracking-tight">
+              Every Era.<br />
+              Every Legend.<br />
+              <span className="text-gold selection:text-charcoal selection:bg-gold">Your Lineup.</span>
+            </h1>
+
+            <p className="text-xl font-serif text-charcoal/80 mb-12 max-w-2xl mx-auto leading-relaxed">
+              Build your fantasy roster from 125 years of baseball history.
+              Draft from over 63,000 player-seasons using advanced sabotage metrics
+              and intelligent AI opponents.
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-6 justify-center items-center mb-24">
+              <button
+                onClick={() => setScreen('config')}
+                className="btn-primary text-base px-10 py-4 min-w-[200px]"
+              >
+                Start New Draft
+              </button>
+              <button
+                onClick={handleLoadDraft}
+                className="btn-secondary text-base px-10 py-4 min-w-[200px]"
+              >
+                Load Saved Draft
+              </button>
+            </div>
+
+            {/* Features Grid - Clean, Typography Focus */}
+            <div className="grid md:grid-cols-3 gap-12 border-t border-charcoal/10 pt-16">
+              <div className="text-left group">
+                <div className="text-4xl font-display text-charcoal/20 mb-4 group-hover:text-burgundy/30 transition-colors">01</div>
+                <h3 className="text-xl font-display font-bold text-charcoal mb-2">Deep History</h3>
+                <p className="font-serif text-charcoal/70 leading-relaxed">
+                  Every player from the Dead Ball Era through the Modern Age at your fingertips.
+                </p>
+              </div>
+
+              <div className="text-left group">
+                <div className="text-4xl font-display text-charcoal/20 mb-4 group-hover:text-burgundy/30 transition-colors">02</div>
+                <h3 className="text-xl font-display font-bold text-charcoal mb-2">Smart Rivals</h3>
+                <p className="font-serif text-charcoal/70 leading-relaxed">
+                  Compete against AI that drafts based on positional needs and advanced WAR metrics.
+                </p>
+              </div>
+
+              <div className="text-left group">
+                <div className="text-4xl font-display text-charcoal/20 mb-4 group-hover:text-burgundy/30 transition-colors">03</div>
+                <h3 className="text-xl font-display font-bold text-charcoal mb-2">Sabermetrics</h3>
+                <p className="font-serif text-charcoal/70 leading-relaxed">
+                  Powered by Bill James' projections and accurate historical simulation data.
+                </p>
               </div>
             </div>
-          </section>
 
-          {/* Features */}
-          <section className="container mx-auto px-4 py-16">
-            <div className="max-w-4xl mx-auto">
-              <div className="grid md:grid-cols-3 gap-6">
-                <div className="card text-center hover:shadow-lift transition-shadow duration-300">
-                  <div className="text-xs font-sans uppercase tracking-[0.3em] text-gold mb-3">Heritage</div>
-                  <h3 className="text-xl font-display text-burgundy mb-2">
-                    125 Years of History
-                  </h3>
-                  <p className="text-sm font-serif text-charcoal/60">
-                    Draft from the Dead Ball Era through the Modern Age
-                  </p>
-                </div>
-
-                <div className="card text-center hover:shadow-lift transition-shadow duration-300">
-                  <div className="text-xs font-sans uppercase tracking-[0.3em] text-gold mb-3">Strategy</div>
-                  <h3 className="text-xl font-display text-burgundy mb-2">
-                    Intelligent CPU
-                  </h3>
-                  <p className="text-sm font-serif text-charcoal/60">
-                    Advanced AI drafts the best player available by rating and need
-                  </p>
-                </div>
-
-                <div className="card text-center hover:shadow-lift transition-shadow duration-300">
-                  <div className="text-xs font-sans uppercase tracking-[0.3em] text-gold mb-3">Analytics</div>
-                  <h3 className="text-xl font-display text-burgundy mb-2">
-                    Bill James Metrics
-                  </h3>
-                  <p className="text-sm font-serif text-charcoal/60">
-                    Complete statistical analysis for every player
-                  </p>
-                </div>
-              </div>
-
-              {/* Phase Status */}
-              <div className="card mt-10">
-                <h3 className="text-lg font-display text-burgundy mb-4">Development Status</h3>
-                <div className="space-y-2.5 font-sans text-sm">
-                  <div className="flex items-center">
-                    <span className="w-5 h-5 rounded-full bg-green-700/15 text-green-700 flex items-center justify-center text-xs mr-3">&#10003;</span>
-                    <span className="text-charcoal/80">Phase 1.1-1.6: Data Pipeline Complete</span>
-                  </div>
-                  <div className="flex items-center">
-                    <span className="w-5 h-5 rounded-full bg-green-700/15 text-green-700 flex items-center justify-center text-xs mr-3">&#10003;</span>
-                    <span className="text-charcoal/80">63,084 APBA Cards Generated</span>
-                  </div>
-                  <div className="flex items-center">
-                    <span className="w-5 h-5 rounded-full bg-burgundy/15 text-burgundy flex items-center justify-center text-xs mr-3">&rarr;</span>
-                    <span className="text-charcoal font-semibold">Phase 2: Draft System (In Progress)</span>
-                  </div>
-                  <div className="flex items-center">
-                    <span className="w-5 h-5 rounded-full bg-charcoal/5 text-charcoal/30 flex items-center justify-center text-xs mr-3">&#9675;</span>
-                    <span className="text-charcoal/40">Phase 3: Game Simulation (Coming Soon)</span>
-                  </div>
-                </div>
-              </div>
+            {/* Development Status - Subtle */}
+            <div className="mt-24 inline-flex items-center gap-3 px-6 py-3 bg-charcoal/5 rounded-full border border-charcoal/5">
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+              <span className="text-xs font-sans font-semibold tracking-wider uppercase text-charcoal/60">
+                System Active • Database Loaded
+              </span>
             </div>
-          </section>
+          </div>
         </main>
 
-        {/* Footer with leather accent */}
-        <footer className="border-t border-leather/20 bg-charcoal text-cream-dark py-6">
-          <div className="container mx-auto px-4 text-center font-serif text-sm">
-            <p>&copy; 2026 Century of the Game. A tribute to baseball history.</p>
-          </div>
+        <footer className="py-8 text-center border-t border-charcoal/10">
+          <p className="font-serif text-sm text-charcoal/50 italic">
+            &copy; 2026 Century of the Game. A tribute to the national pastime.
+          </p>
         </footer>
       </div>
     )
