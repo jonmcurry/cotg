@@ -15,6 +15,7 @@ import picksRouter from './routes/picks'
 import playersRouter from './routes/players'
 import cpuRouter from './routes/cpu'
 import lineupRouter from './routes/lineup'
+import scheduleRouter from './routes/schedule'
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -54,6 +55,7 @@ app.use('/api/leagues', leaguesRouter)
 app.use('/api/draft/sessions', draftRouter)
 app.use('/api/draft/sessions', picksRouter)
 app.use('/api/draft/sessions', cpuRouter)
+app.use('/api/draft/sessions', scheduleRouter)
 app.use('/api/players', playersRouter)
 app.use('/api/teams', lineupRouter)
 

@@ -294,16 +294,44 @@ export const useDraftStore = create<DraftState>()(
           throw new Error('[DraftStore] Cannot generate schedule - no active session')
         }
 
-        const { generateSchedule } = await import('../utils/scheduleGenerator')
-        const schedule = generateSchedule(session, gamesPerTeam, new Date())
+        try {
+          // Import schedule types for response typing
+          type SeasonSchedule = import('../types/schedule.types').SeasonSchedule
 
-        const updatedSession: DraftSession = {
-          ...session,
-          schedule,
-          updatedAt: new Date(),
+          // Call API to generate schedule
+          const response = await api.post<{ schedule: SeasonSchedule }>(
+            `/draft/sessions/${session.id}/schedule`,
+            { gamesPerTeam, startDate: new Date().toISOString() }
+          )
+
+          if (!response.schedule) {
+            throw new Error('No schedule returned from API')
+          }
+
+          // Convert date strings to Date objects
+          const schedule: SeasonSchedule = {
+            ...response.schedule,
+            allStarGameDate: new Date(response.schedule.allStarGameDate),
+            seasonStartDate: new Date(response.schedule.seasonStartDate),
+            seasonEndDate: new Date(response.schedule.seasonEndDate),
+            games: response.schedule.games.map(g => ({
+              ...g,
+              date: new Date(g.date),
+            })),
+          }
+
+          const updatedSession: DraftSession = {
+            ...session,
+            schedule,
+            updatedAt: new Date(),
+          }
+
+          set({ session: updatedSession })
+        } catch (err) {
+          const message = err instanceof ApiError ? err.message : 'Unknown error'
+          console.error('[DraftStore] Error generating schedule:', err)
+          throw new Error(`Failed to generate schedule: ${message}`)
         }
-
-        set({ session: updatedSession })
       },
 
       makePick: async (playerSeasonId: string, playerId: string | undefined, position: PositionCode, slotNumber: number, bats?: 'L' | 'R' | 'B' | null): Promise<'success' | 'duplicate' | 'error'> => {
