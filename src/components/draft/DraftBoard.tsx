@@ -202,6 +202,17 @@ If this persists, the database may be updating. Wait a few minutes and try again
     // The session object changes frequently (after each pick), but selectedSeasons rarely changes
   }, [selectedSeasonsKey])
 
+  // Debug: Track dependency changes
+  useEffect(() => {
+    console.log('[CPU Draft] 📊 Dependencies changed:', {
+      'session?.currentPick': session?.currentPick,
+      'session?.status': session?.status,
+      'currentTeam?.id': currentTeam?.id,
+      'applyCpuPick': typeof applyCpuPick,
+      'pauseDraft': typeof pauseDraft
+    })
+  }, [session?.currentPick, session?.status, currentTeam?.id, applyCpuPick, pauseDraft])
+
   // CPU auto-draft logic - uses backend API for pick selection and execution
   // Module-level cpuDraftInProgress guard survives StrictMode remounting to prevent race conditions
   useEffect(() => {
