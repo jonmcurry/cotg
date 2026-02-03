@@ -7,17 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Debugging - 2026-02-03 (CPU Draft UI Synchronization)
-- **Investigating UI Update Issue**: CPU draft picks succeed on backend but UI doesn't update
-  - Backend API logs confirm successful CPU picks being made
-  - Network tab shows 201 responses with correct JSON data
-  - Changed DraftBoard.tsx to reload entire session from backend via loadSession()
-  - Added comprehensive console logging to track:
-    - Component re-render events with session state
-    - CPU pick API success with before/after state
-    - loadSession() call and completion
-    - React re-render behavior after Zustand state updates
-  - Status: In progress - gathering diagnostic data from production
+### Fixed - 2026-02-03 (CPU Draft UI Synchronization Bug)
+- **CRITICAL BUG FIX**: Resolved CPU draft UI not updating despite successful backend picks
+  - **Root Cause**: `cpuThinking` state was incorrectly included in useEffect dependencies
+    - Created circular dependency: effect calls `setCpuThinking(true)` → dependencies change → cleanup runs → sets `cancelled=true` → async operation exits early before updating UI
+  - **Diagnosis Process**:
+    - Backend API confirmed working correctly with successful picks in Render logs
+    - Network tab showed 201 responses with correct JSON data (pick + session)
+    - Added comprehensive console logging to track execution flow through async IIFE
+    - Discovered API response arrived successfully but `cancelled` flag blocked UI update
+    - User expanded fullResponse in console to confirm pick and session data present
+  - **Solution**: Removed `cpuThinking` from useEffect dependencies (line 305)
+    - Effect now only re-runs when session state or current team changes
+    - Loading indicator changes no longer cancel async CPU pick operations
+  - **Files Modified**:
+    - src/components/draft/DraftBoard.tsx - Fixed dependencies array
+  - Status: ✅ RESOLVED - CPU draft UI now updates correctly after each pick
 
 ### Added - 2026-02-03 (Phase 4: Production Deployment + Database Migrations)
 - **Production Deployment Complete**: Application successfully deployed to production
