@@ -1,12 +1,41 @@
 /**
  * League State Management Store
  * Uses Zustand for persistent league management across sessions
+ * API calls go through the backend; Supabase is no longer used directly
  */
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { supabase } from '../lib/supabaseClient'
+import { api, ApiError } from '../lib/api'
 import type { League, LeagueConfig, LeagueStatus } from '../types/league.types'
+
+// API response type (dates as strings from JSON)
+interface LeagueApiResponse {
+  id: string
+  name: string
+  description: string | null
+  seasonYear: number
+  numTeams: number
+  gamesPerSeason: number
+  playoffFormat: League['playoffFormat']
+  useApbaRules: boolean
+  injuryEnabled: boolean
+  weatherEffects: boolean
+  status: League['status']
+  currentGameDate: string | null
+  draftSessionId: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+// Transform API response to League type (parse date strings)
+function transformApiResponse(data: LeagueApiResponse): League {
+  return {
+    ...data,
+    createdAt: new Date(data.createdAt),
+    updatedAt: new Date(data.updatedAt),
+  }
+}
 
 interface LeagueState {
   // Current active league
@@ -28,26 +57,6 @@ interface LeagueState {
   resetLeague: () => void
 }
 
-function transformLeagueRow(row: Record<string, unknown>): League {
-  return {
-    id: row.id as string,
-    name: row.league_name as string,
-    description: (row.league_description as string) || null,
-    seasonYear: row.season_year as number,
-    numTeams: row.num_teams as number,
-    gamesPerSeason: row.games_per_season as number,
-    playoffFormat: (row.playoff_format as League['playoffFormat']) || 'none',
-    useApbaRules: row.use_apba_rules as boolean ?? true,
-    injuryEnabled: row.injury_enabled as boolean ?? false,
-    weatherEffects: row.weather_effects as boolean ?? false,
-    status: row.status as League['status'],
-    currentGameDate: (row.current_game_date as string) || null,
-    draftSessionId: (row.draft_session_id as string) || null,
-    createdAt: new Date(row.created_at as string),
-    updatedAt: new Date(row.updated_at as string),
-  }
-}
-
 export const useLeagueStore = create<LeagueState>()(
   persist(
     (set, get) => ({
@@ -55,131 +64,108 @@ export const useLeagueStore = create<LeagueState>()(
       leagues: [],
 
       createLeague: async (config: LeagueConfig, seasonYear: number) => {
-        const { data, error } = await supabase
-          .from('leagues')
-          .insert({
-            league_name: config.name,
-            league_description: config.description || null,
-            season_year: seasonYear,
-            num_teams: config.numTeams,
-            games_per_season: config.gamesPerSeason,
-            playoff_format: config.playoffFormat,
-            use_apba_rules: config.useApbaRules,
-            injury_enabled: config.injuryEnabled,
-            weather_effects: config.weatherEffects,
-            status: 'draft',
+        try {
+          const data = await api.post<LeagueApiResponse>('/leagues', {
+            name: config.name,
+            description: config.description || null,
+            seasonYear,
+            numTeams: config.numTeams,
+            gamesPerSeason: config.gamesPerSeason,
+            playoffFormat: config.playoffFormat,
+            useApbaRules: config.useApbaRules,
+            injuryEnabled: config.injuryEnabled,
+            weatherEffects: config.weatherEffects,
           })
-          .select()
-          .single()
 
-        if (error) {
-          console.error('[LeagueStore] Error creating league:', error)
-          throw new Error(`Failed to create league: ${error.message}`)
+          const league = transformApiResponse(data)
+          set({ currentLeague: league })
+          console.log('[LeagueStore] League created:', league.id, league.name)
+          return league
+        } catch (err) {
+          const message = err instanceof ApiError ? err.message : 'Unknown error'
+          console.error('[LeagueStore] Error creating league:', err)
+          throw new Error(`Failed to create league: ${message}`)
         }
-
-        if (!data) {
-          throw new Error('Failed to create league - no data returned')
-        }
-
-        const league = transformLeagueRow(data)
-        set({ currentLeague: league })
-        console.log('[LeagueStore] League created:', league.id, league.name)
-        return league
       },
 
       loadAllLeagues: async () => {
-        const { data, error } = await supabase
-          .from('leagues')
-          .select('*')
-          .order('updated_at', { ascending: false })
-
-        if (error) {
-          console.error('[LeagueStore] Error loading leagues:', error)
-          throw new Error(`Failed to load leagues: ${error.message}`)
+        try {
+          const data = await api.get<LeagueApiResponse[]>('/leagues')
+          const leagues = data.map(transformApiResponse)
+          set({ leagues })
+          console.log('[LeagueStore] Loaded', leagues.length, 'leagues')
+        } catch (err) {
+          const message = err instanceof ApiError ? err.message : 'Unknown error'
+          console.error('[LeagueStore] Error loading leagues:', err)
+          throw new Error(`Failed to load leagues: ${message}`)
         }
-
-        const leagues = (data || []).map(transformLeagueRow)
-        set({ leagues })
-        console.log('[LeagueStore] Loaded', leagues.length, 'leagues')
       },
 
       loadLeague: async (leagueId: string) => {
-        const { data, error } = await supabase
-          .from('leagues')
-          .select('*')
-          .eq('id', leagueId)
-          .single()
-
-        if (error) {
-          console.error('[LeagueStore] Error loading league:', error)
-          throw new Error(`Failed to load league: ${error.message}`)
+        try {
+          const data = await api.get<LeagueApiResponse>(`/leagues/${leagueId}`)
+          const league = transformApiResponse(data)
+          set({ currentLeague: league })
+          console.log('[LeagueStore] Loaded league:', league.id, league.name, 'status:', league.status)
+          return league
+        } catch (err) {
+          const message = err instanceof ApiError ? err.message : 'Unknown error'
+          console.error('[LeagueStore] Error loading league:', err)
+          throw new Error(`Failed to load league: ${message}`)
         }
-
-        if (!data) {
-          throw new Error(`League not found: ${leagueId}`)
-        }
-
-        const league = transformLeagueRow(data)
-        set({ currentLeague: league })
-        console.log('[LeagueStore] Loaded league:', league.id, league.name, 'status:', league.status)
-        return league
       },
 
       deleteLeague: async (leagueId: string) => {
-        const { error } = await supabase
-          .from('leagues')
-          .delete()
-          .eq('id', leagueId)
+        try {
+          await api.delete(`/leagues/${leagueId}`)
 
-        if (error) {
-          console.error('[LeagueStore] Error deleting league:', error)
-          throw new Error(`Failed to delete league: ${error.message}`)
+          // Remove from local state
+          const current = get().currentLeague
+          if (current?.id === leagueId) {
+            set({ currentLeague: null })
+          }
+          set({ leagues: get().leagues.filter(l => l.id !== leagueId) })
+          console.log('[LeagueStore] Deleted league:', leagueId)
+        } catch (err) {
+          const message = err instanceof ApiError ? err.message : 'Unknown error'
+          console.error('[LeagueStore] Error deleting league:', err)
+          throw new Error(`Failed to delete league: ${message}`)
         }
-
-        // Remove from local state
-        const current = get().currentLeague
-        if (current?.id === leagueId) {
-          set({ currentLeague: null })
-        }
-        set({ leagues: get().leagues.filter(l => l.id !== leagueId) })
-        console.log('[LeagueStore] Deleted league:', leagueId)
       },
 
       updateLeagueStatus: async (leagueId: string, status: LeagueStatus) => {
-        const { error } = await supabase
-          .from('leagues')
-          .update({ status })
-          .eq('id', leagueId)
+        try {
+          const data = await api.put<LeagueApiResponse>(`/leagues/${leagueId}`, { status })
+          const league = transformApiResponse(data)
 
-        if (error) {
-          console.error('[LeagueStore] Error updating league status:', error)
-          throw new Error(`Failed to update league status: ${error.message}`)
+          // Update local state
+          const current = get().currentLeague
+          if (current?.id === leagueId) {
+            set({ currentLeague: league })
+          }
+          console.log('[LeagueStore] Updated league status:', leagueId, '->', status)
+        } catch (err) {
+          const message = err instanceof ApiError ? err.message : 'Unknown error'
+          console.error('[LeagueStore] Error updating league status:', err)
+          throw new Error(`Failed to update league status: ${message}`)
         }
-
-        // Update local state
-        const current = get().currentLeague
-        if (current?.id === leagueId) {
-          set({ currentLeague: { ...current, status, updatedAt: new Date() } })
-        }
-        console.log('[LeagueStore] Updated league status:', leagueId, '->', status)
       },
 
       linkDraftSession: async (leagueId: string, draftSessionId: string) => {
-        const { error } = await supabase
-          .from('leagues')
-          .update({ draft_session_id: draftSessionId })
-          .eq('id', leagueId)
+        try {
+          const data = await api.put<LeagueApiResponse>(`/leagues/${leagueId}`, { draftSessionId })
+          const league = transformApiResponse(data)
 
-        if (error) {
-          console.error('[LeagueStore] Error linking draft session:', error)
-          throw new Error(`Failed to link draft session: ${error.message}`)
+          const current = get().currentLeague
+          if (current?.id === leagueId) {
+            set({ currentLeague: league })
+          }
+          console.log('[LeagueStore] Linked draft session', draftSessionId, 'to league', leagueId)
+        } catch (err) {
+          const message = err instanceof ApiError ? err.message : 'Unknown error'
+          console.error('[LeagueStore] Error linking draft session:', err)
+          throw new Error(`Failed to link draft session: ${message}`)
         }
-
-        const current = get().currentLeague
-        if (current?.id === leagueId) {
-          set({ currentLeague: { ...current, draftSessionId, updatedAt: new Date() } })
-        }
-        console.log('[LeagueStore] Linked draft session', draftSessionId, 'to league', leagueId)
       },
 
       setCurrentLeague: (league: League | null) => {

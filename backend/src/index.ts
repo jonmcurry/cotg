@@ -8,6 +8,9 @@ import express from 'express'
 import cors from 'cors'
 import { supabase } from './lib/supabase'
 
+// Route imports
+import leaguesRouter from './routes/leagues'
+
 const app = express()
 const PORT = process.env.PORT || 3001
 
@@ -41,21 +44,8 @@ app.get('/api/health', async (_req, res) => {
   }
 })
 
-// Placeholder routes - to be implemented
-app.get('/api/leagues', async (_req, res) => {
-  try {
-    const { data, error } = await supabase
-      .from('leagues')
-      .select('*')
-      .order('created_at', { ascending: false })
-
-    if (error) throw error
-    res.json(data)
-  } catch (err) {
-    console.error('[Leagues] Error:', err)
-    res.status(500).json({ error: 'Failed to fetch leagues' })
-  }
-})
+// Route handlers
+app.use('/api/leagues', leaguesRouter)
 
 app.get('/api/players/pool', async (req, res) => {
   try {
