@@ -38,6 +38,7 @@ export default function DraftBoard({ onExit, onComplete }: Props) {
 
   const {
     session,
+    loadSession,
     getCurrentPickingTeam,
     getNextPickingTeam,
     makePick,
@@ -269,18 +270,9 @@ If this persists, the database may be updating. Wait a few minutes and try again
         }
 
         if (response.result === 'success' && response.pick && response.session) {
-          // Apply the pick to local state
-          applyCpuPick(
-            {
-              teamId: response.pick.teamId,
-              playerSeasonId: response.pick.playerSeasonId,
-              playerId: response.pick.playerId,
-              position: response.pick.position,
-              slotNumber: response.pick.slotNumber,
-              bats: response.pick.bats,
-            },
-            response.session
-          )
+          // Reload entire session from backend to get authoritative state
+          // This ensures UI is always in sync with the database
+          await loadSession(session.id)
 
           // Show inline ticker for this pick (clears after 3 seconds)
           if (!cancelled) {
