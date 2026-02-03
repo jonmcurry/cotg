@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - 2026-02-03 (Feature Slice 4: CPU Draft API Migration)
+- Completed fourth feature slice of the Vercel/Render/Supabase migration
+- Backend: Created `backend/src/routes/cpu.ts` with POST /cpu-pick endpoint
+  - Full CPU selection algorithm moved to server (scoring, scarcity, platoon balance)
+  - Loads player pool from database, runs selection, makes pick atomically
+  - Returns pick details and updated session state
+  - Handles duplicate detection with 409 response
+- Frontend: Added `applyCpuPick()` to draftStore for applying API response to local state
+- Frontend: Refactored DraftBoard CPU draft useEffect to call API instead of local logic
+- Reduces frontend bundle size by ~3KB (cpuDraftLogic no longer bundled for CPU picks)
+- CPU picks now execute entirely on server for consistent source of truth
+
 ### Changed - 2026-02-03 (Feature Slice 3: Players API Migration)
 - Completed third feature slice of the Vercel/Render/Supabase migration
 - Backend: Created `backend/src/routes/players.ts` with three endpoints:
