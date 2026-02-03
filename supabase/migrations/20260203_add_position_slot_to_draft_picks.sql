@@ -23,15 +23,21 @@ ALTER TABLE draft_picks
   ALTER COLUMN position SET NOT NULL,
   ALTER COLUMN slot_number SET NOT NULL;
 
--- Step 4: Add check constraint for valid positions
-ALTER TABLE draft_picks
-  ADD CONSTRAINT IF NOT EXISTS check_valid_position
-  CHECK (position IN ('C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH', 'SP', 'RP', 'CL'));
+-- Step 4: Add check constraint for valid positions (drop first if exists)
+DO $$
+BEGIN
+  ALTER TABLE draft_picks DROP CONSTRAINT IF EXISTS check_valid_position;
+  ALTER TABLE draft_picks ADD CONSTRAINT check_valid_position
+    CHECK (position IN ('C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH', 'SP', 'RP', 'CL'));
+END $$;
 
--- Step 5: Add check constraint for slot_number (must be positive)
-ALTER TABLE draft_picks
-  ADD CONSTRAINT IF NOT EXISTS check_valid_slot_number
-  CHECK (slot_number > 0);
+-- Step 5: Add check constraint for slot_number (drop first if exists)
+DO $$
+BEGIN
+  ALTER TABLE draft_picks DROP CONSTRAINT IF EXISTS check_valid_slot_number;
+  ALTER TABLE draft_picks ADD CONSTRAINT check_valid_slot_number
+    CHECK (slot_number > 0);
+END $$;
 
 -- Step 6: Add index for efficient roster queries
 CREATE INDEX IF NOT EXISTS idx_draft_picks_position_slot
