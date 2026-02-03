@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - 2026-02-03 (Feature Slice 6: Schedule API Migration)
+- Completed sixth feature slice of the Vercel/Render/Supabase migration
+- Backend: Created `backend/src/routes/schedule.ts` with POST /sessions/:id/schedule endpoint
+  - Full schedule generation algorithm (balanced matchups, series distribution)
+  - All-Star break insertion at midpoint
+  - Random off days for realism
+  - Returns complete SeasonSchedule
+- Frontend: Refactored draftStore.generateSeasonSchedule to call API
+- Reduces frontend bundle size by ~1.8KB (scheduleGenerator no longer bundled)
+- Schedule generation now executes on server for consistency
+
 ### Changed - 2026-02-03 (Feature Slice 5: Auto-Lineup API Migration)
 - Completed fifth feature slice of the Vercel/Render/Supabase migration
 - Backend: Created `backend/src/routes/lineup.ts` with POST /teams/:id/auto-lineup endpoint
