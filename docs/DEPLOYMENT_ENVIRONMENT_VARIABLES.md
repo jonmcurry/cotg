@@ -78,6 +78,25 @@ VITE_SUPABASE_ANON_KEY=eyJhbGc...
 
 ## Deployment Order and Configuration
 
+### Step 0: Apply Database Migrations (If Deploying Fresh)
+
+**IMPORTANT**: If this is a fresh Supabase project, you must apply all database migrations before deploying the backend.
+
+1. Go to [Supabase Dashboard](https://supabase.com/dashboard)
+2. Select your project
+3. Click **SQL Editor** in the left sidebar
+4. Apply each migration file from `supabase/migrations/` in order:
+   - Open the migration file locally
+   - Copy the SQL content
+   - Paste into Supabase SQL Editor
+   - Click **Run**
+5. Verify migrations completed successfully
+
+**Current Migrations:**
+- `20260203_add_control_column_to_draft_teams.sql` - Adds control column for human/CPU team types
+
+See [supabase/migrations/README.md](../supabase/migrations/README.md) for detailed migration instructions.
+
 ### Step 1: Deploy Backend to Render First
 
 1. Deploy backend to Render using `render.yaml`
