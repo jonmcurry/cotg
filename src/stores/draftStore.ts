@@ -99,9 +99,9 @@ interface DraftState {
   saveSession: () => Promise<void>
 
   // Draft actions
-  startDraft: () => void
-  pauseDraft: () => void
-  resumeDraft: () => void
+  startDraft: () => Promise<void>
+  pauseDraft: () => Promise<void>
+  resumeDraft: () => Promise<void>
 
   // Management actions
   updateTeamDepthChart: (teamId: string, depthChart: TeamDepthChart) => void
@@ -220,7 +220,7 @@ export const useDraftStore = create<DraftState>()(
         }
       },
 
-      startDraft: () => {
+      startDraft: async () => {
         const session = get().session
         if (!session) {
           console.error('[startDraft] CRITICAL ERROR - No session found!')
@@ -234,10 +234,12 @@ export const useDraftStore = create<DraftState>()(
         }
 
         set({ session: updatedSession })
-        get().saveSession()
+        // Wait for backend to update before continuing - prevents race condition
+        // where CPU draft tries to run before backend status is updated
+        await get().saveSession()
       },
 
-      pauseDraft: () => {
+      pauseDraft: async () => {
         const session = get().session
         if (!session) return
 
@@ -248,10 +250,10 @@ export const useDraftStore = create<DraftState>()(
         }
 
         set({ session: updatedSession })
-        get().saveSession()
+        await get().saveSession()
       },
 
-      resumeDraft: () => {
+      resumeDraft: async () => {
         const session = get().session
         if (!session) return
 
@@ -262,7 +264,7 @@ export const useDraftStore = create<DraftState>()(
         }
 
         set({ session: updatedSession })
-        get().saveSession()
+        await get().saveSession()
       },
 
       updateTeamDepthChart: (teamId: string, depthChart: TeamDepthChart) => {
