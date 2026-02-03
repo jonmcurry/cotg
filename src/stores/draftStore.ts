@@ -249,30 +249,31 @@ export const useDraftStore = create<DraftState>()(
 
         console.log('[startDraft] START Starting draft, current status:', session.status)
 
-        const updatedSession: DraftSession = {
-          ...session,
-          status: 'in_progress',
-          updatedAt: new Date(),
-        }
-
-        set({ session: updatedSession })
-        console.log('[startDraft] UPDATE Local state updated to in_progress, now saving to backend...')
-
-        // Wait for backend to update before continuing - prevents race condition
-        // where CPU draft tries to run before backend status is updated
+        // FIXED Issue #1: Update backend FIRST, then update local state
+        // This prevents race condition where CPU effect triggers before backend updates
         try {
-          await get().saveSession()
-          console.log('[startDraft] SUCCESS Backend save complete, waiting for DB commit...')
+          console.log('[startDraft] SAVING Updating backend to in_progress...')
 
-          // Add small delay to ensure database transaction commits
-          // before CPU draft effect triggers and queries backend
-          await new Promise(resolve => setTimeout(resolve, 200))
+          // Call API directly to update backend first - await ensures DB commits
+          await api.put(`/draft/sessions/${session.id}`, {
+            status: 'in_progress',
+            currentPick: session.currentPick,
+            currentRound: session.currentRound,
+          })
 
-          console.log('[startDraft] SUCCESS Draft ready to start')
+          console.log('[startDraft] SUCCESS Backend updated, DB transaction committed')
+
+          // NOW update local state - this triggers CPU effect, which will see correct backend status
+          set({
+            session: {
+              ...session,
+              status: 'in_progress',
+              updatedAt: new Date(),
+            }
+          })
+          console.log('[startDraft] UPDATE Local state updated - draft ready, CPU can start')
         } catch (err) {
           console.error('[startDraft] ERROR CRITICAL: Failed to save draft status to backend!', err)
-          // Revert local state since backend update failed
-          set({ session: { ...updatedSession, status: 'setup' } })
           throw new Error('Failed to start draft: backend update failed')
         }
       },

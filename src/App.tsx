@@ -84,11 +84,10 @@ export default function App() {
     }
 
     setScreen('draft')
-    // Wait a moment for UI to render, then start the draft
-    // This ensures the draft board is mounted before CPU drafting begins
-    setTimeout(async () => {
-      await startDraft()
-    }, 100)
+    // FIXED Issue #2: Await startDraft() directly instead of using setTimeout
+    // This ensures backend is updated before function returns
+    // DraftBoard will mount and CPU effect will see correct status
+    await startDraft()
   }
 
   const handleExitToHome = () => {

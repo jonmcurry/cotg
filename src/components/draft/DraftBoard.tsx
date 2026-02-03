@@ -41,6 +41,9 @@ export default function DraftBoard({ onExit, onComplete }: Props) {
   const failedPlayerSeasonIdsRef = useRef(new Set<string>())
   const lastSessionIdRef = useRef<string | null>(null)
 
+  // FIXED Issue #8: Add AbortController for player loading cancellation
+  const loadingAbortControllerRef = useRef<AbortController | null>(null)
+
   // Debug: Log every render to track session state changes
   console.log('[DraftBoard] RENDER Component render:', {
     sessionId: session?.id,
@@ -62,6 +65,8 @@ export default function DraftBoard({ onExit, onComplete }: Props) {
     year: number
   } | null>(null)
   const lastCpuPickTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // FIXED Issue #11: Track CPU errors for error recovery UI
+  const [cpuError, setCpuError] = useState<string | null>(null)
 
   // Prevent concurrent player loading (race condition guard)
   const loadingInProgress = useRef(false)
@@ -100,6 +105,10 @@ export default function DraftBoard({ onExit, onComplete }: Props) {
       if (loadingInProgress.current) {
         return
       }
+
+      // FIXED Issue #8: Create AbortController for this load operation
+      loadingAbortControllerRef.current = new AbortController()
+      const signal = loadingAbortControllerRef.current.signal
 
       loadingInProgress.current = true
       setLoading(true)
@@ -180,15 +189,31 @@ If this persists, the database may be updating. Wait a few minutes and try again
 
         setPlayers(transformedPlayers)
       } catch (err) {
+        // FIXED Issue #8: Don't show error if request was aborted (cleanup)
+        if (signal.aborted) {
+          console.log('[Player Load] Load aborted (cleanup)')
+          return
+        }
         console.error('[Player Load] CRITICAL ERROR - Exception:', err)
         alert(`CRITICAL ERROR: Exception while loading players.\n\nError: ${err}\n\nCheck console for details.`)
       } finally {
-        setLoading(false)
-        loadingInProgress.current = false
+        // FIXED Issue #8: Only update state if not aborted
+        if (!signal.aborted) {
+          setLoading(false)
+          loadingInProgress.current = false
+        }
       }
     }
 
     loadPlayers()
+
+    // FIXED Issue #8: Cleanup function to abort loading on unmount/re-run
+    return () => {
+      if (loadingAbortControllerRef.current) {
+        loadingAbortControllerRef.current.abort()
+        loadingInProgress.current = false
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     // Note: We intentionally depend only on selectedSeasonsKey, not the entire session object
     // This prevents reloading all players after every pick (which would interrupt CPU draft)
@@ -332,8 +357,9 @@ If this persists, the database may be updating. Wait a few minutes and try again
 
         if (response.result === 'error') {
           console.error('[CPU Draft] API error:', response.error)
+          // FIXED Issue #11: Store error in state instead of showing alert
+          setCpuError(response.error || 'Unknown error during CPU draft')
           pauseDraft()
-          alert(`ERROR: CPU draft pick failed. Draft paused.\n\n${response.error}`)
           return
         }
 
@@ -377,8 +403,9 @@ If this persists, the database may be updating. Wait a few minutes and try again
         }
       } catch (error) {
         console.error('[CPU Draft] ERROR during API call:', error)
+        // FIXED Issue #11: Store error in state instead of showing alert
+        setCpuError(`CPU draft failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
         pauseDraft()
-        alert('ERROR during CPU draft. Check console for details.')
       } finally {
         // Always reset guards so the next effect run can proceed
         cpuDraftInProgressRef.current = false
@@ -421,6 +448,12 @@ If this persists, the database may be updating. Wait a few minutes and try again
     },
     [selectedPlayer, makePick]
   )
+
+  // FIXED Issue #11: Retry handler for CPU draft errors
+  const handleRetry = useCallback(() => {
+    setCpuError(null)
+    resumeDraft()
+  }, [resumeDraft])
 
   // Build deduplication sets for UI (TabbedPlayerPool uses draftedPlayerIds)
   // draftedPlayerIds: cross-season dedup by player_id
@@ -607,6 +640,39 @@ If this persists, the database may be updating. Wait a few minutes and try again
           onConfirm={handleConfirmPick}
           onCancel={() => setSelectedPlayer(null)}
         />
+      )}
+
+      {/* FIXED Issue #11: CPU Error Recovery UI */}
+      {cpuError && (
+        <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50">
+          <div className="bg-red-900/95 backdrop-blur-sm border border-red-500/50 rounded-sm px-8 py-6 shadow-[0_0_40px_rgba(239,68,68,0.3)] max-w-lg">
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-3 h-3 bg-red-500 rounded-full flex-shrink-0"></div>
+                <h3 className="text-lg font-sans font-bold tracking-wider text-red-400 uppercase">
+                  CPU Draft Error
+                </h3>
+              </div>
+              <p className="text-sm font-serif text-cream/90 leading-relaxed">
+                {cpuError}
+              </p>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={handleRetry}
+                  className="flex-1 bg-gold hover:bg-gold/80 text-charcoal font-sans font-bold text-sm tracking-wider uppercase px-4 py-2 rounded-sm transition-colors"
+                >
+                  Retry Draft
+                </button>
+                <button
+                  onClick={() => setCpuError(null)}
+                  className="flex-1 bg-charcoal/80 hover:bg-charcoal border border-cream/20 hover:border-cream/40 text-cream font-sans font-bold text-sm tracking-wider uppercase px-4 py-2 rounded-sm transition-colors"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* CPU Pick Ticker - inline banner instead of blocking modal */}

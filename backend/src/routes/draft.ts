@@ -246,7 +246,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       currentRound: sessionData.current_round,
       teams,
       picks,
-      selectedSeasons: [], // Not stored in DB currently
+      selectedSeasons: sessionData.selected_seasons || [], // FIXED Issue #13: Return persisted selectedSeasons
       createdAt: sessionData.created_at,
       updatedAt: sessionData.updated_at,
     }
@@ -282,6 +282,7 @@ router.post('/', async (req: Request, res: Response) => {
       .insert({
         session_name: `Draft ${new Date().toLocaleDateString()}`,
         season_year: config.selectedSeasons?.[0] || new Date().getFullYear(),
+        selected_seasons: config.selectedSeasons || [], // FIXED Issue #13: Persist selectedSeasons
         num_teams: config.numTeams,
         num_rounds: TOTAL_ROUNDS,
         draft_type: 'snake',
@@ -364,6 +365,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     if (updates.status !== undefined) dbUpdates.status = updates.status
     if (updates.currentPick !== undefined) dbUpdates.current_pick_number = updates.currentPick
     if (updates.currentRound !== undefined) dbUpdates.current_round = updates.currentRound
+    if (updates.selectedSeasons !== undefined) dbUpdates.selected_seasons = updates.selectedSeasons // FIXED Issue #13
 
     if (Object.keys(dbUpdates).length === 0) {
       return res.status(400).json({ error: 'No valid fields to update' })

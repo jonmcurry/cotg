@@ -13,6 +13,21 @@ const TOTAL_ROUNDS = 21
 
 type PositionCode = 'C' | '1B' | '2B' | 'SS' | '3B' | 'OF' | 'SP' | 'RP' | 'CL' | 'DH' | 'BN'
 
+// FIXED Issue #10: Position eligibility mapping (matches database primary_position to roster slots)
+const POSITION_ELIGIBILITY: Record<PositionCode, string[]> = {
+  'C': ['C'],
+  '1B': ['1B'],
+  '2B': ['2B'],
+  'SS': ['SS'],
+  '3B': ['3B'],
+  'OF': ['OF', 'LF', 'CF', 'RF'],
+  'SP': ['P', 'SP'],
+  'RP': ['P', 'RP'],
+  'CL': ['P', 'RP', 'CL'],
+  'DH': ['C', '1B', '2B', 'SS', '3B', 'OF', 'LF', 'CF', 'RF', 'P', 'SP', 'RP', 'CL', 'DH'],
+  'BN': ['C', '1B', '2B', 'SS', '3B', 'OF', 'LF', 'CF', 'RF', 'DH'],
+}
+
 interface MakePickRequest {
   playerSeasonId: string
   playerId?: string
@@ -175,6 +190,35 @@ router.post('/:sessionId/picks', async (req: Request, res: Response) => {
       }
 
       resolvedPlayerId = playerSeason.player_id
+    }
+
+    // FIXED Issue #10: Validate position eligibility
+    const { data: playerSeasonData, error: positionError } = await supabase
+      .from('player_seasons')
+      .select('primary_position, games_by_position')
+      .eq('id', playerSeasonId)
+      .single()
+
+    if (positionError || !playerSeasonData) {
+      console.error('[Picks API] Error fetching player position:', positionError)
+      return res.status(500).json({ error: 'Failed to validate position eligibility' })
+    }
+
+    // Check if player's primary_position is eligible for the requested position
+    const eligiblePositions = POSITION_ELIGIBILITY[position as PositionCode]
+    const playerPosition = playerSeasonData.primary_position
+
+    if (!eligiblePositions.includes(playerPosition)) {
+      console.warn('[Picks API] INVALID POSITION:', {
+        playerSeasonId,
+        playerPosition,
+        requestedPosition: position,
+        eligiblePositions,
+      })
+      return res.status(400).json({
+        result: 'error',
+        error: `Player position "${playerPosition}" is not eligible for roster slot "${position}". Eligible positions: ${eligiblePositions.join(', ')}`,
+      })
     }
 
     // Upsert the pick (idempotent - handles duplicate submissions)
