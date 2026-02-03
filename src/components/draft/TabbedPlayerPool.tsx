@@ -10,6 +10,7 @@ import type { PlayerSeason } from '../../utils/cpuDraftLogic'
 interface Props {
   players: PlayerSeason[]
   draftedPlayerIds: Set<string>
+  draftedSeasonIds: Set<string>
   onSelectPlayer: (player: PlayerSeason) => void
   currentTeamControl: 'human' | 'cpu'
 }
@@ -39,6 +40,7 @@ const isPositionPlayer = (player: PlayerSeason): boolean => {
 export default function TabbedPlayerPool({
   players,
   draftedPlayerIds,
+  draftedSeasonIds,
   onSelectPlayer,
   currentTeamControl,
 }: Props) {
@@ -50,10 +52,12 @@ export default function TabbedPlayerPool({
   })
 
   // Filter available (undrafted) players
-  // Note: draftedPlayerIds contains player_id (not season id), so all seasons of a drafted player are filtered out
+  // Dual filter: player_id for cross-season dedup, season id for exact-match fallback (handles null player_id)
   const availablePlayers = useMemo(() => {
-    return players.filter(p => !draftedPlayerIds.has(p.player_id))
-  }, [players, draftedPlayerIds])
+    return players.filter(p =>
+      !draftedPlayerIds.has(p.player_id) && !draftedSeasonIds.has(p.id)
+    )
+  }, [players, draftedPlayerIds, draftedSeasonIds])
 
   // Split into position players and pitchers based on actual activity
   // Two-way players (Babe Ruth, Shohei Ohtani) appear in BOTH tabs

@@ -261,18 +261,19 @@ If this persists, the database may be updating. Wait a few minutes and try again
           // Check if this effect instance was cancelled (StrictMode unmount)
           if (cancelled) return
 
-          // Build Set of drafted player_id values (not playerSeasonId)
-          // This prevents the same player from being drafted multiple times for different seasons
-          // Example: If Christy Mathewson 1908 is drafted, ALL his other seasons are excluded
-          // Uses playerId directly from picks when available, falls back to roster lookup for legacy data
+          // Build deduplication sets from completed picks
+          // draftedPlayerIds: cross-season dedup by player_id (all seasons of a drafted player excluded)
+          // draftedSeasonIds: exact-season dedup by playerSeasonId (fallback when player_id is null)
           const draftedPlayerIds = new Set<string>()
+          const draftedSeasonIds = new Set<string>()
 
-          // Primary: get player IDs directly from completed picks (most reliable)
           session.picks.forEach(pick => {
+            if (pick.playerSeasonId) {
+              draftedSeasonIds.add(pick.playerSeasonId)
+            }
             if (pick.playerId) {
               draftedPlayerIds.add(pick.playerId)
             } else if (pick.playerSeasonId) {
-              // Fallback: lookup from players array (legacy picks without playerId)
               const player = players.find(p => p.id === pick.playerSeasonId)
               if (player?.player_id) {
                 draftedPlayerIds.add(player.player_id)
@@ -284,7 +285,10 @@ If this persists, the database may be updating. Wait a few minutes and try again
           // Players array is already sorted by apba_rating DESC from SQL query
           // Split into hitters and pitchers to guarantee both are represented in the pool
           // (pitchers can dominate raw APBA ratings, starving the CPU of hitter candidates)
-          const undraftedPlayers = players.filter(p => !draftedPlayerIds.has(p.player_id))
+          // Dual filter: exclude by player_id (cross-season) AND by season id (exact match fallback)
+          const undraftedPlayers = players.filter(p =>
+            !draftedPlayerIds.has(p.player_id) && !draftedSeasonIds.has(p.id)
+          )
           const undraftedHitters = undraftedPlayers.filter(p => (p.at_bats || 0) >= 200)
           const undraftedPitchers = undraftedPlayers.filter(p => (p.innings_pitched_outs || 0) >= 90 && (p.at_bats || 0) < 200)
           const topUndrafted = [
@@ -301,7 +305,17 @@ If this persists, the database may be updating. Wait a few minutes and try again
           if (cancelled) return
 
           if (selection) {
-            await makePick(selection.player.id, selection.player.player_id, selection.position, selection.slotNumber, selection.player.bats)
+            const success = await makePick(selection.player.id, selection.player.player_id, selection.position, selection.slotNumber, selection.player.bats)
+
+            if (!success) {
+              // makePick failed (likely DB constraint violation) - pause to break infinite loop
+              console.error('[CPU Draft] makePick failed for player:', selection.player.display_name, selection.player.id)
+              if (!cancelled) {
+                pauseDraft()
+                alert('ERROR: CPU draft pick failed (possible duplicate player). Draft paused. Check console for details.')
+              }
+              return
+            }
 
             // Show inline ticker for this pick (clears after 3 seconds)
             if (!cancelled) {
@@ -367,18 +381,22 @@ If this persists, the database may be updating. Wait a few minutes and try again
     [selectedPlayer, makePick]
   )
 
-  const draftedPlayerIds = useMemo(() => {
+  // Build deduplication sets for UI (TabbedPlayerPool uses draftedPlayerIds)
+  // draftedPlayerIds: cross-season dedup by player_id
+  // draftedSeasonIds: exact-season dedup fallback (handles null player_id)
+  const { draftedPlayerIds, draftedSeasonIds } = useMemo(() => {
     const completedPicks = session?.picks.filter(p => p.playerSeasonId !== null) || []
 
-    // Build player ID set directly from picks (no lookup needed when playerId is stored)
     const playerIds = new Set<string>()
+    const seasonIds = new Set<string>()
 
     for (const pick of completedPicks) {
+      if (pick.playerSeasonId) {
+        seasonIds.add(pick.playerSeasonId)
+      }
       if (pick.playerId) {
-        // Direct: playerId stored on the pick (new drafts)
         playerIds.add(pick.playerId)
       } else if (pick.playerSeasonId) {
-        // Fallback: lookup player_id from players array (legacy drafts without playerId on pick)
         const player = players.find(p => p.id === pick.playerSeasonId)
         if (player?.player_id) {
           playerIds.add(player.player_id)
@@ -388,7 +406,7 @@ If this persists, the database may be updating. Wait a few minutes and try again
       }
     }
 
-    return playerIds
+    return { draftedPlayerIds: playerIds, draftedSeasonIds: seasonIds }
   }, [session?.picks, players])
 
   if (!session) {
@@ -520,6 +538,7 @@ If this persists, the database may be updating. Wait a few minutes and try again
             <TabbedPlayerPool
               players={players}
               draftedPlayerIds={draftedPlayerIds}
+              draftedSeasonIds={draftedSeasonIds}
               onSelectPlayer={handlePlayerSelect}
               currentTeamControl={currentTeam?.control || 'cpu'}
             />

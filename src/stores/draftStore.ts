@@ -36,7 +36,7 @@ interface DraftState {
   generateSeasonSchedule: (gamesPerTeam?: number) => Promise<void>
 
   // Pick actions
-  makePick: (playerSeasonId: string, playerId: string | undefined, position: PositionCode, slotNumber: number, bats?: 'L' | 'R' | 'B' | null) => Promise<void>
+  makePick: (playerSeasonId: string, playerId: string | undefined, position: PositionCode, slotNumber: number, bats?: 'L' | 'R' | 'B' | null) => Promise<boolean>
   getCurrentPickingTeam: () => DraftTeam | null
   getNextPickingTeam: () => DraftTeam | null
 
@@ -368,16 +368,16 @@ export const useDraftStore = create<DraftState>()(
         set({ session: updatedSession })
       },
 
-      makePick: async (playerSeasonId: string, playerId: string | undefined, position: PositionCode, slotNumber: number, bats?: 'L' | 'R' | 'B' | null) => {
+      makePick: async (playerSeasonId: string, playerId: string | undefined, position: PositionCode, slotNumber: number, bats?: 'L' | 'R' | 'B' | null): Promise<boolean> => {
         const session = get().session
-        if (!session) return
+        if (!session) return false
 
         const currentPickIndex = session.currentPick - 1
         const currentPick = session.picks[currentPickIndex]
-        if (!currentPick) return
+        if (!currentPick) return false
 
         const teamIndex = session.teams.findIndex(t => t.id === currentPick.teamId)
-        if (teamIndex === -1) return
+        if (teamIndex === -1) return false
 
         const team = session.teams[teamIndex]
 
@@ -387,8 +387,8 @@ export const useDraftStore = create<DraftState>()(
         )
 
         if (rosterSlotIndex === -1) {
-          console.error('Roster slot not found')
-          return
+          console.error('[makePick] Roster slot not found:', position, slotNumber)
+          return false
         }
 
         // Create immutable updates
@@ -420,7 +420,7 @@ export const useDraftStore = create<DraftState>()(
 
           if (fetchError || !playerSeasonData) {
             console.error('[makePick] Error fetching player_id from player_seasons:', fetchError)
-            return
+            return false
           }
 
           resolvedPlayerId = playerSeasonData.player_id
@@ -452,8 +452,13 @@ export const useDraftStore = create<DraftState>()(
           })
 
         if (error) {
-          console.error('[makePick] Error saving pick to Supabase:', error)
-          return
+          // Distinguish between constraint types for clear diagnostics
+          if (error.code === '23505' && error.message?.includes('player_season_id')) {
+            console.error('[makePick] DUPLICATE PLAYER: player_season_id already drafted in this session:', playerSeasonId)
+          } else {
+            console.error('[makePick] Error saving pick to Supabase:', error)
+          }
+          return false
         }
 
         // Advance to next pick
@@ -480,6 +485,7 @@ export const useDraftStore = create<DraftState>()(
 
         set({ session: updatedSession })
         get().saveSession()
+        return true
       },
 
       getCurrentPickingTeam: () => {
