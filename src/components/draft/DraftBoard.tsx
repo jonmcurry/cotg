@@ -297,6 +297,13 @@ If this persists, the database may be updating. Wait a few minutes and try again
         )
 
         console.log('[CPU Draft] 📡 API response received:', response.result)
+        console.log('[CPU Draft] 📦 Response details:', {
+          result: response.result,
+          hasPick: !!response.pick,
+          hasSession: !!response.session,
+          error: response.error,
+          fullResponse: response
+        })
 
         // Final cancelled check before updating state
         if (cancelled) return
