@@ -211,11 +211,20 @@ export const useDraftStore = create<DraftState>()(
         if (!session) return
 
         try {
-          await api.put(`/draft/sessions/${session.id}`, {
+          console.log('[DraftStore] 📤 Saving session to backend:', {
+            id: session.id,
+            status: session.status,
+            currentPick: session.currentPick,
+            currentRound: session.currentRound
+          })
+
+          const response = await api.put(`/draft/sessions/${session.id}`, {
             status: session.status,
             currentPick: session.currentPick,
             currentRound: session.currentRound,
           })
+
+          console.log('[DraftStore] ✅ Session saved successfully, backend response:', response)
 
           // Update local timestamp
           set({
@@ -225,8 +234,9 @@ export const useDraftStore = create<DraftState>()(
             }
           })
         } catch (err) {
-          console.error('[DraftStore] Error saving session:', err)
-          // Don't throw - allow local state to continue
+          console.error('[DraftStore] ❌ Error saving session:', err)
+          // CRITICAL: Re-throw the error so startDraft knows it failed
+          throw err
         }
       },
 
@@ -237,6 +247,8 @@ export const useDraftStore = create<DraftState>()(
           return
         }
 
+        console.log('[startDraft] 🎬 Starting draft, current status:', session.status)
+
         const updatedSession: DraftSession = {
           ...session,
           status: 'in_progress',
@@ -244,9 +256,25 @@ export const useDraftStore = create<DraftState>()(
         }
 
         set({ session: updatedSession })
+        console.log('[startDraft] 📝 Local state updated to in_progress, now saving to backend...')
+
         // Wait for backend to update before continuing - prevents race condition
         // where CPU draft tries to run before backend status is updated
-        await get().saveSession()
+        try {
+          await get().saveSession()
+          console.log('[startDraft] ✅ Backend save complete, waiting for DB commit...')
+
+          // Add small delay to ensure database transaction commits
+          // before CPU draft effect triggers and queries backend
+          await new Promise(resolve => setTimeout(resolve, 200))
+
+          console.log('[startDraft] ✅ Draft ready to start')
+        } catch (err) {
+          console.error('[startDraft] ❌ CRITICAL: Failed to save draft status to backend!', err)
+          // Revert local state since backend update failed
+          set({ session: { ...updatedSession, status: 'setup' } })
+          throw new Error('Failed to start draft: backend update failed')
+        }
       },
 
       pauseDraft: async () => {

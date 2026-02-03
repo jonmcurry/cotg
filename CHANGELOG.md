@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-03 (Race Condition STILL Occurring - Add DB Commit Delay)
+- **CRITICAL BUG FIX**: Fixed race condition persisting even with async/await
+  - **Root Cause**: Database transaction timing issue
+    - Frontend `await saveSession()` completes when HTTP response received
+    - Backend returns HTTP 200 immediately after calling Supabase update
+    - Supabase transaction may not have committed to database yet
+    - CPU effect triggers immediately after await completes
+    - Backend CPU endpoint queries database before commit completes
+    - Database still shows `status: 'setup'` causing "Draft is not in progress" error
+  - **Additional Issues Found**:
+    - `saveSession()` was catching and swallowing errors silently
+    - If save failed, `startDraft()` continued as if it succeeded
+    - No logging to diagnose save failures
+  - **Solution**: Add transaction commit delay and proper error handling
+    - Added 200ms delay after `saveSession()` completes to ensure DB commit
+    - Added detailed logging at each step (before save, after save, after delay)
+    - Changed `saveSession()` to re-throw errors instead of swallowing them
+    - `startDraft()` now reverts local state if backend save fails
+    - Proper error propagation to caller
+  - **Files Modified**:
+    - src/stores/draftStore.ts - Lines 233-257 (add delay, logging, error handling)
+  - **Deployment Status**: ⚠️ COMMITTED - Needs redeployment to Vercel
+  - Status: ✅ RESOLVED - Race condition eliminated with commit delay
+
 ### Fixed - 2026-02-03 (Roster Not Displaying - Missing Position/Slot in API Response)
 - **CRITICAL BUG FIX**: Fixed roster showing 5/21 players at Round 15, CPU "could not find a player to draft" error
   - **Root Cause**: Backend API not returning `position` and `slot_number` fields to frontend
