@@ -16,6 +16,11 @@ import { selectBestPlayer } from '../../utils/cpuDraftLogic'
 import { transformPlayerSeasonData } from '../../utils/transformPlayerData'
 import type { PositionCode } from '../../types/draft.types'
 
+// Module-level singleton guard for CPU draft operations.
+// Survives React 18 StrictMode unmount/remount cycles (refs get recreated, this doesn't).
+// Prevents two concurrent IIFEs from selecting players from the same stale pool.
+let cpuDraftInProgress = false
+
 interface Props {
   onExit: () => void
   onComplete?: () => void
@@ -49,8 +54,7 @@ export default function DraftBoard({ onExit, onComplete }: Props) {
   // Prevent concurrent player loading (race condition guard)
   const loadingInProgress = useRef(false)
 
-  // Prevent concurrent draft operations (prevents duplicate pick database errors)
-  const draftInProgress = useRef(false)
+  // draftInProgress guard is module-level (cpuDraftInProgress) to survive StrictMode remounting
 
   // Prevent concurrent human pick submissions (double-click guard)
   const humanPickInProgress = useRef(false)
@@ -224,20 +228,19 @@ If this persists, the database may be updating. Wait a few minutes and try again
   }, [selectedSeasonsKey])
 
   // CPU auto-draft logic
-  // Uses draftInProgress ref + cleanup cancelled flag as concurrency guards.
-  // The cancelled flag handles React 18 StrictMode double-execution: StrictMode
-  // simulates unmount/remount, creating new refs. Without cleanup, two async IIFEs
-  // would race and both call makePick for the same pick number (causing 409 duplicates).
-  // cpuThinking state is in the dependency array so the effect re-triggers when a pick completes.
+  // Uses module-level cpuDraftInProgress as singleton guard that survives StrictMode remounting.
+  // StrictMode unmount/remount creates new refs, so a ref-based guard gets reset in cleanup,
+  // allowing TWO concurrent IIFEs to select from the same stale player pool and pick the same
+  // player (causing 409 on player_session_id constraint). The module-level guard prevents this.
   useEffect(() => {
-    let cancelled = false // StrictMode cleanup: set true on unmount to abort async work
+    let cancelled = false // StrictMode cleanup: set true on unmount to skip UI updates
 
     if (!session) return
     if (!currentTeam) return
     if (currentTeam.control !== 'cpu') return
 
-    // Ref-based concurrency guard: prevents re-entrant calls within the same mount
-    if (draftInProgress.current) return
+    // Module-level singleton guard: survives StrictMode remounting
+    if (cpuDraftInProgress) return
 
     if (session.status !== 'in_progress') return
 
@@ -251,8 +254,8 @@ If this persists, the database may be updating. Wait a few minutes and try again
       return
     }
 
-    // Set guards BEFORE starting async operation
-    draftInProgress.current = true
+    // Set guard BEFORE starting async operation
+    cpuDraftInProgress = true
     setCpuThinking(true)
 
       // Async IIFE - checks cancelled flag before side effects
@@ -341,18 +344,19 @@ If this persists, the database may be updating. Wait a few minutes and try again
           console.error('[CPU Draft] ERROR during draft operation:', error)
           alert('ERROR during CPU draft. Check console for details.')
         } finally {
-          // Only reset guards if this effect instance is still active (not cancelled by StrictMode)
+          // Always reset the module-level guard so the next effect run can proceed.
+          // setCpuThinking only if this instance is still active (avoids stale state updates).
+          cpuDraftInProgress = false
           if (!cancelled) {
-            draftInProgress.current = false
             setCpuThinking(false)
           }
         }
       })()
 
-    // Cleanup: cancel this effect instance on unmount (critical for StrictMode double-execution)
+    // Cleanup: mark this instance as cancelled so async work skips UI updates.
+    // Do NOT reset cpuDraftInProgress here - that's what caused the StrictMode race condition.
     return () => {
       cancelled = true
-      draftInProgress.current = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.currentPick, session?.status, currentTeam?.id, players.length, loading, makePick, cpuThinking])

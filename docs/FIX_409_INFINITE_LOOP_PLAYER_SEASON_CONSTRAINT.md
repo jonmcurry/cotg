@@ -24,7 +24,10 @@ DB has two unique constraints on `draft_picks`:
 
 When the CPU tries to draft an already-drafted player_season at a different pick_number, PostgreSQL can't resolve the conflict on the second constraint and returns 409.
 
-### 3. `makePick` failure causes infinite retry loop
+### 3. React StrictMode race condition (PRIMARY cause)
+StrictMode simulates unmount/remount in development. The `draftInProgress` ref was reset in the cleanup function, allowing the second mount's IIFE to start while the first mount's IIFE was still awaiting `makePick()`. Both IIFEs selected players from the same stale `session.picks` (before either makePick completed), so they could select the same player. The second `makePick` would then hit the `player_season_id` constraint.
+
+### 4. `makePick` failure causes infinite retry loop
 When `makePick` fails:
 - Returns early without updating local state
 - `currentPick` never advances
@@ -51,6 +54,13 @@ When `makePick` fails:
 ### Change 4: Improved 409 diagnostics (`draftStore.ts`)
 - Detects `23505` error code with `player_season_id` in message
 - Logs specific "DUPLICATE PLAYER" warning for clear diagnosis
+
+### Change 5: Module-level singleton guard (`DraftBoard.tsx`)
+- Replaced `draftInProgress` ref with module-level `cpuDraftInProgress` variable
+- Module-level variable survives StrictMode unmount/remount (refs get recreated)
+- Cleanup no longer resets the guard - only sets `cancelled = true` for UI updates
+- Guard is always reset in `finally` block so next effect run can proceed
+- This prevents two concurrent IIFEs from selecting players from the same stale pool
 
 ## Files Modified
 - [x] `src/components/draft/DraftBoard.tsx` - Dual deduplication, handle makePick failure

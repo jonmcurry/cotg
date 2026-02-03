@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Changed `makePick` to return `boolean` (success/failure) so callers can detect and handle errors
 - CPU draft now pauses on `makePick` failure instead of retrying infinitely
 - Added specific `23505` / `player_season_id` constraint diagnostics in error logging
+- Replaced `draftInProgress` ref with module-level singleton guard to survive StrictMode remounting
+- Primary cause: StrictMode creates two concurrent IIFEs that select from same stale pool; module-level guard blocks the second
 
 ### Performance - 2026-02-02 (Remove Excessive Console Logging in Draft)
 - Removed ~60,000 console.log calls per CPU pick that were blocking Chrome's main thread
