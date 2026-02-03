@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-03 (CPU Draft 500 Error - Missing OF and BN in Position Constraint)
+- **CRITICAL BUG FIX**: Fixed 500 Internal Server Error occurring after first CPU draft pick
+  - **Root Cause**: Database CHECK constraint on `draft_picks.position` was incomplete
+    - Constraint only allowed: C, 1B, 2B, 3B, SS, LF, CF, RF, DH, SP, RP, CL
+    - Application code uses 'OF' (Outfield) and 'BN' (Bench) positions
+    - When CPU tried to draft for OF or BN positions, database rejected with constraint violation
+    - Backend returned 500 error, frontend displayed "ERROR during CPU draft. Check console for details."
+    - Draft would stop after first pick (if first pick didn't use OF/BN) or immediately
+  - **Solution**: Updated CHECK constraint to include all positions used by application
+    - Created migration: `20260203_fix_position_constraint.sql`
+    - Constraint now includes: C, 1B, 2B, 3B, SS, LF, CF, RF, OF, DH, SP, RP, CL, BN
+    - All roster requirements can now be satisfied without constraint violations
+  - **Files Modified**:
+    - supabase/migrations/20260203_fix_position_constraint.sql - NEW migration to fix constraint
+    - draft-error-investigation.md - Investigation plan and findings (temporary, to be deleted)
+  - Status: ✅ RESOLVED - CPU draft can now complete all picks for all positions
+
 ### Fixed - 2026-02-03 (Roster Corruption - Missing Position/Slot Data in Database)
 - **CRITICAL BUG FIX**: Fixed roster corruption causing only 4 players to show after 15 rounds
   - **Root Cause**: Database `draft_picks` table was missing `position` and `slot_number` columns
