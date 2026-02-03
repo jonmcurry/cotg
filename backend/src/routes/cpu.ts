@@ -393,6 +393,14 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
     // FIXED Issue #6: Accept excludePlayerSeasonIds to prevent infinite retry loop
     const { seasons, excludePlayerSeasonIds = [] } = req.body
 
+    console.log('[CPU API] Received request:', {
+      sessionId,
+      seasons,
+      seasonsType: typeof seasons,
+      seasonsLength: seasons?.length,
+      excludedCount: excludePlayerSeasonIds.length
+    })
+
     // Load session
     const { data: session, error: sessionError } = await supabase
       .from('draft_sessions')
@@ -499,6 +507,13 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
       sessionSelectedSeasons: session.selected_seasons,
       finalYearList: yearList
     })
+
+    // DIAGNOSTIC: Warn if seasons array is suspicious
+    if (!seasons || seasons.length === 0) {
+      console.warn('[CPU API] WARNING: No seasons provided in request, falling back to single season!')
+      console.warn('[CPU API] This may indicate selectedSeasons not loaded from database correctly')
+      console.warn('[CPU API] Session selected_seasons from DB:', session.selected_seasons)
+    }
 
     // Fetch balanced pool: top hitters + top pitchers
     const { data: hittersData, error: hittersError } = await supabase
