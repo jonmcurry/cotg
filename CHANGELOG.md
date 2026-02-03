@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - 2026-02-03 (Feature Slice 1: Leagues API Migration)
+- Completed first feature slice of the Vercel/Render/Supabase migration
+- Backend: Created `backend/src/routes/leagues.ts` with full CRUD (GET, POST, PUT, DELETE)
+- Backend: Modular route structure with proper Express Router
+- Frontend: Created `src/lib/api.ts` - centralized typed API client
+- Frontend: Refactored `leagueStore.ts` to use API client instead of direct Supabase calls
+- League operations now go through the backend API on Render
+
 ### Added - 2026-02-03 (Cloud Migration Plan)
 - Created comprehensive migration plan document for Vercel + Render + Supabase architecture
 - Plan covers: Backend API setup (Express/Node.js), Frontend refactor, Environment configuration, Deployment

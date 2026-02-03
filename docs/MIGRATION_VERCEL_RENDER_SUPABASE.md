@@ -31,25 +31,25 @@ Refactor the COTG application from a client-side-only architecture to a proper 3
 
 ### Checklist
 
-- [ ] **1.1** Create new `backend/` directory in project root
-- [ ] **1.2** Initialize Node.js project with TypeScript
+- [x] **1.1** Create new `backend/` directory in project root
+- [x] **1.2** Initialize Node.js project with TypeScript
   ```bash
   cd backend && npm init -y
   npm install express cors dotenv @supabase/supabase-js
   npm install -D typescript @types/express @types/node @types/cors ts-node nodemon
   ```
-- [ ] **1.3** Create `backend/tsconfig.json` with strict settings
-- [ ] **1.4** Create `backend/src/index.ts` - Express server entry point
-- [ ] **1.5** Create `backend/src/lib/supabase.ts` - Server-side Supabase client (uses SERVICE_ROLE_KEY)
-- [ ] **1.6** Set up CORS to allow Vercel frontend domain
+- [x] **1.3** Create `backend/tsconfig.json` with strict settings
+- [x] **1.4** Create `backend/src/index.ts` - Express server entry point
+- [x] **1.5** Create `backend/src/lib/supabase.ts` - Server-side Supabase client (uses SERVICE_ROLE_KEY)
+- [x] **1.6** Set up CORS to allow Vercel frontend domain
 
 ### API Endpoints to Create
 
 #### Leagues API (`backend/src/routes/leagues.ts`)
-- [ ] `GET /api/leagues` - List all leagues
-- [ ] `POST /api/leagues` - Create league
-- [ ] `PUT /api/leagues/:id` - Update league
-- [ ] `DELETE /api/leagues/:id` - Delete league
+- [x] `GET /api/leagues` - List all leagues
+- [x] `POST /api/leagues` - Create league
+- [x] `PUT /api/leagues/:id` - Update league
+- [x] `DELETE /api/leagues/:id` - Delete league
 
 #### Draft Sessions API (`backend/src/routes/draft.ts`)
 - [ ] `GET /api/draft/sessions` - List draft sessions
@@ -92,7 +92,7 @@ Refactor the COTG application from a client-side-only architecture to a proper 3
 
 ### Checklist
 
-- [ ] **2.1** Create `src/lib/api.ts` - Centralized API client
+- [x] **2.1** Create `src/lib/api.ts` - Centralized API client
   ```typescript
   const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
@@ -119,7 +119,7 @@ Refactor the COTG application from a client-side-only architecture to a proper 3
   - Keep Zustand state for UI responsiveness
   - Sync state from API responses
 
-- [ ] **2.3** Update `src/stores/leagueStore.ts`
+- [x] **2.3** Update `src/stores/leagueStore.ts`
   - Replace Supabase calls with API calls
 
 - [ ] **2.4** Update `src/components/draft/DraftBoard.tsx`
