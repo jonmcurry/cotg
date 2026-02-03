@@ -218,9 +218,14 @@ function selectBestPlayer(
   availablePlayers: PlayerSeason[],
   team: DraftTeam,
   draftedPlayerIds: Set<string>,
+  excludePlayerSeasonIds: Set<string> = new Set(),
   currentRound: number = 1
 ): { player: PlayerSeason; position: PositionCode; slotNumber: number } | null {
-  const undraftedPlayers = availablePlayers.filter(p => !draftedPlayerIds.has(p.player_id))
+  // FIXED Issue #6: Filter out both drafted players and blacklisted player seasons
+  const undraftedPlayers = availablePlayers.filter(p =>
+    !draftedPlayerIds.has(p.player_id) &&
+    !excludePlayerSeasonIds.has(p.id)
+  )
 
   if (undraftedPlayers.length === 0) return null
 
@@ -346,7 +351,8 @@ function transformPlayerRow(row: any): PlayerSeason {
 router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
   try {
     const { sessionId } = req.params
-    const { seasons } = req.body
+    // FIXED Issue #6: Accept excludePlayerSeasonIds to prevent infinite retry loop
+    const { seasons, excludePlayerSeasonIds = [] } = req.body
 
     // Load session
     const { data: session, error: sessionError } = await supabase
@@ -493,7 +499,9 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
     }
 
     // Run CPU selection algorithm
-    const selection = selectBestPlayer(allPlayers, currentTeam, draftedPlayerIds, round)
+    // FIXED Issue #6: Pass excludePlayerSeasonIds to prevent duplicate retries
+    const excludeSet = new Set<string>(excludePlayerSeasonIds)
+    const selection = selectBestPlayer(allPlayers, currentTeam, draftedPlayerIds, excludeSet, round)
 
     if (!selection) {
       return res.json({ result: 'error', error: 'CPU could not find a player to draft' })
@@ -546,8 +554,17 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
       })
       .eq('id', sessionId)
 
+    // FIXED Issue #7: Return error if session update fails after pick saved
     if (updateError) {
-      console.error('[CPU API] Error advancing pick:', updateError)
+      console.error('[CPU API] CRITICAL: Pick saved but session update failed!', {
+        sessionId,
+        pickNumber: session.current_pick_number,
+        updateError,
+      })
+      return res.status(500).json({
+        result: 'error',
+        error: 'Pick was saved but draft status could not be updated. Please refresh and verify state.',
+      })
     }
 
     console.log('[CPU API] CPU pick made:', {

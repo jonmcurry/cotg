@@ -226,9 +226,18 @@ router.post('/:sessionId/picks', async (req: Request, res: Response) => {
       })
       .eq('id', sessionId)
 
+    // FIXED Issue #7: Return error if session update fails after pick saved
+    // This prevents database inconsistency where pick exists but counter didn't advance
     if (updateError) {
-      console.error('[Picks API] Error advancing pick:', updateError)
-      // Pick was saved, but counter didn't advance - log but don't fail
+      console.error('[Picks API] CRITICAL: Pick saved but session update failed!', {
+        sessionId,
+        pickNumber: session.current_pick_number,
+        updateError,
+      })
+      return res.status(500).json({
+        result: 'error',
+        error: 'Pick was saved but draft status could not be updated. Please refresh and verify state.',
+      })
     }
 
     console.log('[Picks API] Pick made:', {

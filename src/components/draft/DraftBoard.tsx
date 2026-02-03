@@ -294,10 +294,13 @@ If this persists, the database may be updating. Wait a few minutes and try again
 
         console.log('[CPU Draft] API Calling CPU pick API:', `/draft/sessions/${session.id}/cpu-pick`)
 
-        // Call the CPU pick API - it handles player selection and pick execution
+        // FIXED Issue #6: Send blacklisted player IDs to prevent infinite retry loop
         const response = await api.post<CpuPickResponse>(
           `/draft/sessions/${session.id}/cpu-pick`,
-          { seasons: session.selectedSeasons }
+          {
+            seasons: session.selectedSeasons,
+            excludePlayerSeasonIds: Array.from(failedPlayerSeasonIdsRef.current)
+          }
         )
 
         console.log('[CPU Draft] RESPONSE API response received:', response.result)

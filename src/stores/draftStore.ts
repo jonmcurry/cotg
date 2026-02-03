@@ -163,32 +163,32 @@ export const useDraftStore = create<DraftState>()(
         try {
           const data = await api.get<DraftSessionApiResponse>(`/draft/sessions/${sessionId}`)
 
-          // API returns teams with empty rosters, reconstruct from picks
-          const teamsWithRosters = data.teams.map(team => ({
-            ...team,
-            roster: createRosterSlots(),
-          }))
+          // FIXED Issue #5: Use immutable updates instead of mutations
+          // Create new team objects with filled rosters using map()
+          const teamsWithRosters = data.teams.map(team => {
+            const emptyRoster = createRosterSlots()
 
-          // Fill rosters from picks using position and slotNumber from database
-          data.picks.forEach(pick => {
-            if (pick.playerSeasonId && pick.position && pick.slotNumber) {
-              const team = teamsWithRosters.find(t => t.id === pick.teamId)
-              if (team) {
-                // Find the exact roster slot using position and slotNumber from pick data
-                const rosterSlotIndex = team.roster.findIndex(
-                  slot => slot.position === pick.position && slot.slotNumber === pick.slotNumber
-                )
+            // Fill roster slots from picks - use map to create new array
+            const filledRoster = emptyRoster.map(slot => {
+              // Find pick that fills this specific slot
+              const pick = data.picks.find(p =>
+                p.teamId === team.id &&
+                p.position === slot.position &&
+                p.slotNumber === slot.slotNumber &&
+                p.playerSeasonId // Has a player assigned
+              )
 
-                if (rosterSlotIndex !== -1) {
-                  team.roster[rosterSlotIndex] = {
-                    ...team.roster[rosterSlotIndex],
-                    playerSeasonId: pick.playerSeasonId,
-                    isFilled: true,
-                  }
-                } else {
-                  console.error('[loadSession] Roster slot not found for pick:', pick.position, pick.slotNumber, pick.pickNumber)
-                }
-              }
+              // Return filled slot or original empty slot
+              return pick ? {
+                ...slot,
+                playerSeasonId: pick.playerSeasonId,
+                isFilled: true,
+              } : slot
+            })
+
+            return {
+              ...team,
+              roster: filledRoster,
             }
           })
 
