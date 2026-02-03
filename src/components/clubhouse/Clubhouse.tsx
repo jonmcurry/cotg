@@ -11,7 +11,8 @@ import RosterView from '../draft/RosterView'
 import LineupEditor from './LineupEditor'
 import RotationEditor from './RotationEditor'
 import { useDraftStore } from '../../stores/draftStore'
-import { generateOptimalDepthChart } from '../../utils/autoLineup'
+import { api } from '../../lib/api'
+import type { TeamDepthChart } from '../../types/draft.types'
 
 interface Props {
     session: DraftSession
@@ -116,19 +117,42 @@ export default function Clubhouse({ session, onExit, onStartSeason }: Props) {
     }, [seasonIdsCacheKey, session.teams])
 
     // Auto-generate depth charts for teams that don't have one yet
-    // Runs once after player data finishes loading
+    // Runs once after player data finishes loading - uses backend API
     useEffect(() => {
         if (loading || players.length === 0) return
 
-        for (const team of session.teams) {
-            // Skip teams that already have a configured depth chart
-            const hasLineup = team.depthChart?.lineupVS_RHP?.some(s => s.playerSeasonId)
-            if (hasLineup) continue
+        async function generateLineups() {
+            for (const team of session.teams) {
+                // Skip teams that already have a configured depth chart
+                const hasLineup = team.depthChart?.lineupVS_RHP?.some(s => s.playerSeasonId)
+                if (hasLineup) continue
 
-            const depthChart = generateOptimalDepthChart(team, players)
-            updateTeamDepthChart(team.id, depthChart)
+                try {
+                    // Prepare roster data for API
+                    const roster = team.roster
+                        .filter(slot => slot.isFilled && slot.playerSeasonId)
+                        .map(slot => ({
+                            position: slot.position,
+                            playerSeasonId: slot.playerSeasonId!,
+                        }))
+
+                    // Call API to generate optimal depth chart
+                    const response = await api.post<{ depthChart: TeamDepthChart }>(
+                        `/teams/${team.id}/auto-lineup`,
+                        { roster }
+                    )
+
+                    if (response.depthChart) {
+                        updateTeamDepthChart(team.id, response.depthChart)
+                    }
+                } catch (err) {
+                    console.error('[Clubhouse] Error generating lineup for team:', team.name, err)
+                }
+            }
         }
-    }, [loading, players, session.teams, updateTeamDepthChart])
+
+        generateLineups()
+    }, [loading, players.length, session.teams, updateTeamDepthChart])
 
     // Validate all teams for season readiness
     const validationIssues = useMemo(() => {
