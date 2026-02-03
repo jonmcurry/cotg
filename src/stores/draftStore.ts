@@ -205,7 +205,7 @@ export const useDraftStore = create<DraftState>()(
 
       loadSession: async (sessionId: string) => {
         // Load from Supabase
-        const { data: sessionData, error: sessionError } = await supabase
+        const { data: _sessionData, error: sessionError } = await supabase
           .from('draft_sessions')
           .select('*')
           .eq('id', sessionId)
@@ -217,7 +217,7 @@ export const useDraftStore = create<DraftState>()(
         }
 
         // Load teams
-        const { data: teamsData, error: teamsError } = await supabase
+        const { data: _teamsData, error: teamsError } = await supabase
           .from('draft_teams')
           .select('*')
           .eq('draft_session_id', sessionId)
@@ -229,7 +229,7 @@ export const useDraftStore = create<DraftState>()(
         }
 
         // Load picks
-        const { data: picksData, error: picksError } = await supabase
+        const { data: _picksData, error: picksError } = await supabase
           .from('draft_picks')
           .select('*')
           .eq('draft_session_id', sessionId)
@@ -242,7 +242,6 @@ export const useDraftStore = create<DraftState>()(
 
         // Transform to session format
         // TODO: Complete transformation logic
-        console.log('Loaded session data:', { sessionData, teamsData, picksData })
       },
 
       saveSession: async () => {
@@ -267,12 +266,6 @@ export const useDraftStore = create<DraftState>()(
 
         if (error) {
           console.error('[saveSession] Error saving to Supabase:', error)
-        } else {
-          console.log('[saveSession] Successfully saved to Supabase:', {
-            status: updatedSession.status,
-            pick: updatedSession.currentPick,
-            round: updatedSession.currentRound,
-          })
         }
 
         set({ session: updatedSession })
@@ -285,8 +278,6 @@ export const useDraftStore = create<DraftState>()(
           return
         }
 
-        console.log('[startDraft] Starting draft, changing status from', session.status, 'to in_progress')
-
         // IMPORTANT: Create a new object instead of mutating
         // Zustand uses reference equality - mutating and passing same reference won't trigger updates
         const updatedSession: DraftSession = {
@@ -296,7 +287,6 @@ export const useDraftStore = create<DraftState>()(
         }
 
         set({ session: updatedSession })
-        console.log('[startDraft] Status updated, saving to Supabase...')
         get().saveSession()
       },
 
@@ -376,7 +366,6 @@ export const useDraftStore = create<DraftState>()(
         }
 
         set({ session: updatedSession })
-        console.log('[DraftStore] Schedule generated:', schedule.games.length, 'games')
       },
 
       makePick: async (playerSeasonId: string, playerId: string | undefined, position: PositionCode, slotNumber: number, bats?: 'L' | 'R' | 'B' | null) => {
@@ -474,7 +463,6 @@ export const useDraftStore = create<DraftState>()(
 
         if (nextPickNumber > session.picks.length) {
           newStatus = 'completed'
-          console.log('[makePick] Draft completed!')
         } else {
           newRound = updatedPicks[nextPickNumber - 1].round
         }
@@ -489,14 +477,6 @@ export const useDraftStore = create<DraftState>()(
           status: newStatus,
           updatedAt: new Date(),
         }
-
-        console.log('[makePick] Pick made:', {
-          player: playerSeasonId,
-          position,
-          team: team.name,
-          pickNumber: currentPick.pickNumber,
-          nextPick: nextPickNumber,
-        })
 
         set({ session: updatedSession })
         get().saveSession()

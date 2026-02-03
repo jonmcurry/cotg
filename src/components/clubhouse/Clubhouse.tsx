@@ -95,8 +95,6 @@ export default function Clubhouse({ session, onExit, onStartSeason }: Props) {
                     return
                 }
 
-                console.log(`[Clubhouse] Loading ${seasonIds.length} drafted players...`)
-
                 // Batch queries to avoid PostgREST URL length limits
                 // With 32 teams × 21 rounds = 672 UUIDs, a single .in() exceeds the ~8KB URL limit
                 const BATCH_SIZE = 100
@@ -153,7 +151,6 @@ export default function Clubhouse({ session, onExit, onStartSeason }: Props) {
                 if (allData.length > 0) {
                     const transformedPlayers = allData.map(transformPlayerSeasonData)
                     setPlayers(transformedPlayers)
-                    console.log(`[Clubhouse] Loaded ${transformedPlayers.length} players in ${Math.ceil(seasonIds.length / BATCH_SIZE)} batches`)
                 }
             } catch (err) {
                 console.error('[Clubhouse] Exception loading players:', err)
@@ -179,7 +176,6 @@ export default function Clubhouse({ session, onExit, onStartSeason }: Props) {
         setScheduleError(null)
         try {
             await generateSeasonSchedule(162)
-            console.log('[Clubhouse] Schedule generation complete')
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err)
             console.error('[Clubhouse] Schedule generation failed:', err)

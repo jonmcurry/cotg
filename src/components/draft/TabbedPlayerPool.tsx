@@ -52,13 +52,7 @@ export default function TabbedPlayerPool({
   // Filter available (undrafted) players
   // Note: draftedPlayerIds contains player_id (not season id), so all seasons of a drafted player are filtered out
   const availablePlayers = useMemo(() => {
-    const startTime = performance.now()
-    const filtered = players.filter(p => !draftedPlayerIds.has(p.player_id))
-    const filterTime = performance.now() - startTime
-
-    console.log(`[TabbedPlayerPool] Filter completed in ${filterTime.toFixed(2)}ms | Total: ${players.length} | Drafted: ${draftedPlayerIds.size} | Available: ${filtered.length}`)
-
-    return filtered
+    return players.filter(p => !draftedPlayerIds.has(p.player_id))
   }, [players, draftedPlayerIds])
 
   // Split into position players and pitchers based on actual activity
@@ -85,12 +79,9 @@ export default function TabbedPlayerPool({
 
   // Apply search filter
   const filteredPlayers = useMemo(() => {
-    const startTime = performance.now()
     const pool = activeTab === 'hitters' ? positionPlayers : pitchers
 
     if (!searchTerm) {
-      const filterTime = performance.now() - startTime
-      console.log(`[TabbedPlayerPool] Filter (no search) completed in ${filterTime.toFixed(2)}ms | Pool size: ${pool.length}`)
       return pool
     }
 
@@ -100,17 +91,11 @@ export default function TabbedPlayerPool({
       return name.toLowerCase().includes(term)
     })
 
-    const filterTime = performance.now() - startTime
-    console.log(`[TabbedPlayerPool] Filter (search: "${term}") completed in ${filterTime.toFixed(2)}ms | ${pool.length} → ${filtered.length}`)
-
     return filtered
   }, [activeTab, positionPlayers, pitchers, searchTerm])
 
   // Apply sorting
   const sortedPlayers = useMemo(() => {
-    const startTime = performance.now()
-    console.log(`[TabbedPlayerPool] Starting sort of ${filteredPlayers.length} players on field: ${sortConfig.field}, direction: ${sortConfig.direction}`)
-
     const sorted = [...filteredPlayers]
 
     sorted.sort((a, b) => {
@@ -186,9 +171,6 @@ export default function TabbedPlayerPool({
       if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1
       return 0
     })
-
-    const sortTime = performance.now() - startTime
-    console.log(`[TabbedPlayerPool] Sort completed in ${sortTime.toFixed(2)}ms`)
 
     return sorted
   }, [filteredPlayers, sortConfig])

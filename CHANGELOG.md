@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Performance - 2026-02-02 (Remove Excessive Console Logging in Draft)
+- Removed ~60,000 console.log calls per CPU pick that were blocking Chrome's main thread
+- Stripped all `console.log`, `console.time`, `console.timeEnd` from draft hot paths: `cpuDraftLogic.ts`, `DraftBoard.tsx`, `TabbedPlayerPool.tsx`, `draftStore.ts`, `Clubhouse.tsx`
+- Kept all `console.warn` and `console.error` calls for real problem detection
+- Removed unused `existingSwitchHitters` variable from platoon calculation (value was only used for logging)
+- Fixed unused variable TS errors in `loadSession` (prefixed with underscore pending TODO completion)
+
 ### Fixed - 2026-02-02 (Drafted Players Not Removed From Pool Across Seasons)
 - Fixed players being draftable multiple times across different seasons (e.g., Babe Ruth 1927 and Babe Ruth 1923)
 - Root cause: `draftedPlayerIds` relied on fragile indirect lookup from `playerSeasonId` -> `players` array -> `player_id`; if lookup failed silently, the player remained in the pool

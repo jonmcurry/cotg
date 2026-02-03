@@ -72,31 +72,21 @@ export default function DraftBoard({ onExit, onComplete }: Props) {
 
       // Prevent concurrent loads (race condition where session reference changes while loading)
       if (loadingInProgress.current) {
-        console.log('[Player Load] BLOCKED - Already loading, skipping concurrent load')
         return
       }
 
       loadingInProgress.current = true
-      console.log('[Player Load] EFFECT TRIGGERED - Starting player load for seasons:', session.selectedSeasons)
-      console.log('[Player Load] Seasons array length:', session.selectedSeasons?.length)
-      console.log('[Player Load] Seasons array type:', typeof session.selectedSeasons)
-      console.log('[Player Load] Seasons array is array?:', Array.isArray(session.selectedSeasons))
-      console.log('[Player Load] Current player count:', players.length)
       setLoading(true)
       setLoadingProgress({ loaded: 0, total: 0, hasMore: true })
       try {
         const { supabase } = await import('../../lib/supabaseClient')
 
         // First, get total count for progress indication
-        console.log('[Player Load] Building count query...')
-        console.log('[Player Load] Query params: years =', session.selectedSeasons)
         const { count, error: countError } = await supabase
           .from('player_seasons')
           .select('id', { count: 'exact', head: true })
           .in('year', session.selectedSeasons)
           .or('at_bats.gte.200,innings_pitched_outs.gte.30')
-
-        console.log('[Player Load] Count query result: count =', count, ', error =', countError)
 
         if (countError) {
           console.error('[Player Load] Error getting count:', countError)
@@ -106,7 +96,6 @@ export default function DraftBoard({ onExit, onComplete }: Props) {
         }
 
         const totalPlayers = count || 0
-        console.log(`[Player Load] Total players to fetch: ${totalPlayers}`)
 
         if (totalPlayers === 0) {
           console.error('[Player Load] WARNING: totalPlayers is 0!')
@@ -129,7 +118,6 @@ export default function DraftBoard({ onExit, onComplete }: Props) {
           const batchPromises = []
           for (let i = 0; i < parallelBatches && offset < totalPlayers; i++) {
             const currentOffset = offset
-            console.log(`[Player Load] Starting batch at offset ${currentOffset}...`)
 
             batchPromises.push(
               supabase
@@ -186,7 +174,6 @@ export default function DraftBoard({ onExit, onComplete }: Props) {
             }
 
             if (result.data && result.data.length > 0) {
-              console.log(`[Player Load] Fetched ${result.data.length} players in batch`)
               allPlayers.push(...result.data)
             }
           }
@@ -219,8 +206,6 @@ If this persists, the database may be updating. Wait a few minutes and try again
         // Handles numeric coercion for at_bats/innings_pitched_outs and flattens player join data
         const transformedPlayers = allPlayers.map(transformPlayerSeasonData)
 
-        console.log(`[Player Load] SUCCESS - Loaded ${transformedPlayers.length} total players across all batches`)
-        console.log(`[Player Load] Setting players state (will trigger TabbedPlayerPool re-render)`)
         setPlayers(transformedPlayers)
       } catch (err) {
         console.error('[Player Load] CRITICAL ERROR - Exception:', err)
@@ -247,49 +232,17 @@ If this persists, the database may be updating. Wait a few minutes and try again
   useEffect(() => {
     let cancelled = false // StrictMode cleanup: set true on unmount to abort async work
 
-    console.log('[CPU Draft] useEffect triggered', {
-      hasSession: !!session,
-      hasCurrentTeam: !!currentTeam,
-      teamControl: currentTeam?.control,
-      cpuThinking,
-      draftInProgress: draftInProgress.current,
-      sessionStatus: session?.status,
-      playersCount: players.length,
-      loading,
-      currentPick: session?.currentPick,
-    })
-
-    if (!session) {
-      console.log('[CPU Draft] Early return - no session')
-      return
-    }
-
-    if (!currentTeam) {
-      console.log('[CPU Draft] Early return - no current team')
-      return
-    }
-
-    if (currentTeam.control !== 'cpu') {
-      console.log('[CPU Draft] Early return - current team is human controlled')
-      return
-    }
+    if (!session) return
+    if (!currentTeam) return
+    if (currentTeam.control !== 'cpu') return
 
     // Ref-based concurrency guard: prevents re-entrant calls within the same mount
-    if (draftInProgress.current) {
-      console.log('[CPU Draft] Early return - draft operation already in progress (ref guard)')
-      return
-    }
+    if (draftInProgress.current) return
 
-    if (session.status !== 'in_progress') {
-      console.log('[CPU Draft] Early return - session status is not in_progress:', session.status)
-      return
-    }
+    if (session.status !== 'in_progress') return
 
     // Wait for players to finish loading before checking if empty
-    if (loading) {
-      console.log('[CPU Draft] Early return - players still loading')
-      return
-    }
+    if (loading) return
 
     // Only show error if loading is complete and still no players
     if (players.length === 0) {
@@ -297,8 +250,6 @@ If this persists, the database may be updating. Wait a few minutes and try again
       alert('CRITICAL ERROR: No players loaded for draft. Please check Supabase connection and player_seasons data.')
       return
     }
-
-    console.log(`[CPU Draft] ${currentTeam.name} is picking...`)
 
     // Set guards BEFORE starting async operation
     draftInProgress.current = true
@@ -308,13 +259,7 @@ If this persists, the database may be updating. Wait a few minutes and try again
       ; (async () => {
         try {
           // Check if this effect instance was cancelled (StrictMode unmount)
-          if (cancelled) {
-            console.log('[CPU Draft] Cancelled before starting (StrictMode cleanup)')
-            return
-          }
-
-          console.time('[CPU Draft] Total CPU pick time')
-          console.time('[CPU Draft] 1. Build drafted player IDs')
+          if (cancelled) return
 
           // Build Set of drafted player_id values (not playerSeasonId)
           // This prevents the same player from being drafted multiple times for different seasons
@@ -335,14 +280,10 @@ If this persists, the database may be updating. Wait a few minutes and try again
             }
           })
 
-          console.log(`[CPU Draft] Drafted players: ${draftedPlayerIds.size} unique players`)
-          console.timeEnd('[CPU Draft] 1. Build drafted player IDs')
-
           // Performance optimization: Filter undrafted players and pass a balanced pool
           // Players array is already sorted by apba_rating DESC from SQL query
           // Split into hitters and pitchers to guarantee both are represented in the pool
           // (pitchers can dominate raw APBA ratings, starving the CPU of hitter candidates)
-          console.time('[CPU Draft] 2. Filter undrafted players')
           const undraftedPlayers = players.filter(p => !draftedPlayerIds.has(p.player_id))
           const undraftedHitters = undraftedPlayers.filter(p => (p.at_bats || 0) >= 200)
           const undraftedPitchers = undraftedPlayers.filter(p => (p.innings_pitched_outs || 0) >= 90 && (p.at_bats || 0) < 200)
@@ -350,31 +291,17 @@ If this persists, the database may be updating. Wait a few minutes and try again
             ...undraftedHitters.slice(0, 600),
             ...undraftedPitchers.slice(0, 400),
           ]
-          console.timeEnd('[CPU Draft] 2. Filter undrafted players')
-
-          console.log(`[CPU Draft] Balanced pool: ${Math.min(undraftedHitters.length, 600)} hitters + ${Math.min(undraftedPitchers.length, 400)} pitchers = ${topUndrafted.length} candidates (${draftedPlayerIds.size} drafted, ${undraftedPlayers.length} remaining)`)
 
           // Check cancelled again before the expensive selectBestPlayer call
-          if (cancelled) {
-            console.log('[CPU Draft] Cancelled before player selection (StrictMode cleanup)')
-            return
-          }
+          if (cancelled) return
 
-          console.time('[CPU Draft] 3. selectBestPlayer()')
           const selection = selectBestPlayer(topUndrafted, currentTeam, draftedPlayerIds, session.currentRound)
-          console.timeEnd('[CPU Draft] 3. selectBestPlayer()')
 
           // Final cancelled check before the critical makePick database write
-          if (cancelled) {
-            console.log('[CPU Draft] Cancelled before makePick (StrictMode cleanup)')
-            return
-          }
+          if (cancelled) return
 
           if (selection) {
-            console.log(`[CPU Draft] ${currentTeam.name} drafts: ${selection.player.display_name} (${selection.position}), bats: ${selection.player.bats || 'unknown'}`)
-            console.time('[CPU Draft] 4. makePick() - database write')
             await makePick(selection.player.id, selection.player.player_id, selection.position, selection.slotNumber, selection.player.bats)
-            console.timeEnd('[CPU Draft] 4. makePick() - database write')
 
             // Show inline ticker for this pick (clears after 3 seconds)
             if (!cancelled) {
@@ -396,7 +323,6 @@ If this persists, the database may be updating. Wait a few minutes and try again
             alert('CRITICAL ERROR: CPU could not find a player to draft. Check console for details.')
           }
 
-          console.timeEnd('[CPU Draft] Total CPU pick time')
         } catch (error) {
           console.error('[CPU Draft] ERROR during draft operation:', error)
           alert('ERROR during CPU draft. Check console for details.')
@@ -461,8 +387,6 @@ If this persists, the database may be updating. Wait a few minutes and try again
         }
       }
     }
-
-    console.log('[DraftBoard] Drafted picks:', completedPicks.length, '| Unique players drafted:', playerIds.size)
 
     return playerIds
   }, [session?.picks, players])

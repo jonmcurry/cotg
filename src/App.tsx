@@ -143,7 +143,7 @@ export default function App() {
 
             <p className="text-xl font-serif text-charcoal/80 mb-12 max-w-2xl mx-auto leading-relaxed">
               Build your fantasy roster from 125 years of baseball history.
-              Draft from over 63,000 player-seasons using advanced sabotage metrics
+              Draft from over 63,000 player-seasons using advanced Sabermetrics
               and intelligent AI opponents.
             </p>
 

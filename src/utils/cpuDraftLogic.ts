@@ -80,21 +80,16 @@ function adjustScarcityByRound(
 ): number {
   // Early rounds (1-5): Reduce scarcity impact - let raw Rating dominate (True BPA)
   if (currentRound <= 5) {
-    const adjusted = baseWeight * 0.8
-    console.log(`[CPU Draft] Round ${currentRound} (early/BPA): Scarcity ${baseWeight} -> ${adjusted.toFixed(2)} (-20%, talent-first)`)
-    return adjusted
+    return baseWeight * 0.8
   }
 
   // Mid rounds (6-15): Use base weights (balanced approach)
   if (currentRound <= 15) {
-    console.log(`[CPU Draft] Round ${currentRound} (mid): Scarcity ${baseWeight} (base)`)
     return baseWeight
   }
 
   // Late rounds (16+): Increase scarcity emphasis to fill roster gaps
-  const adjusted = baseWeight * 1.2
-  console.log(`[CPU Draft] Round ${currentRound} (late/fill): Scarcity ${baseWeight} -> ${adjusted.toFixed(2)} (+20%, position-first)`)
-  return adjusted
+  return baseWeight * 1.2
 }
 
 /**
@@ -136,34 +131,15 @@ function calculateVolumeMultiplier(
 
   if (isPitcherSlot) {
     const outs = player.innings_pitched_outs || 0
-    // >200 IP (600 outs): Workhorse ace bonus
-    if (outs > 600) {
-      console.log(`[CPU Draft] Volume: Workhorse pitcher (${(outs / 3).toFixed(0)} IP) -> 1.15x`)
-      return 1.15
-    }
-    // >150 IP (450 outs): Solid starter bonus
-    if (outs > 450) {
-      console.log(`[CPU Draft] Volume: Solid starter (${(outs / 3).toFixed(0)} IP) -> 1.1x`)
-      return 1.1
-    }
-    // <60 IP (180 outs): Low volume penalty (relievers, closers)
-    if (outs < 180) {
-      console.log(`[CPU Draft] Volume: Low volume pitcher (${(outs / 3).toFixed(0)} IP) -> 0.8x`)
-      return 0.8
-    }
-    // 60-150 IP: No adjustment
-    console.log(`[CPU Draft] Volume: Mid-volume pitcher (${(outs / 3).toFixed(0)} IP) -> 1.0x`)
-    return 1.0
+    if (outs > 600) return 1.15    // >200 IP: Workhorse ace bonus
+    if (outs > 450) return 1.1     // >150 IP: Solid starter bonus
+    if (outs < 180) return 0.8     // <60 IP: Low volume penalty (relievers, closers)
+    return 1.0                      // 60-150 IP: No adjustment
   }
 
   // Position players: reward everyday players
   const atBats = player.at_bats || 0
-  if (atBats > 450) {
-    console.log(`[CPU Draft] Volume: Everyday player (${atBats} AB) -> 1.15x`)
-    return 1.15
-  }
-
-  console.log(`[CPU Draft] Volume: Part-time player (${atBats} AB) -> 1.0x`)
+  if (atBats > 450) return 1.15
   return 1.0
 }
 
@@ -261,20 +237,13 @@ function calculateWeightedScore(
 
     const existingLefties = filledRoster.filter(s => s.playerBats === 'L').length
     const existingRighties = filledRoster.filter(s => s.playerBats === 'R').length
-    const existingSwitchHitters = filledRoster.filter(s => s.playerBats === 'B').length
-
-    console.log(`[CPU Draft] Platoon check - Team has L:${existingLefties} R:${existingRighties} B:${existingSwitchHitters}`)
-
     // Prefer minority handedness for balance
     if (player.bats === 'L' && existingLefties < existingRighties) {
-      platoonBonus = 1.05  // 5% bonus
-      console.log(`[CPU Draft] Platoon bonus: +5% for lefty (minority)`)
+      platoonBonus = 1.05  // 5% bonus for lefty minority
     } else if (player.bats === 'R' && existingRighties < existingLefties) {
-      platoonBonus = 1.05  // 5% bonus
-      console.log(`[CPU Draft] Platoon bonus: +5% for righty (minority)`)
+      platoonBonus = 1.05  // 5% bonus for righty minority
     } else if (player.bats === 'B') {
       platoonBonus = 1.10  // 10% bonus (switch hitters valuable)
-      console.log(`[CPU Draft] Platoon bonus: +10% for switch hitter`)
     }
   }
 
@@ -287,11 +256,7 @@ function calculateWeightedScore(
   // Apply randomization (±10% by default)
   const randomness = 1 + (Math.random() * 2 - 1) * randomizationFactor
 
-  const finalScore = rating * effectiveScarcityWeight * volumeMultiplier * platoonBonus * posTypeBonus * randomness
-
-  console.log(`[CPU Draft] Score: rating=${rating} × scarcity=${effectiveScarcityWeight.toFixed(2)} × volume=${volumeMultiplier} × platoon=${platoonBonus} × posType=${posTypeBonus} × random=${randomness.toFixed(3)} = ${finalScore.toFixed(2)}`)
-
-  return finalScore
+  return rating * effectiveScarcityWeight * volumeMultiplier * platoonBonus * posTypeBonus * randomness
 }
 
 /**
@@ -334,12 +299,9 @@ export function selectBestPlayer(
     if (benchSlotsAvailable > 0) {
       uniqueUnfilledPositions.push('BN')
     } else {
-      console.log(`[CPU Draft] All positions and bench filled. Roster complete.`)
       return null
     }
   }
-
-  console.log(`[CPU Draft] Round ${currentRound} - Unfilled positions: ${uniqueUnfilledPositions.join(', ')}`)
 
   // Step 2: Score ALL candidates across ALL unfilled positions simultaneously (True BPA)
   // Instead of picking a target position first, we evaluate every eligible player
@@ -363,7 +325,6 @@ export function selectBestPlayer(
     )
 
     if (eligible.length === 0) {
-      console.log(`[CPU Draft] WARNING: No eligible candidates for ${position}`)
       continue
     }
 
@@ -382,7 +343,6 @@ export function selectBestPlayer(
       ).length
 
       if (benchSlotsAvailable > 0) {
-        console.log(`[CPU Draft] No candidates for required positions, trying bench (${benchSlotsAvailable} slots available)`)
         const benchWeight = adjustScarcityByRound(POSITION_SCARCITY['BN'] || 0.5, currentRound)
         const benchCandidates = undraftedPlayers.filter(player =>
           meetsPlayingTimeRequirements(player, 'BN')
@@ -395,20 +355,12 @@ export function selectBestPlayer(
     }
 
     if (allScoredCandidates.length === 0) {
-      console.log(`[CPU Draft] No candidates found for any position. Roster may be complete.`)
       return null
     }
   }
 
   // Step 3: Sort all candidates by score descending and select
   allScoredCandidates.sort((a, b) => b.score - a.score)
-
-  // Log top candidates for visibility
-  const topForLog = allScoredCandidates.slice(0, 5)
-  console.log(`[CPU Draft] Top candidates across all positions:`)
-  topForLog.forEach((c, i) => {
-    console.log(`  ${i + 1}. ${c.player.display_name || c.player.player_id} (${c.position}) - Rating: ${c.player.apba_rating}, Score: ${c.score.toFixed(2)}`)
-  })
 
   // Take top 3-5 candidates and randomly pick one (adds unpredictability)
   const topCount = Math.min(5, allScoredCandidates.length)
@@ -429,8 +381,6 @@ export function selectBestPlayer(
     console.error(`[CPU Draft] ERROR: No available slot found for position: ${selected.position}`)
     return null
   }
-
-  console.log(`[CPU Draft] Selected: ${selected.player.display_name || selected.player.player_id} for ${selected.position} (score: ${selected.score.toFixed(2)})`)
 
   return {
     player: selected.player,
