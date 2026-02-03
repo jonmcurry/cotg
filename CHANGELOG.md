@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - 2026-02-03 (Feature Slice 3: Players API Migration)
+- Completed third feature slice of the Vercel/Render/Supabase migration
+- Backend: Created `backend/src/routes/players.ts` with three endpoints:
+  - GET /api/players/pool - paginated player pool with countOnly option for progress indication
+  - POST /api/players/batch - batch load multiple players by IDs (handles batching internally)
+  - GET /api/players/:id - single player lookup by season ID
+- Frontend: Refactored `DraftBoard.tsx` to use API instead of direct Supabase
+- Frontend: Refactored `Clubhouse.tsx` to use API instead of direct Supabase
+- Significant code reduction (~150 lines) by moving batching logic to backend
+- Both components now use the centralized API client
+
 ### Changed - 2026-02-03 (Feature Slice 2: Draft Sessions + Picks API Migration)
 - Completed second feature slice of the Vercel/Render/Supabase migration
 - Backend: Created `backend/src/routes/draft.ts` with full CRUD for draft sessions
