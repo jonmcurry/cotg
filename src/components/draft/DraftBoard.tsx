@@ -38,7 +38,6 @@ export default function DraftBoard({ onExit, onComplete }: Props) {
 
   const {
     session,
-    loadSession,
     getCurrentPickingTeam,
     getNextPickingTeam,
     makePick,
