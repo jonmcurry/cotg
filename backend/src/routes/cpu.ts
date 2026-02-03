@@ -515,7 +515,9 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
       console.warn('[CPU API] Session selected_seasons from DB:', session.selected_seasons)
     }
 
-    // Fetch balanced pool: top hitters + top pitchers
+    // FIXED: Dramatically increase pool size to ensure enough players for all positions
+    // Previous limits (600 hitters + 400 pitchers) were too small for later draft rounds
+    // With 32 teams × 21 rounds = 672 picks, we need a much larger pool
     const { data: hittersData, error: hittersError } = await supabase
       .from('player_seasons')
       .select(`
@@ -528,7 +530,7 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
       .in('year', yearList)
       .gte('at_bats', 200)
       .order('apba_rating', { ascending: false, nullsFirst: false })
-      .limit(600)
+      .limit(5000)  // Increased from 600 to ensure coverage for all draft rounds
 
     const { data: pitchersData, error: pitchersError } = await supabase
       .from('player_seasons')
@@ -543,7 +545,7 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
       .gte('innings_pitched_outs', 90)
       .lt('at_bats', 200)
       .order('apba_rating', { ascending: false, nullsFirst: false })
-      .limit(400)
+      .limit(3000)  // Increased from 400 to ensure enough pitchers for all positions
 
     if (hittersError || pitchersError) {
       console.error('[CPU API] Error loading players:', hittersError || pitchersError)
