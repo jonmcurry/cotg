@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-03 (CPU Draft Race Condition - Backend Status Sync)
+- **CRITICAL BUG FIX**: Fixed race condition where CPU draft tried to run before backend status updated
+  - **Root Cause**: `startDraft()` updated local state immediately but saved to backend asynchronously without waiting
+    - Sequence: Local state → `'in_progress'` → CPU effect triggers → Backend still `'setup'` → API rejects pick
+    - Error: "Draft is not in progress (status: setup)"
+  - **Solution**: Made startDraft/pauseDraft/resumeDraft async and await backend saveSession()
+    - Changed return type from `void` to `Promise<void>`
+    - Added `await get().saveSession()` before continuing
+    - Backend status now updates BEFORE CPU draft effect can trigger
+  - **Files Modified**:
+    - src/stores/draftStore.ts - Async draft status changes with proper waiting
+    - src/App.tsx - Handle async startDraft call
+    - docs/fixes/CPU_DRAFT_RACE_CONDITION_FIX.md - Fix plan and checklist
+  - Status: ✅ RESOLVED - Backend and frontend status now properly synchronized
+
 ### Fixed - 2026-02-03 (CPU Draft UI Synchronization Bug)
 - **CRITICAL BUG FIX**: Resolved CPU draft UI not updating despite successful backend picks
   - **Root Cause**: `cpuThinking` state was incorrectly included in useEffect dependencies
