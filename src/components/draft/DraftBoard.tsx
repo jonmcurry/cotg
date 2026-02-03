@@ -280,14 +280,23 @@ If this persists, the database may be updating. Wait a few minutes and try again
     // Async IIFE - checks cancelled flag before side effects
     ;(async () => {
       try {
+        console.log('[CPU Draft] 🚀 Async IIFE started, cancelled=' + cancelled)
+
         // Check if this effect instance was cancelled (StrictMode unmount)
-        if (cancelled) return
+        if (cancelled) {
+          console.log('[CPU Draft] ⛔ Async IIFE blocked by cancelled flag')
+          return
+        }
+
+        console.log('[CPU Draft] 📡 Calling CPU pick API:', `/draft/sessions/${session.id}/cpu-pick`)
 
         // Call the CPU pick API - it handles player selection and pick execution
         const response = await api.post<CpuPickResponse>(
           `/draft/sessions/${session.id}/cpu-pick`,
           { seasons: session.selectedSeasons }
         )
+
+        console.log('[CPU Draft] 📡 API response received:', response.result)
 
         // Final cancelled check before updating state
         if (cancelled) return
