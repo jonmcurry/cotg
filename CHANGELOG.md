@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - 2026-02-02 (Random Team Names)
+- Replaced generic "Team Alpha/Beta/Gamma" default names with randomly generated baseball-themed names (e.g., "Portland Grizzlies", "Nashville Firebirds")
+- 32 cities and 32 mascots shuffled on each draft setup for unique combinations
+- Adding teams dynamically also generates random names (avoids duplicates)
+
 ### Fixed - 2026-02-02 (Bench Slots Filled With Pitchers)
 - Fixed CPU draft filling bench/reserve slots with pitchers instead of position players
 - Removed pitcher positions (`P`, `SP`, `RP`) from `POSITION_ELIGIBILITY['BN']` so only position players are eligible for bench

@@ -12,17 +12,55 @@ interface Props {
   leagueName?: string
 }
 
+// Baseball-themed team name pools for random generation
+const TEAM_CITIES = [
+  'Portland', 'Nashville', 'Charlotte', 'Austin', 'Memphis',
+  'Savannah', 'Louisville', 'Richmond', 'Reno', 'Tucson',
+  'Hartford', 'Norfolk', 'Omaha', 'Albuquerque', 'Sacramento',
+  'Buffalo', 'Providence', 'Charleston', 'Spokane', 'Boise',
+  'Tacoma', 'Duluth', 'Mobile', 'Topeka', 'Wichita',
+  'Asheville', 'Fresno', 'Tulsa', 'Dayton', 'El Paso',
+  'Scranton', 'Durham',
+]
+
+const TEAM_MASCOTS = [
+  'Grizzlies', 'Firebirds', 'Rivercats', 'Thunderbolts', 'Ironhawks',
+  'Mustangs', 'Copperheads', 'Pioneers', 'Stormchasers', 'Bison',
+  'Timberwolves', 'Raptors', 'Mavericks', 'Wildcats', 'Stallions',
+  'Warhawks', 'Bandits', 'Barons', 'Clippers', 'Steelheads',
+  'Scorpions', 'Monarchs', 'Vipers', 'Marauders', 'Voyagers',
+  'Ospreys', 'Coyotes', 'Dragoons', 'Sentinels', 'Titans',
+  'Bobcats', 'Trailblazers',
+]
+
+/** Fisher-Yates shuffle (returns new array) */
+function shuffleArray<T>(arr: T[]): T[] {
+  const shuffled = [...arr]
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+  }
+  return shuffled
+}
+
+/** Generate N unique random team names */
+function generateTeamNames(count: number): string[] {
+  const cities = shuffleArray(TEAM_CITIES)
+  const mascots = shuffleArray(TEAM_MASCOTS)
+  return Array.from({ length: count }, (_, i) => `${cities[i % cities.length]} ${mascots[i % mascots.length]}`)
+}
+
 export default function DraftConfig({ onStartDraft, leagueNumTeams, leagueName }: Props) {
   const initialTeamCount = leagueNumTeams || 8
   const [numTeams, setNumTeams] = useState(initialTeamCount)
 
-  const defaultTeamNames = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta', 'Iota', 'Kappa', 'Lambda', 'Mu']
-  const [teams, setTeams] = useState<Array<{ name: string; control: TeamControl }>>(() =>
-    Array.from({ length: initialTeamCount }, (_, i) => ({
-      name: `Team ${defaultTeamNames[i] || String.fromCharCode(65 + i)}`,
+  const [teams, setTeams] = useState<Array<{ name: string; control: TeamControl }>>(() => {
+    const names = generateTeamNames(initialTeamCount)
+    return Array.from({ length: initialTeamCount }, (_, i) => ({
+      name: names[i],
       control: i === 0 ? 'human' as TeamControl : 'cpu' as TeamControl,
     }))
-  )
+  })
   const [selectedSeasons, setSelectedSeasons] = useState<number[]>([])
   const [seasonMode, setSeasonMode] = useState<'all' | 'era' | 'specific'>('specific')
   const [eraSelection, setEraSelection] = useState('modern')
@@ -35,10 +73,13 @@ export default function DraftConfig({ onStartDraft, leagueNumTeams, leagueName }
 
     const newTeams = [...teams]
     if (count > teams.length) {
-      // Add more teams
+      // Add more teams with random names (avoiding existing names)
+      const existingNames = new Set(newTeams.map(t => t.name))
+      const extraNames = generateTeamNames(count).filter(n => !existingNames.has(n))
+      let nameIdx = 0
       for (let i = teams.length; i < count; i++) {
         newTeams.push({
-          name: `Team ${String.fromCharCode(65 + i)}`,
+          name: extraNames[nameIdx++] || `Team ${String.fromCharCode(65 + i)}`,
           control: 'cpu',
         })
       }
