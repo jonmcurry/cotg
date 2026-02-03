@@ -81,6 +81,16 @@ export default function DraftBoard({ onExit, onComplete }: Props) {
   const currentTeam = getCurrentPickingTeam()
   const nextTeam = getNextPickingTeam()
 
+  // Debug: Log current team to see why CPU draft isn't running
+  console.log('[DraftBoard] 📋 Current team:', {
+    currentTeam: currentTeam ? {
+      id: currentTeam.id,
+      name: currentTeam.name,
+      control: currentTeam.control
+    } : null,
+    cpuThinking
+  })
+
   // Create stable reference to selected seasons for useEffect dependency
   // Only changes when actual seasons change, not when picks are made
   const selectedSeasonsKey = useMemo(
@@ -195,16 +205,42 @@ If this persists, the database may be updating. Wait a few minutes and try again
   // CPU auto-draft logic - uses backend API for pick selection and execution
   // Module-level cpuDraftInProgress guard survives StrictMode remounting to prevent race conditions
   useEffect(() => {
+    console.log('[CPU Draft] 🔍 Effect triggered, checking conditions:', {
+      hasSession: !!session,
+      hasCurrentTeam: !!currentTeam,
+      currentTeamControl: currentTeam?.control,
+      cpuDraftInProgress,
+      sessionStatus: session?.status,
+      currentPick: session?.currentPick
+    })
+
     let cancelled = false // StrictMode cleanup: set true on unmount to skip UI updates
 
-    if (!session) return
-    if (!currentTeam) return
-    if (currentTeam.control !== 'cpu') return
+    if (!session) {
+      console.log('[CPU Draft] ⛔ Blocked: No session')
+      return
+    }
+    if (!currentTeam) {
+      console.log('[CPU Draft] ⛔ Blocked: No current team')
+      return
+    }
+    if (currentTeam.control !== 'cpu') {
+      console.log('[CPU Draft] ⛔ Blocked: Current team is not CPU (control=' + currentTeam.control + ')')
+      return
+    }
 
     // Module-level singleton guard: survives StrictMode remounting
-    if (cpuDraftInProgress) return
+    if (cpuDraftInProgress) {
+      console.log('[CPU Draft] ⛔ Blocked: CPU draft already in progress')
+      return
+    }
 
-    if (session.status !== 'in_progress') return
+    if (session.status !== 'in_progress') {
+      console.log('[CPU Draft] ⛔ Blocked: Session status is not in_progress (status=' + session.status + ')')
+      return
+    }
+
+    console.log('[CPU Draft] ✅ All guards passed - starting CPU draft pick')
 
     // Clear the failed-player blacklist when starting a new draft session
     if (session.id !== lastSessionId) {
