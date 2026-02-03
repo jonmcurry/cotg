@@ -38,7 +38,15 @@
       "Bash(find:*)",
       "Bash(du:*)",
       "Bash(dir \"C:\\\\dosgames\\\\shared\\\\BJEBEW\" /s /b)",
-      "Bash(npx vite build:*)"
+      "Bash(npx vite build:*)",
+      "Bash(npx supabase:*)",
+      "Bash(PGPASSWORD=\"ClearToFly2026\" psql:*)",
+      "Bash(dir:*)",
+      "Bash(git push:*)",
+      "Bash(git rm:*)",
+      "Bash(git restore:*)",
+      "Bash(git reset:*)",
+      "Bash(curl:*)"
     ]
   }
 }
