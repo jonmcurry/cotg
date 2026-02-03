@@ -48,6 +48,15 @@ export default function DraftBoard({ onExit, onComplete }: Props) {
     saveSession,
   } = useDraftStore()
 
+  // Debug: Log every render to track session state changes
+  console.log('[DraftBoard] 🔄 Component render:', {
+    sessionId: session?.id,
+    currentPick: session?.currentPick,
+    currentRound: session?.currentRound,
+    status: session?.status,
+    picksCount: session?.picks.length
+  })
+
   const [players, setPlayers] = useState<PlayerSeason[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingProgress, setLoadingProgress] = useState({ loaded: 0, total: 0, hasMore: true })
@@ -270,9 +279,18 @@ If this persists, the database may be updating. Wait a few minutes and try again
         }
 
         if (response.result === 'success' && response.pick && response.session) {
+          console.log('[CPU Draft] ✅ CPU pick successful:', {
+            pick: response.pick.pickNumber,
+            player: response.pick.playerName,
+            currentPickBefore: session.currentPick,
+            currentPickFromAPI: response.session.currentPick
+          })
+
           // Reload entire session from backend to get authoritative state
           // This ensures UI is always in sync with the database
+          console.log('[CPU Draft] 🔄 Calling loadSession...')
           await loadSession(session.id)
+          console.log('[CPU Draft] ✅ loadSession completed - waiting for React re-render')
 
           // Show inline ticker for this pick (clears after 3 seconds)
           if (!cancelled) {
