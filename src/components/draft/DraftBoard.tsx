@@ -372,7 +372,9 @@ If this persists, the database may be updating. Wait a few minutes and try again
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.currentPick, session?.status, currentTeam?.id, applyCpuPick, pauseDraft, cpuThinking])
+  }, [session?.currentPick, session?.status, currentTeam?.id, applyCpuPick, pauseDraft])
+  // Note: cpuThinking is intentionally NOT in dependencies to avoid cancelling the async operation
+  // when setCpuThinking(true) is called
 
   const handlePlayerSelect = useCallback((player: PlayerSeason) => {
     if (!currentTeam || currentTeam.control !== 'human') {
