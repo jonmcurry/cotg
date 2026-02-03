@@ -12,6 +12,7 @@ import { supabase } from './lib/supabase'
 import leaguesRouter from './routes/leagues'
 import draftRouter from './routes/draft'
 import picksRouter from './routes/picks'
+import playersRouter from './routes/players'
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -50,62 +51,7 @@ app.get('/api/health', async (_req, res) => {
 app.use('/api/leagues', leaguesRouter)
 app.use('/api/draft/sessions', draftRouter)
 app.use('/api/draft/sessions', picksRouter)
-
-app.get('/api/players/pool', async (req, res) => {
-  try {
-    const { seasons, limit = 1000 } = req.query
-
-    let query = supabase
-      .from('player_seasons')
-      .select(`
-        id,
-        player_id,
-        year,
-        team_id,
-        primary_position,
-        apba_rating,
-        war,
-        at_bats,
-        batting_avg,
-        hits,
-        home_runs,
-        rbi,
-        stolen_bases,
-        on_base_pct,
-        slugging_pct,
-        innings_pitched_outs,
-        wins,
-        losses,
-        era,
-        strikeouts_pitched,
-        saves,
-        shutouts,
-        whip,
-        players!inner (
-          id,
-          display_name,
-          first_name,
-          last_name,
-          bats
-        )
-      `)
-      .order('apba_rating', { ascending: false })
-      .limit(Number(limit))
-
-    if (seasons) {
-      const yearList = String(seasons).split(',').map(Number)
-      query = query.in('year', yearList)
-    }
-
-    const { data, error } = await query
-    if (error) throw error
-
-    res.json(data)
-  } catch (err) {
-    console.error('[Players Pool] Error:', err)
-    res.status(500).json({ error: 'Failed to fetch player pool' })
-  }
-})
+app.use('/api/players', playersRouter)
 
 // Start server
 app.listen(PORT, () => {

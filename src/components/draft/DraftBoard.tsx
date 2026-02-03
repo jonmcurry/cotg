@@ -77,7 +77,7 @@ export default function DraftBoard({ onExit, onComplete }: Props) {
     [session?.selectedSeasons]
   )
 
-  // Load players from Supabase
+  // Load players from API
   useEffect(() => {
     async function loadPlayers() {
       if (!session) return
@@ -91,23 +91,12 @@ export default function DraftBoard({ onExit, onComplete }: Props) {
       setLoading(true)
       setLoadingProgress({ loaded: 0, total: 0, hasMore: true })
       try {
-        const { supabase } = await import('../../lib/supabaseClient')
+        const { api } = await import('../../lib/api')
+        const seasonsParam = session.selectedSeasons.join(',')
 
         // First, get total count for progress indication
-        const { count, error: countError } = await supabase
-          .from('player_seasons')
-          .select('id', { count: 'exact', head: true })
-          .in('year', session.selectedSeasons)
-          .or('at_bats.gte.200,innings_pitched_outs.gte.30')
-
-        if (countError) {
-          console.error('[Player Load] Error getting count:', countError)
-          console.error('[Player Load] Error code:', countError.code)
-          console.error('[Player Load] Error message:', countError.message)
-          console.error('[Player Load] Error details:', countError.details)
-        }
-
-        const totalPlayers = count || 0
+        const countResponse = await api.get<{ count: number }>(`/players/pool?seasons=${seasonsParam}&countOnly=true`)
+        const totalPlayers = countResponse.count || 0
 
         if (totalPlayers === 0) {
           console.error('[Player Load] WARNING: totalPlayers is 0!')
@@ -115,7 +104,6 @@ export default function DraftBoard({ onExit, onComplete }: Props) {
           console.error('[Player Load] Debugging info:')
           console.error('  - session:', session)
           console.error('  - session.selectedSeasons:', session.selectedSeasons)
-          console.error('  - countError:', countError)
         }
         setLoadingProgress({ loaded: 0, total: totalPlayers, hasMore: true })
 
@@ -132,43 +120,7 @@ export default function DraftBoard({ onExit, onComplete }: Props) {
             const currentOffset = offset
 
             batchPromises.push(
-              supabase
-                .from('player_seasons')
-                .select(`
-                  id,
-                  player_id,
-                  year,
-                  team_id,
-                  primary_position,
-                  apba_rating,
-                  war,
-                  at_bats,
-                  batting_avg,
-                  hits,
-                  home_runs,
-                  rbi,
-                  stolen_bases,
-                  on_base_pct,
-                  slugging_pct,
-                  innings_pitched_outs,
-                  wins,
-                  losses,
-                  era,
-                  strikeouts_pitched,
-                  saves,
-                  shutouts,
-                  whip,
-                  players!inner (
-                    display_name,
-                    first_name,
-                    last_name,
-                    bats
-                  )
-                `)
-                .in('year', session.selectedSeasons)
-                .or('at_bats.gte.200,innings_pitched_outs.gte.30')
-                .order('apba_rating', { ascending: false, nullsFirst: false })
-                .range(currentOffset, currentOffset + batchSize - 1)
+              api.get<any[]>(`/players/pool?seasons=${seasonsParam}&offset=${currentOffset}&limit=${batchSize}`)
             )
 
             offset += batchSize
@@ -178,15 +130,9 @@ export default function DraftBoard({ onExit, onComplete }: Props) {
           const results = await Promise.all(batchPromises)
 
           // Process results
-          for (const result of results) {
-            if (result.error) {
-              console.error('[Player Load] CRITICAL ERROR loading players:', result.error)
-              alert(`CRITICAL ERROR: Failed to load players from Supabase.\n\nError: ${result.error.message}\n\nCheck console for details.`)
-              return
-            }
-
-            if (result.data && result.data.length > 0) {
-              allPlayers.push(...result.data)
+          for (const data of results) {
+            if (data && data.length > 0) {
+              allPlayers.push(...data)
             }
           }
 

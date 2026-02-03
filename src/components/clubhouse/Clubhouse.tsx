@@ -82,7 +82,7 @@ export default function Clubhouse({ session, onExit, onStartSeason }: Props) {
     useEffect(() => {
         async function loadDraftedPlayers() {
             try {
-                const { supabase } = await import('../../lib/supabaseClient')
+                const { api } = await import('../../lib/api')
 
                 // Collect all drafted player season IDs
                 const seasonIds = session.teams.flatMap(t =>
@@ -96,61 +96,11 @@ export default function Clubhouse({ session, onExit, onStartSeason }: Props) {
                     return
                 }
 
-                // Batch queries to avoid PostgREST URL length limits
-                // With 32 teams × 21 rounds = 672 UUIDs, a single .in() exceeds the ~8KB URL limit
-                const BATCH_SIZE = 100
-                const allData: any[] = []
+                // Use batch API endpoint (handles batching internally)
+                const data = await api.post<any[]>('/players/batch', { ids: seasonIds })
 
-                for (let i = 0; i < seasonIds.length; i += BATCH_SIZE) {
-                    const batch = seasonIds.slice(i, i + BATCH_SIZE)
-                    const { data, error } = await supabase
-                        .from('player_seasons')
-                        .select(`
-                            id,
-                            player_id,
-                            year,
-                            team_id,
-                            primary_position,
-                            apba_rating,
-                            war,
-                            at_bats,
-                            batting_avg,
-                            hits,
-                            home_runs,
-                            rbi,
-                            stolen_bases,
-                            on_base_pct,
-                            slugging_pct,
-                            innings_pitched_outs,
-                            wins,
-                            losses,
-                            era,
-                            strikeouts_pitched,
-                            saves,
-                            shutouts,
-                            whip,
-                            players!inner (
-                              display_name,
-                              first_name,
-                              last_name,
-                              bats
-                            )
-                        `)
-                        .in('id', batch)
-
-                    if (error) {
-                        console.error('[Clubhouse] Error loading players batch:', error)
-                        alert(`ERROR: Failed to load player data.\n\n${error.message}`)
-                        return
-                    }
-
-                    if (data) {
-                        allData.push(...data)
-                    }
-                }
-
-                if (allData.length > 0) {
-                    const transformedPlayers = allData.map(transformPlayerSeasonData)
+                if (data && data.length > 0) {
+                    const transformedPlayers = data.map(transformPlayerSeasonData)
                     setPlayers(transformedPlayers)
                 }
             } catch (err) {
