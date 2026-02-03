@@ -21,6 +21,14 @@ import type { PositionCode } from '../../types/draft.types'
 // Prevents two concurrent IIFEs from selecting players from the same stale pool.
 let cpuDraftInProgress = false
 
+// Module-level blacklist for players that caused 409 duplicate errors.
+// StrictMode stale closures can re-select already-drafted players because the effect
+// closure captured session.picks BEFORE the store updated. This set accumulates
+// player_season_ids that failed, preventing re-selection on retry.
+// Cleared when a new draft session starts (different currentPick=1).
+let failedPlayerSeasonIds = new Set<string>()
+let lastSessionId: string | null = null
+
 interface Props {
   onExit: () => void
   onComplete?: () => void
@@ -254,6 +262,12 @@ If this persists, the database may be updating. Wait a few minutes and try again
       return
     }
 
+    // Clear the failed-player blacklist when starting a new draft session
+    if (session.id !== lastSessionId) {
+      failedPlayerSeasonIds = new Set<string>()
+      lastSessionId = session.id
+    }
+
     // Set guard BEFORE starting async operation
     cpuDraftInProgress = true
     setCpuThinking(true)
@@ -284,6 +298,13 @@ If this persists, the database may be updating. Wait a few minutes and try again
             }
           })
 
+          // Also exclude players that previously caused 409 duplicate errors.
+          // StrictMode stale closures can have outdated session.picks, so this
+          // module-level set catches players the DB already has but local state doesn't.
+          for (const failedId of failedPlayerSeasonIds) {
+            draftedSeasonIds.add(failedId)
+          }
+
           // Performance optimization: Filter undrafted players and pass a balanced pool
           // Players array is already sorted by apba_rating DESC from SQL query
           // Split into hitters and pitchers to guarantee both are represented in the pool
@@ -308,19 +329,27 @@ If this persists, the database may be updating. Wait a few minutes and try again
           if (cancelled) return
 
           if (selection) {
-            const success = await makePick(selection.player.id, selection.player.player_id, selection.position, selection.slotNumber, selection.player.bats)
+            const result = await makePick(selection.player.id, selection.player.player_id, selection.position, selection.slotNumber, selection.player.bats)
 
-            if (!success) {
-              // makePick failed (likely DB constraint violation) - pause to break infinite loop
-              console.error('[CPU Draft] makePick failed for player:', selection.player.display_name, selection.player.id)
-              if (!cancelled) {
-                pauseDraft()
-                alert('ERROR: CPU draft pick failed (possible duplicate player). Draft paused. Check console for details.')
-              }
+            if (result === 'duplicate') {
+              // Player already in DB (stale closure or StrictMode race).
+              // Blacklist so the next effect run skips them automatically.
+              failedPlayerSeasonIds.add(selection.player.id)
+              console.warn('[CPU Draft] Duplicate player blacklisted:', selection.player.display_name, selection.player.id, '- will auto-retry')
+              // Don't pause - the effect will re-fire via setCpuThinking(false) in finally,
+              // and the blacklist will exclude this player on the next run.
               return
             }
 
-            // Show inline ticker for this pick (clears after 3 seconds)
+            if (result === 'error') {
+              // Non-duplicate failure (DB error, missing slot, etc.) - pause to prevent loop
+              console.error('[CPU Draft] makePick error for player:', selection.player.display_name, selection.player.id)
+              pauseDraft()
+              alert('ERROR: CPU draft pick failed. Draft paused. Check console for details.')
+              return
+            }
+
+            // Success - show inline ticker for this pick (clears after 3 seconds)
             if (!cancelled) {
               if (lastCpuPickTimer.current) clearTimeout(lastCpuPickTimer.current)
               setLastCpuPick({

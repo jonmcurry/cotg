@@ -42,14 +42,17 @@ When `makePick` fails:
 - CPU draft filters undrafted players by BOTH `player_id` (cross-season) AND season id (exact match fallback)
 - Passed `draftedSeasonIds` to `TabbedPlayerPool` for consistent UI filtering
 
-### Change 2: `makePick` returns success/failure (`draftStore.ts`)
-- Changed return type from `Promise<void>` to `Promise<boolean>`
-- Returns `true` on success, `false` on any error
-- All early returns now return `false`
+### Change 2: `makePick` returns typed result (`draftStore.ts`)
+- Changed return type from `Promise<void>` to `Promise<'success' | 'duplicate' | 'error'>`
+- Returns `'duplicate'` for 23505/player_season_id constraint violations
+- Returns `'error'` for all other failures
+- Returns `'success'` on successful pick
 
-### Change 3: CPU draft handles failure (`DraftBoard.tsx`)
-- Checks `makePick` return value
-- On failure: pauses draft and shows error alert instead of infinite loop
+### Change 3: CPU draft handles failure with auto-retry (`DraftBoard.tsx`)
+- On `'duplicate'`: blacklists the player in module-level `failedPlayerSeasonIds` set and auto-retries (no pause)
+- On `'error'`: pauses draft with alert (safety net for unexpected failures)
+- Blacklist is merged into `draftedSeasonIds` at the start of each effect run
+- Blacklist clears when a new draft session starts (different session ID)
 
 ### Change 4: Improved 409 diagnostics (`draftStore.ts`)
 - Detects `23505` error code with `player_season_id` in message
@@ -70,4 +73,5 @@ When `makePick` fails:
 ## Verification
 - `npm run build` compiles without errors
 - Draft should complete without 409 errors or infinite loops
-- If a 409 does occur (edge case), draft pauses instead of looping
+- If a duplicate 409 occurs, the player is blacklisted and a different player is auto-selected
+- If a non-duplicate error occurs, draft pauses with an alert

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-02 (409 Duplicate Player Auto-Retry)
+- Fixed CPU draft looping on 409 duplicate player errors caused by React StrictMode stale closures
+- Added module-level `failedPlayerSeasonIds` blacklist that persists across effect runs
+- On duplicate: blacklist player and auto-retry with a different player (no manual intervention needed)
+- On other errors: pause draft with alert (safety net for unexpected failures)
+- Changed `makePick` return type from `boolean` to `'success' | 'duplicate' | 'error'` for precise error handling
+- Blacklist clears automatically when a new draft session starts
+
 ### Added - 2026-02-02 (Auto-Generate Lineups, Rotation, and Bullpen)
 - Auto-generates optimal depth charts for all teams when entering the Clubhouse after a draft
 - Lineups vs RHP favor L/B batters; lineups vs LHP favor R/B batters (platoon optimization)
