@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - 2026-02-03 (Feature Slice 5: Auto-Lineup API Migration)
+- Completed fifth feature slice of the Vercel/Render/Supabase migration
+- Backend: Created `backend/src/routes/lineup.ts` with POST /teams/:id/auto-lineup endpoint
+  - Full lineup generation algorithm (platoon scoring, defensive position assignment)
+  - Batting order optimization (OBP for leadoff, OPS for 3-hole, HR for cleanup)
+  - Rotation assignment (SPs sorted by APBA rating)
+  - Bullpen assignment (closer from CL slot, setup from RPs by ERA)
+  - Returns complete TeamDepthChart
+- Frontend: Refactored Clubhouse.tsx to call API instead of local generateOptimalDepthChart
+- Reduces frontend bundle size by ~2.4KB (autoLineup.ts no longer bundled)
+- Lineup generation now executes on server for consistency
+
 ### Changed - 2026-02-03 (Feature Slice 4: CPU Draft API Migration)
 - Completed fourth feature slice of the Vercel/Render/Supabase migration
 - Backend: Created `backend/src/routes/cpu.ts` with POST /cpu-pick endpoint
