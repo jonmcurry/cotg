@@ -1,6 +1,7 @@
 /**
  * Draft State Management Store
  * Uses Zustand for state management of draft sessions
+ * API calls go through the backend; Supabase is no longer used directly
  */
 
 import { create } from 'zustand'
@@ -8,14 +9,85 @@ import { persist } from 'zustand/middleware'
 import type {
   DraftSession,
   DraftTeam,
-  DraftPick,
   DraftConfig,
   RosterSlot,
   PositionCode,
   TeamDepthChart,
 } from '../types/draft.types'
-import { ROSTER_REQUIREMENTS, TOTAL_ROUNDS } from '../types/draft.types'
-import { supabase } from '../lib/supabaseClient'
+import { ROSTER_REQUIREMENTS } from '../types/draft.types'
+import { api, ApiError } from '../lib/api'
+
+// API response types
+interface DraftSessionApiResponse {
+  id: string
+  name: string
+  status: DraftSession['status']
+  numTeams: number
+  currentPick: number
+  currentRound: number
+  teams: DraftTeam[]
+  picks: Array<{
+    pickNumber: number
+    round: number
+    pickInRound: number
+    teamId: string
+    playerSeasonId: string | null
+    playerId: string | null
+    pickTime: string | null
+  }>
+  selectedSeasons: number[]
+  createdAt: string
+  updatedAt: string
+}
+
+interface MakePickResponse {
+  result: 'success' | 'duplicate' | 'error'
+  pick?: {
+    pickNumber: number
+    round: number
+    pickInRound: number
+    teamId: string
+    playerSeasonId: string
+    playerId: string
+    position: PositionCode
+    slotNumber: number
+  }
+  session?: {
+    currentPick: number
+    currentRound: number
+    status: DraftSession['status']
+  }
+  error?: string
+}
+
+// Transform API response to DraftSession (parse dates)
+function transformSessionResponse(data: DraftSessionApiResponse): DraftSession {
+  return {
+    ...data,
+    picks: data.picks.map(pick => ({
+      ...pick,
+      pickTime: pick.pickTime ? new Date(pick.pickTime) : null,
+    })),
+    createdAt: new Date(data.createdAt),
+    updatedAt: new Date(data.updatedAt),
+  }
+}
+
+// Helper: Create roster slots for a team
+function createRosterSlots(): RosterSlot[] {
+  const roster: RosterSlot[] = []
+  Object.entries(ROSTER_REQUIREMENTS).forEach(([position, count]) => {
+    for (let i = 0; i < count; i++) {
+      roster.push({
+        position: position as PositionCode,
+        slotNumber: i + 1,
+        playerSeasonId: null,
+        isFilled: false,
+      })
+    }
+  })
+  return roster
+}
 
 interface DraftState {
   // Current session
@@ -55,220 +127,96 @@ export const useDraftStore = create<DraftState>()(
       session: null,
 
       createSession: async (config: DraftConfig) => {
-        // Create teams with roster slots
-        const teams: DraftTeam[] = config.teams.map((teamConfig, index) => {
-          const roster: RosterSlot[] = []
-
-          // Create roster slots based on ROSTER_REQUIREMENTS
-          Object.entries(ROSTER_REQUIREMENTS).forEach(([position, count]) => {
-            for (let i = 0; i < count; i++) {
-              roster.push({
-                position: position as PositionCode,
-                slotNumber: i + 1,
-                playerSeasonId: null,
-                isFilled: false,
-              })
-            }
+        try {
+          // Call API to create session
+          const data = await api.post<DraftSessionApiResponse>('/draft/sessions', {
+            numTeams: config.numTeams,
+            teams: config.teams,
+            selectedSeasons: config.selectedSeasons,
+            randomizeDraftOrder: config.randomizeDraftOrder,
           })
 
-          return {
-            id: `team-${index}`,
-            name: teamConfig.name,
-            control: teamConfig.control,
-            draftPosition: config.randomizeDraftOrder
-              ? 0 // Will be randomized below
-              : index + 1,
-            roster,
-            draftSessionId: '',
-          }
-        })
+          // API returns teams with empty rosters, we need to populate them
+          const teamsWithRosters = data.teams.map(team => ({
+            ...team,
+            roster: createRosterSlots(),
+          }))
 
-        // Randomize draft order if requested
-        if (config.randomizeDraftOrder) {
-          const positions = Array.from({ length: config.numTeams }, (_, i) => i + 1)
-          for (let i = positions.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [positions[i], positions[j]] = [positions[j], positions[i]]
-          }
-          teams.forEach((team, index) => {
-            team.draftPosition = positions[index]
+          const session = transformSessionResponse({
+            ...data,
+            teams: teamsWithRosters,
           })
+
+          set({ session })
+          console.log('[DraftStore] Session created:', session.id)
+        } catch (err) {
+          const message = err instanceof ApiError ? err.message : 'Unknown error'
+          console.error('[DraftStore] Error creating session:', err)
+          throw new Error(`Failed to create session: ${message}`)
         }
-
-        // Create picks array (snake draft)
-        const picks: DraftPick[] = []
-        for (let round = 1; round <= TOTAL_ROUNDS; round++) {
-          const pickOrder = get().calculatePickOrder(round)
-          pickOrder.forEach((team, pickInRound) => {
-            picks.push({
-              pickNumber: (round - 1) * config.numTeams + pickInRound + 1,
-              round,
-              pickInRound: pickInRound + 1,
-              teamId: team.id,
-              playerSeasonId: null,
-              playerId: null,
-              pickTime: null,
-            })
-          })
-        }
-
-        // Save to Supabase first to get the UUID
-        const { data: newSession, error } = await supabase
-          .from('draft_sessions')
-          .insert({
-            session_name: `Draft ${new Date().toLocaleDateString()}`,
-            season_year: config.selectedSeasons[0] || new Date().getFullYear(),
-            num_teams: config.numTeams,
-            num_rounds: TOTAL_ROUNDS,
-            draft_type: 'snake',
-            current_pick_number: 1,
-            current_round: 1,
-            status: 'setup',
-          })
-          .select()
-          .single()
-
-        if (error) {
-          console.error('Error creating draft session:', error)
-          throw error
-        }
-
-        if (!newSession) {
-          throw new Error('Failed to create draft session - no data returned')
-        }
-
-        // Save teams to Supabase to get UUIDs
-        const teamsToInsert = teams.map(team => ({
-          draft_session_id: newSession.id,
-          team_name: team.name,
-          draft_order: team.draftPosition,
-        }))
-
-        const { data: newTeams, error: teamsError } = await supabase
-          .from('draft_teams')
-          .insert(teamsToInsert)
-          .select()
-
-        if (teamsError) {
-          console.error('Error creating draft teams:', teamsError)
-          throw teamsError
-        }
-
-        if (!newTeams || newTeams.length === 0) {
-          throw new Error('Failed to create draft teams - no data returned')
-        }
-
-        // Update teams with real UUIDs from database
-        const teamsWithUUIDs = teams.map((team, index) => ({
-          ...team,
-          id: newTeams[index].id,
-          draftSessionId: newSession.id,
-        }))
-
-        // Recreate picks array with correct team UUIDs
-        const picksWithUUIDs: DraftPick[] = []
-        for (let round = 1; round <= TOTAL_ROUNDS; round++) {
-          // Calculate pick order for this round using teams with UUIDs
-          const sortedTeams = [...teamsWithUUIDs].sort((a, b) => a.draftPosition - b.draftPosition)
-          const pickOrder = round % 2 === 0 ? sortedTeams.reverse() : sortedTeams
-
-          pickOrder.forEach((team, pickInRound) => {
-            picksWithUUIDs.push({
-              pickNumber: (round - 1) * config.numTeams + pickInRound + 1,
-              round,
-              pickInRound: pickInRound + 1,
-              teamId: team.id, // Now using UUID from database
-              playerSeasonId: null,
-              playerId: null,
-              pickTime: null,
-            })
-          })
-        }
-
-        // Create session with real UUIDs from Supabase
-        const session: DraftSession = {
-          id: newSession.id,
-          name: newSession.session_name,
-          status: newSession.status as DraftSession['status'],
-          numTeams: config.numTeams,
-          currentPick: 1,
-          currentRound: 1,
-          teams: teamsWithUUIDs,
-          picks: picksWithUUIDs,
-          selectedSeasons: config.selectedSeasons,
-          createdAt: new Date(newSession.created_at),
-          updatedAt: new Date(newSession.updated_at),
-        }
-
-        set({ session })
       },
 
       loadSession: async (sessionId: string) => {
-        // Load from Supabase
-        const { data: _sessionData, error: sessionError } = await supabase
-          .from('draft_sessions')
-          .select('*')
-          .eq('id', sessionId)
-          .single()
+        try {
+          const data = await api.get<DraftSessionApiResponse>(`/draft/sessions/${sessionId}`)
 
-        if (sessionError) {
-          console.error('Error loading session:', sessionError)
-          throw sessionError
+          // API returns teams with empty rosters, reconstruct from picks
+          const teamsWithRosters = data.teams.map(team => ({
+            ...team,
+            roster: createRosterSlots(),
+          }))
+
+          // Fill rosters from picks
+          data.picks.forEach(pick => {
+            if (pick.playerSeasonId) {
+              const team = teamsWithRosters.find(t => t.id === pick.teamId)
+              if (team) {
+                // Find first unfilled slot (simplified - real logic would need position mapping)
+                const emptySlot = team.roster.find(s => !s.isFilled)
+                if (emptySlot) {
+                  emptySlot.playerSeasonId = pick.playerSeasonId
+                  emptySlot.isFilled = true
+                }
+              }
+            }
+          })
+
+          const session = transformSessionResponse({
+            ...data,
+            teams: teamsWithRosters,
+          })
+
+          set({ session })
+          console.log('[DraftStore] Session loaded:', session.id, session.name)
+        } catch (err) {
+          const message = err instanceof ApiError ? err.message : 'Unknown error'
+          console.error('[DraftStore] Error loading session:', err)
+          throw new Error(`Failed to load session: ${message}`)
         }
-
-        // Load teams
-        const { data: _teamsData, error: teamsError } = await supabase
-          .from('draft_teams')
-          .select('*')
-          .eq('draft_session_id', sessionId)
-          .order('draft_order')
-
-        if (teamsError) {
-          console.error('Error loading teams:', teamsError)
-          throw teamsError
-        }
-
-        // Load picks
-        const { data: _picksData, error: picksError } = await supabase
-          .from('draft_picks')
-          .select('*')
-          .eq('draft_session_id', sessionId)
-          .order('pick_number')
-
-        if (picksError) {
-          console.error('Error loading picks:', picksError)
-          throw picksError
-        }
-
-        // Transform to session format
-        // TODO: Complete transformation logic
       },
 
       saveSession: async () => {
         const session = get().session
         if (!session) return
 
-        // Create new object instead of mutating
-        const updatedSession: DraftSession = {
-          ...session,
-          updatedAt: new Date(),
-        }
-
-        // Update Supabase
-        const { error } = await supabase
-          .from('draft_sessions')
-          .update({
-            current_pick_number: updatedSession.currentPick,
-            current_round: updatedSession.currentRound,
-            status: updatedSession.status,
+        try {
+          await api.put(`/draft/sessions/${session.id}`, {
+            status: session.status,
+            currentPick: session.currentPick,
+            currentRound: session.currentRound,
           })
-          .eq('id', updatedSession.id)
 
-        if (error) {
-          console.error('[saveSession] Error saving to Supabase:', error)
+          // Update local timestamp
+          set({
+            session: {
+              ...session,
+              updatedAt: new Date(),
+            }
+          })
+        } catch (err) {
+          console.error('[DraftStore] Error saving session:', err)
+          // Don't throw - allow local state to continue
         }
-
-        set({ session: updatedSession })
       },
 
       startDraft: () => {
@@ -278,8 +226,6 @@ export const useDraftStore = create<DraftState>()(
           return
         }
 
-        // IMPORTANT: Create a new object instead of mutating
-        // Zustand uses reference equality - mutating and passing same reference won't trigger updates
         const updatedSession: DraftSession = {
           ...session,
           status: 'in_progress',
@@ -294,7 +240,6 @@ export const useDraftStore = create<DraftState>()(
         const session = get().session
         if (!session) return
 
-        // Create new object instead of mutating
         const updatedSession: DraftSession = {
           ...session,
           status: 'paused',
@@ -309,7 +254,6 @@ export const useDraftStore = create<DraftState>()(
         const session = get().session
         if (!session) return
 
-        // Create new object instead of mutating
         const updatedSession: DraftSession = {
           ...session,
           status: 'in_progress',
@@ -340,14 +284,7 @@ export const useDraftStore = create<DraftState>()(
         }
 
         set({ session: updatedSession })
-        // We generally shouldn't auto-save on every dnd move if it's frequent, 
-        // but for now let's save to be safe or maybe debounce this later.
-        // For line-up building which is interactive, we might want explicit save.
-        // But for now, let's just update local state and let user click 'Save' if we add one,
-        // or just accept react state is enough until valid. 
-        // Actually, let's NOT save to supabase immediately to avoid thrashing.
-        // We'll rely on a manual save or "Exit" trigger eventually.
-        // Wait, the store persists to local storage, so that helps.
+        // Note: depth chart is stored in local state only for now
       },
 
       generateSeasonSchedule: async (gamesPerTeam: number = 162) => {
@@ -391,101 +328,76 @@ export const useDraftStore = create<DraftState>()(
           return 'error'
         }
 
-        // Create immutable updates
-        const updatedRoster = [...team.roster]
-        updatedRoster[rosterSlotIndex] = {
-          ...updatedRoster[rosterSlotIndex],
-          playerSeasonId,
-          isFilled: true,
-          playerBats: bats,  // Store batting handedness for platoon tracking
-        }
+        try {
+          // Call API to make pick
+          const response = await api.post<MakePickResponse>(`/draft/sessions/${session.id}/picks`, {
+            playerSeasonId,
+            playerId,
+            position,
+            slotNumber,
+            bats,
+          })
 
-        const updatedTeams = [...session.teams]
-        updatedTeams[teamIndex] = {
-          ...team,
-          roster: updatedRoster,
-        }
+          if (response.result === 'duplicate') {
+            console.warn('[DraftStore] DUPLICATE PLAYER:', playerSeasonId)
+            return 'duplicate'
+          }
 
-        // Resolve playerId: use provided value or fetch from database
-        // This is needed before creating the pick so playerId is stored for cross-season deduplication
-        let resolvedPlayerId = playerId
-
-        if (!resolvedPlayerId) {
-          console.warn('[makePick] playerId not provided, fetching from database (slower)')
-          const { data: playerSeasonData, error: fetchError } = await supabase
-            .from('player_seasons')
-            .select('player_id')
-            .eq('id', playerSeasonId)
-            .single()
-
-          if (fetchError || !playerSeasonData) {
-            console.error('[makePick] Error fetching player_id from player_seasons:', fetchError)
+          if (response.result !== 'success') {
+            console.error('[DraftStore] Pick failed:', response.error)
             return 'error'
           }
 
-          resolvedPlayerId = playerSeasonData.player_id
-        }
+          // Update local state
+          const updatedRoster = [...team.roster]
+          updatedRoster[rosterSlotIndex] = {
+            ...updatedRoster[rosterSlotIndex],
+            playerSeasonId,
+            isFilled: true,
+            playerBats: bats,
+          }
 
-        const updatedPicks = [...session.picks]
-        updatedPicks[currentPickIndex] = {
-          ...currentPick,
-          playerSeasonId,
-          playerId: resolvedPlayerId || null,  // Persistent player ID for cross-season deduplication
-          pickTime: new Date(),
-        }
+          const updatedTeams = [...session.teams]
+          updatedTeams[teamIndex] = {
+            ...team,
+            roster: updatedRoster,
+          }
 
-        // Save pick to Supabase using upsert for idempotency
-        // Uses onConflict on the unique constraint (draft_session_id, pick_number) so that
-        // duplicate calls (from StrictMode, page refresh, race conditions) update rather than fail
-        const { error } = await supabase
-          .from('draft_picks')
-          .upsert({
-            draft_session_id: session.id,
-            draft_team_id: team.id,
-            player_id: resolvedPlayerId,
-            player_season_id: playerSeasonId,
-            pick_number: currentPick.pickNumber,
-            round: currentPick.round,
-            pick_in_round: currentPick.pickInRound,
-          }, {
-            onConflict: 'draft_session_id,pick_number',
-          })
+          const updatedPicks = [...session.picks]
+          updatedPicks[currentPickIndex] = {
+            ...currentPick,
+            playerSeasonId,
+            playerId: response.pick?.playerId || playerId || null,
+            pickTime: new Date(),
+          }
 
-        if (error) {
-          // Distinguish between constraint types for clear diagnostics
-          if (error.code === '23505' && error.message?.includes('player_season_id')) {
-            console.error('[makePick] DUPLICATE PLAYER: player_season_id already drafted in this session:', playerSeasonId)
+          // Use session state from API response
+          const newStatus = response.session?.status || session.status
+          const nextPickNumber = response.session?.currentPick || session.currentPick + 1
+          const newRound = response.session?.currentRound || session.currentRound
+
+          const updatedSession: DraftSession = {
+            ...session,
+            teams: updatedTeams,
+            picks: updatedPicks,
+            currentPick: nextPickNumber,
+            currentRound: newRound,
+            status: newStatus,
+            updatedAt: new Date(),
+          }
+
+          set({ session: updatedSession })
+          return 'success'
+        } catch (err) {
+          // Check for 409 Conflict (duplicate player)
+          if (err instanceof ApiError && err.status === 409) {
+            console.warn('[DraftStore] DUPLICATE PLAYER (409):', playerSeasonId)
             return 'duplicate'
           }
-          console.error('[makePick] Error saving pick to Supabase:', error)
+
+          console.error('[DraftStore] makePick error:', err)
           return 'error'
         }
-
-        // Advance to next pick
-        const nextPickNumber = session.currentPick + 1
-        let newStatus = session.status
-        let newRound = session.currentRound
-
-        if (nextPickNumber > session.picks.length) {
-          newStatus = 'completed'
-        } else {
-          newRound = updatedPicks[nextPickNumber - 1].round
-        }
-
-        // Create new session object
-        const updatedSession: DraftSession = {
-          ...session,
-          teams: updatedTeams,
-          picks: updatedPicks,
-          currentPick: nextPickNumber,
-          currentRound: newRound,
-          status: newStatus,
-          updatedAt: new Date(),
-        }
-
-        set({ session: updatedSession })
-        get().saveSession()
-        return 'success'
       },
 
       getCurrentPickingTeam: () => {
@@ -526,14 +438,7 @@ export const useDraftStore = create<DraftState>()(
         const session = get().session
         if (!session) return false
 
-        // Check if this specific season is drafted
-        const draftedPick = session.picks.find(pick => pick.playerSeasonId === playerSeasonId)
-        if (draftedPick) return true
-
-        // Also check if ANY season of the same player is drafted (by playerId)
-        // Find the playerId for the queried season from another pick with the same player
-        // Note: This only works when playerId is stored on picks. For legacy data, only exact season match works.
-        return false
+        return session.picks.some(pick => pick.playerSeasonId === playerSeasonId)
       },
 
       canDraftToPosition: (teamId: string, position: PositionCode) => {
@@ -543,7 +448,6 @@ export const useDraftStore = create<DraftState>()(
         const team = session.teams.find(t => t.id === teamId)
         if (!team) return false
 
-        // Check if there's an available slot for this position
         return team.roster.some(
           slot => slot.position === position && !slot.isFilled
         )

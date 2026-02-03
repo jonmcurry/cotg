@@ -10,6 +10,8 @@ import { supabase } from './lib/supabase'
 
 // Route imports
 import leaguesRouter from './routes/leagues'
+import draftRouter from './routes/draft'
+import picksRouter from './routes/picks'
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -46,6 +48,8 @@ app.get('/api/health', async (_req, res) => {
 
 // Route handlers
 app.use('/api/leagues', leaguesRouter)
+app.use('/api/draft/sessions', draftRouter)
+app.use('/api/draft/sessions', picksRouter)
 
 app.get('/api/players/pool', async (req, res) => {
   try {
