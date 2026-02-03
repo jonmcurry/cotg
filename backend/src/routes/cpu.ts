@@ -563,7 +563,7 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
       totalPlayers: allPlayers.length,
       draftedPlayers: draftedPlayerIds.size,
       excludedPlayers: excludePlayerSeasonIds.length,
-      currentTeam: currentTeam.team_name,
+      currentTeam: currentTeam.name,
       round,
       pickNumber: session.current_pick_number
     })
