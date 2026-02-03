@@ -26,8 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Files Modified**:
     - backend/src/routes/draft.ts - Lines 46-54 (add fields to interface), 227-232 (include in response)
     - backend/src/routes/cpu.ts - Lines 427-436 (use position/slot matching for roster rebuilding)
-    - roster-draft-bug-investigation.md - Investigation findings (temporary)
-  - Status: ✅ RESOLVED - Rosters now display correctly and CPU can complete all picks
+  - **Deployment Status**: ⚠️ COMMITTED - Awaiting deployment to Render (backend) and Vercel (frontend)
+  - Status: ✅ RESOLVED in code - Pending production deployment
 
 ### Fixed - 2026-02-03 (CPU Draft 500 Error - Missing OF and BN in Position Constraint)
 - **CRITICAL BUG FIX**: Fixed 500 Internal Server Error occurring after first CPU draft pick
@@ -43,7 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - All roster requirements can now be satisfied without constraint violations
   - **Files Modified**:
     - supabase/migrations/20260203_fix_position_constraint.sql - NEW migration to fix constraint
-    - draft-error-investigation.md - Investigation plan and findings (temporary, to be deleted)
+  - **Deployment Status**: ✅ DEPLOYED - Migration applied to Supabase successfully
   - Status: ✅ RESOLVED - CPU draft can now complete all picks for all positions
 
 ### Fixed - 2026-02-03 (Roster Corruption - Missing Position/Slot Data in Database)
