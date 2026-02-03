@@ -16,19 +16,6 @@ import { transformPlayerSeasonData } from '../../utils/transformPlayerData'
 import type { PositionCode } from '../../types/draft.types'
 import { api } from '../../lib/api'
 
-// Module-level singleton guard for CPU draft operations.
-// Survives React 18 StrictMode unmount/remount cycles (refs get recreated, this doesn't).
-// Prevents two concurrent IIFEs from selecting players from the same stale pool.
-let cpuDraftInProgress = false
-
-// Module-level blacklist for players that caused 409 duplicate errors.
-// StrictMode stale closures can re-select already-drafted players because the effect
-// closure captured session.picks BEFORE the store updated. This set accumulates
-// player_season_ids that failed, preventing re-selection on retry.
-// Cleared when a new draft session starts (different currentPick=1).
-let failedPlayerSeasonIds = new Set<string>()
-let lastSessionId: string | null = null
-
 interface Props {
   onExit: () => void
   onComplete?: () => void
@@ -47,8 +34,15 @@ export default function DraftBoard({ onExit, onComplete }: Props) {
     saveSession,
   } = useDraftStore()
 
+  // FIXED Issue #3: Convert module-level guards to component-scoped refs
+  // These refs are properly cleaned up on component unmount, preventing
+  // React 18 StrictMode from causing permanent hangs
+  const cpuDraftInProgressRef = useRef(false)
+  const failedPlayerSeasonIdsRef = useRef(new Set<string>())
+  const lastSessionIdRef = useRef<string | null>(null)
+
   // Debug: Log every render to track session state changes
-  console.log('[DraftBoard] 🔄 Component render:', {
+  console.log('[DraftBoard] RENDER Component render:', {
     sessionId: session?.id,
     currentPick: session?.currentPick,
     currentRound: session?.currentRound,
@@ -72,7 +66,7 @@ export default function DraftBoard({ onExit, onComplete }: Props) {
   // Prevent concurrent player loading (race condition guard)
   const loadingInProgress = useRef(false)
 
-  // draftInProgress guard is module-level (cpuDraftInProgress) to survive StrictMode remounting
+  // draftInProgress guard is component-scoped ref (cpuDraftInProgressRef) with proper cleanup
 
   // Prevent concurrent human pick submissions (double-click guard)
   const humanPickInProgress = useRef(false)
@@ -81,7 +75,7 @@ export default function DraftBoard({ onExit, onComplete }: Props) {
   const nextTeam = getNextPickingTeam()
 
   // Debug: Log current team to see why CPU draft isn't running
-  console.log('[DraftBoard] 📋 Current team:', {
+  console.log('[DraftBoard] TEAM Current team:', {
     currentTeam: currentTeam ? {
       id: currentTeam.id,
       name: currentTeam.name,
@@ -203,7 +197,7 @@ If this persists, the database may be updating. Wait a few minutes and try again
 
   // Debug: Track dependency changes
   useEffect(() => {
-    console.log('[CPU Draft] 📊 Dependencies changed:', {
+    console.log('[CPU Draft] DEPS Dependencies changed:', {
       'session?.currentPick': session?.currentPick,
       'session?.status': session?.status,
       'currentTeam?.id': currentTeam?.id,
@@ -213,13 +207,13 @@ If this persists, the database may be updating. Wait a few minutes and try again
   }, [session?.currentPick, session?.status, currentTeam?.id, applyCpuPick, pauseDraft])
 
   // CPU auto-draft logic - uses backend API for pick selection and execution
-  // Module-level cpuDraftInProgress guard survives StrictMode remounting to prevent race conditions
+  // Component-scoped cpuDraftInProgress guard with proper cleanup prevents race conditions
   useEffect(() => {
-    console.log('[CPU Draft] 🔍 Effect triggered, checking conditions:', {
+    console.log('[CPU Draft] EFFECT Effect triggered, checking conditions:', {
       hasSession: !!session,
       hasCurrentTeam: !!currentTeam,
       currentTeamControl: currentTeam?.control,
-      cpuDraftInProgress,
+      cpuDraftInProgress: cpuDraftInProgressRef.current,
       sessionStatus: session?.status,
       currentPick: session?.currentPick
     })
@@ -227,39 +221,39 @@ If this persists, the database may be updating. Wait a few minutes and try again
     let cancelled = false // StrictMode cleanup: set true on unmount to skip UI updates
 
     if (!session) {
-      console.log('[CPU Draft] ⛔ Blocked: No session')
+      console.log('[CPU Draft] BLOCKED No session')
       return
     }
     if (!currentTeam) {
-      console.log('[CPU Draft] ⛔ Blocked: No current team')
+      console.log('[CPU Draft] BLOCKED No current team')
       return
     }
     if (currentTeam.control !== 'cpu') {
-      console.log('[CPU Draft] ⛔ Blocked: Current team is not CPU (control=' + currentTeam.control + ')')
+      console.log('[CPU Draft] BLOCKED Current team is not CPU (control=' + currentTeam.control + ')')
       return
     }
 
-    // Module-level singleton guard: survives StrictMode remounting
-    if (cpuDraftInProgress) {
-      console.log('[CPU Draft] ⛔ Blocked: CPU draft already in progress')
+    // Component-scoped guard: properly cleaned up on unmount
+    if (cpuDraftInProgressRef.current) {
+      console.log('[CPU Draft] BLOCKED CPU draft already in progress')
       return
     }
 
     if (session.status !== 'in_progress') {
-      console.log('[CPU Draft] ⛔ Blocked: Session status is not in_progress (status=' + session.status + ')')
+      console.log('[CPU Draft] BLOCKED Session status is not in_progress (status=' + session.status + ')')
       return
     }
 
-    console.log('[CPU Draft] ✅ All guards passed - starting CPU draft pick')
+    console.log('[CPU Draft] SUCCESS All guards passed - starting CPU draft pick')
 
     // Clear the failed-player blacklist when starting a new draft session
-    if (session.id !== lastSessionId) {
-      failedPlayerSeasonIds = new Set<string>()
-      lastSessionId = session.id
+    if (session.id !== lastSessionIdRef.current) {
+      failedPlayerSeasonIdsRef.current = new Set<string>()
+      lastSessionIdRef.current = session.id
     }
 
     // Set guard BEFORE starting async operation
-    cpuDraftInProgress = true
+    cpuDraftInProgressRef.current = true
     setCpuThinking(true)
 
     // CPU pick API response type
@@ -290,15 +284,15 @@ If this persists, the database may be updating. Wait a few minutes and try again
     // Async IIFE - checks cancelled flag before side effects
     ;(async () => {
       try {
-        console.log('[CPU Draft] 🚀 Async IIFE started, cancelled=' + cancelled)
+        console.log('[CPU Draft] START Async IIFE started, cancelled=' + cancelled)
 
         // Check if this effect instance was cancelled (StrictMode unmount)
         if (cancelled) {
-          console.log('[CPU Draft] ⛔ Async IIFE blocked by cancelled flag')
+          console.log('[CPU Draft] BLOCKED Async IIFE blocked by cancelled flag')
           return
         }
 
-        console.log('[CPU Draft] 📡 Calling CPU pick API:', `/draft/sessions/${session.id}/cpu-pick`)
+        console.log('[CPU Draft] API Calling CPU pick API:', `/draft/sessions/${session.id}/cpu-pick`)
 
         // Call the CPU pick API - it handles player selection and pick execution
         const response = await api.post<CpuPickResponse>(
@@ -306,8 +300,8 @@ If this persists, the database may be updating. Wait a few minutes and try again
           { seasons: session.selectedSeasons }
         )
 
-        console.log('[CPU Draft] 📡 API response received:', response.result)
-        console.log('[CPU Draft] 📦 Response details:', {
+        console.log('[CPU Draft] RESPONSE API response received:', response.result)
+        console.log('[CPU Draft] DETAILS Response details:', {
           result: response.result,
           hasPick: !!response.pick,
           hasSession: !!response.session,
@@ -327,7 +321,7 @@ If this persists, the database may be updating. Wait a few minutes and try again
         if (response.result === 'duplicate') {
           // Player already in DB - blacklist and retry
           if (response.playerSeasonId) {
-            failedPlayerSeasonIds.add(response.playerSeasonId)
+            failedPlayerSeasonIdsRef.current.add(response.playerSeasonId)
           }
           console.warn('[CPU Draft] Duplicate player - will auto-retry')
           return
@@ -341,7 +335,7 @@ If this persists, the database may be updating. Wait a few minutes and try again
         }
 
         if (response.result === 'success' && response.pick && response.session) {
-          console.log('[CPU Draft] ✅ CPU pick successful:', {
+          console.log('[CPU Draft] SUCCESS CPU pick successful:', {
             pick: response.pick.pickNumber,
             player: response.pick.playerName,
             currentPickBefore: session.currentPick,
@@ -384,14 +378,17 @@ If this persists, the database may be updating. Wait a few minutes and try again
         alert('ERROR during CPU draft. Check console for details.')
       } finally {
         // Always reset guards so the next effect run can proceed
-        cpuDraftInProgress = false
+        cpuDraftInProgressRef.current = false
         setCpuThinking(false)
       }
     })()
 
-    // Cleanup: mark this instance as cancelled so async work skips UI updates
+    // Cleanup: mark this instance as cancelled and reset guards
+    // This properly cleans up on StrictMode unmount, preventing permanent hangs
     return () => {
       cancelled = true
+      cpuDraftInProgressRef.current = false
+      // Keep failedPlayerSeasonIds across same session, only clear on new session
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.currentPick, session?.status, currentTeam?.id, applyCpuPick, pauseDraft])

@@ -8,6 +8,9 @@ import { supabase } from '../lib/supabase'
 
 const router = Router()
 
+// FIXED Issue #15: Use constant instead of magic number
+const TOTAL_ROUNDS = 21
+
 type PositionCode = 'C' | '1B' | '2B' | 'SS' | '3B' | 'OF' | 'SP' | 'RP' | 'CL' | 'DH' | 'BN'
 
 interface MakePickRequest {
@@ -85,9 +88,42 @@ router.post('/:sessionId/picks', async (req: Request, res: Response) => {
     const { sessionId } = req.params
     const { playerSeasonId, playerId, position, slotNumber, bats }: MakePickRequest = req.body
 
-    // Validate request
-    if (!playerSeasonId || !position) {
-      return res.status(400).json({ error: 'Missing required fields: playerSeasonId, position' })
+    // FIXED Issue #4: Comprehensive input validation
+    // Validate playerSeasonId
+    if (!playerSeasonId || typeof playerSeasonId !== 'string' || playerSeasonId.trim().length === 0) {
+      return res.status(400).json({
+        result: 'error',
+        error: `playerSeasonId is required and must be a non-empty string (got: ${JSON.stringify(playerSeasonId)})`
+      })
+    }
+
+    // Validate position
+    const VALID_POSITIONS = ['C', '1B', '2B', 'SS', '3B', 'OF', 'LF', 'CF', 'RF', 'SP', 'RP', 'CL', 'DH', 'BN']
+    if (!position || typeof position !== 'string' || position.trim().length === 0) {
+      return res.status(400).json({
+        result: 'error',
+        error: `position is required and must be a non-empty string (got: ${JSON.stringify(position)})`
+      })
+    }
+    if (!VALID_POSITIONS.includes(position)) {
+      return res.status(400).json({
+        result: 'error',
+        error: `Invalid position "${position}". Must be one of: ${VALID_POSITIONS.join(', ')}`
+      })
+    }
+
+    // Validate slotNumber
+    if (slotNumber === null || slotNumber === undefined || typeof slotNumber !== 'number') {
+      return res.status(400).json({
+        result: 'error',
+        error: `slotNumber is required and must be a number (got: ${JSON.stringify(slotNumber)})`
+      })
+    }
+    if (slotNumber < 1 || !Number.isInteger(slotNumber)) {
+      return res.status(400).json({
+        result: 'error',
+        error: `slotNumber must be a positive integer >= 1 (got: ${slotNumber})`
+      })
     }
 
     // Load session to get current pick info
@@ -174,7 +210,7 @@ router.post('/:sessionId/picks', async (req: Request, res: Response) => {
     }
 
     // Calculate next pick
-    const totalPicks = session.num_teams * 21 // TOTAL_ROUNDS
+    const totalPicks = session.num_teams * TOTAL_ROUNDS
     const nextPickNumber = session.current_pick_number + 1
     const isComplete = nextPickNumber > totalPicks
     const nextRound = isComplete ? round : Math.floor((nextPickNumber - 1) / session.num_teams) + 1
