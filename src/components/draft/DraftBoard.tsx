@@ -44,6 +44,10 @@ export default function DraftBoard({ onExit, onComplete }: Props) {
   // FIXED Issue #8: Add AbortController for player loading cancellation
   const loadingAbortControllerRef = useRef<AbortController | null>(null)
 
+  // Automatic retry tracking
+  const cpuRetryCountRef = useRef(0)
+  const maxRetries = 3
+
   // Debug: Log every render to track session state changes
   console.log('[DraftBoard] RENDER Component render:', {
     sessionId: session?.id,
@@ -249,6 +253,14 @@ If this persists, the database may be updating. Wait a few minutes and try again
       console.log('[CPU Draft] BLOCKED No session')
       return
     }
+
+    // Reset retry counter when session changes
+    if (lastSessionIdRef.current !== session.id) {
+      console.log('[CPU Draft] Session changed, resetting retry counter')
+      cpuRetryCountRef.current = 0
+      lastSessionIdRef.current = session.id
+    }
+
     if (!currentTeam) {
       console.log('[CPU Draft] BLOCKED No current team')
       return
@@ -357,13 +369,34 @@ If this persists, the database may be updating. Wait a few minutes and try again
 
         if (response.result === 'error') {
           console.error('[CPU Draft] API error:', response.error)
-          // FIXED Issue #11: Store error in state instead of showing alert
+
+          // Automatic retry with exponential backoff
+          cpuRetryCountRef.current += 1
+          console.log(`[CPU Draft] RETRY Attempt ${cpuRetryCountRef.current}/${maxRetries}`)
+
+          if (cpuRetryCountRef.current < maxRetries) {
+            // Exponential backoff: 1s, 2s, 4s
+            const delayMs = Math.pow(2, cpuRetryCountRef.current - 1) * 1000
+            console.log(`[CPU Draft] RETRY Waiting ${delayMs}ms before retry...`)
+
+            // Don't pause draft, just wait and let effect retry
+            setTimeout(() => {
+              console.log('[CPU Draft] RETRY Triggering retry by resetting guard')
+              cpuDraftInProgressRef.current = false
+            }, delayMs)
+            return
+          }
+
+          // Max retries exhausted - show error to user
+          console.error('[CPU Draft] RETRY Max retries exhausted, showing error to user')
           setCpuError(response.error || 'Unknown error during CPU draft')
           pauseDraft()
           return
         }
 
         if (response.result === 'success' && response.pick && response.session) {
+          // Reset retry counter on success
+          cpuRetryCountRef.current = 0
           console.log('[CPU Draft] SUCCESS CPU pick successful:', {
             pick: response.pick.pickNumber,
             player: response.pick.playerName,
@@ -403,7 +436,26 @@ If this persists, the database may be updating. Wait a few minutes and try again
         }
       } catch (error) {
         console.error('[CPU Draft] ERROR during API call:', error)
-        // FIXED Issue #11: Store error in state instead of showing alert
+
+        // Automatic retry with exponential backoff
+        cpuRetryCountRef.current += 1
+        console.log(`[CPU Draft] RETRY (Exception) Attempt ${cpuRetryCountRef.current}/${maxRetries}`)
+
+        if (cpuRetryCountRef.current < maxRetries) {
+          // Exponential backoff: 1s, 2s, 4s
+          const delayMs = Math.pow(2, cpuRetryCountRef.current - 1) * 1000
+          console.log(`[CPU Draft] RETRY Waiting ${delayMs}ms before retry...`)
+
+          // Don't pause draft, just wait and let effect retry
+          setTimeout(() => {
+            console.log('[CPU Draft] RETRY Triggering retry by resetting guard')
+            cpuDraftInProgressRef.current = false
+          }, delayMs)
+          return
+        }
+
+        // Max retries exhausted - show error to user
+        console.error('[CPU Draft] RETRY Max retries exhausted, showing error to user')
         setCpuError(`CPU draft failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
         pauseDraft()
       } finally {
@@ -451,6 +503,8 @@ If this persists, the database may be updating. Wait a few minutes and try again
 
   // FIXED Issue #11: Retry handler for CPU draft errors
   const handleRetry = useCallback(() => {
+    console.log('[CPU Draft] Manual retry triggered, resetting counter')
+    cpuRetryCountRef.current = 0
     setCpuError(null)
     resumeDraft()
   }, [resumeDraft])
