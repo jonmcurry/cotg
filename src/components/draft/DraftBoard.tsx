@@ -12,9 +12,9 @@ import PositionAssignmentModal from './PositionAssignmentModal'
 import DraftControls from './DraftControls'
 import PickHistory from './PickHistory'
 import type { PlayerSeason } from '../../utils/cpuDraftLogic'
-import { selectBestPlayer } from '../../utils/cpuDraftLogic'
 import { transformPlayerSeasonData } from '../../utils/transformPlayerData'
 import type { PositionCode } from '../../types/draft.types'
+import { api } from '../../lib/api'
 
 // Module-level singleton guard for CPU draft operations.
 // Survives React 18 StrictMode unmount/remount cycles (refs get recreated, this doesn't).
@@ -41,6 +41,7 @@ export default function DraftBoard({ onExit, onComplete }: Props) {
     getCurrentPickingTeam,
     getNextPickingTeam,
     makePick,
+    applyCpuPick,
     pauseDraft,
     resumeDraft,
     saveSession,
@@ -181,11 +182,8 @@ If this persists, the database may be updating. Wait a few minutes and try again
     // The session object changes frequently (after each pick), but selectedSeasons rarely changes
   }, [selectedSeasonsKey])
 
-  // CPU auto-draft logic
-  // Uses module-level cpuDraftInProgress as singleton guard that survives StrictMode remounting.
-  // StrictMode unmount/remount creates new refs, so a ref-based guard gets reset in cleanup,
-  // allowing TWO concurrent IIFEs to select from the same stale player pool and pick the same
-  // player (causing 409 on player_session_id constraint). The module-level guard prevents this.
+  // CPU auto-draft logic - uses backend API for pick selection and execution
+  // Module-level cpuDraftInProgress guard survives StrictMode remounting to prevent race conditions
   useEffect(() => {
     let cancelled = false // StrictMode cleanup: set true on unmount to skip UI updates
 
@@ -198,16 +196,6 @@ If this persists, the database may be updating. Wait a few minutes and try again
 
     if (session.status !== 'in_progress') return
 
-    // Wait for players to finish loading before checking if empty
-    if (loading) return
-
-    // Only show error if loading is complete and still no players
-    if (players.length === 0) {
-      console.error('[CPU Draft] CRITICAL ERROR - No players loaded! Cannot draft.')
-      alert('CRITICAL ERROR: No players loaded for draft. Please check Supabase connection and player_seasons data.')
-      return
-    }
-
     // Clear the failed-player blacklist when starting a new draft session
     if (session.id !== lastSessionId) {
       failedPlayerSeasonIds = new Set<string>()
@@ -218,123 +206,111 @@ If this persists, the database may be updating. Wait a few minutes and try again
     cpuDraftInProgress = true
     setCpuThinking(true)
 
-      // Async IIFE - checks cancelled flag before side effects
-      ; (async () => {
-        try {
-          // Check if this effect instance was cancelled (StrictMode unmount)
-          if (cancelled) return
+    // CPU pick API response type
+    interface CpuPickResponse {
+      result: 'success' | 'duplicate' | 'not_cpu_turn' | 'error'
+      pick?: {
+        pickNumber: number
+        round: number
+        pickInRound: number
+        teamId: string
+        playerSeasonId: string
+        playerId: string
+        position: PositionCode
+        slotNumber: number
+        playerName: string
+        year: number
+        bats?: 'L' | 'R' | 'B' | null
+      }
+      session?: {
+        currentPick: number
+        currentRound: number
+        status: 'setup' | 'in_progress' | 'paused' | 'completed' | 'abandoned' | 'clubhouse'
+      }
+      error?: string
+      playerSeasonId?: string
+    }
 
-          // Build deduplication sets from completed picks
-          // draftedPlayerIds: cross-season dedup by player_id (all seasons of a drafted player excluded)
-          // draftedSeasonIds: exact-season dedup by playerSeasonId (fallback when player_id is null)
-          const draftedPlayerIds = new Set<string>()
-          const draftedSeasonIds = new Set<string>()
+    // Async IIFE - checks cancelled flag before side effects
+    ;(async () => {
+      try {
+        // Check if this effect instance was cancelled (StrictMode unmount)
+        if (cancelled) return
 
-          session.picks.forEach(pick => {
-            if (pick.playerSeasonId) {
-              draftedSeasonIds.add(pick.playerSeasonId)
-            }
-            if (pick.playerId) {
-              draftedPlayerIds.add(pick.playerId)
-            } else if (pick.playerSeasonId) {
-              const player = players.find(p => p.id === pick.playerSeasonId)
-              if (player?.player_id) {
-                draftedPlayerIds.add(player.player_id)
-              }
-            }
-          })
+        // Call the CPU pick API - it handles player selection and pick execution
+        const response = await api.post<CpuPickResponse>(
+          `/draft/sessions/${session.id}/cpu-pick`,
+          { seasons: session.selectedSeasons }
+        )
 
-          // Also exclude players that previously caused 409 duplicate errors.
-          // StrictMode stale closures can have outdated session.picks, so this
-          // module-level set catches players the DB already has but local state doesn't.
-          for (const failedId of failedPlayerSeasonIds) {
-            draftedSeasonIds.add(failedId)
-          }
+        // Final cancelled check before updating state
+        if (cancelled) return
 
-          // Performance optimization: Filter undrafted players and pass a balanced pool
-          // Players array is already sorted by apba_rating DESC from SQL query
-          // Split into hitters and pitchers to guarantee both are represented in the pool
-          // (pitchers can dominate raw APBA ratings, starving the CPU of hitter candidates)
-          // Dual filter: exclude by player_id (cross-season) AND by season id (exact match fallback)
-          const undraftedPlayers = players.filter(p =>
-            !draftedPlayerIds.has(p.player_id) && !draftedSeasonIds.has(p.id)
-          )
-          const undraftedHitters = undraftedPlayers.filter(p => (p.at_bats || 0) >= 200)
-          const undraftedPitchers = undraftedPlayers.filter(p => (p.innings_pitched_outs || 0) >= 90 && (p.at_bats || 0) < 200)
-          const topUndrafted = [
-            ...undraftedHitters.slice(0, 600),
-            ...undraftedPitchers.slice(0, 400),
-          ]
-
-          // Check cancelled again before the expensive selectBestPlayer call
-          if (cancelled) return
-
-          const selection = selectBestPlayer(topUndrafted, currentTeam, draftedPlayerIds, session.currentRound)
-
-          // Final cancelled check before the critical makePick database write
-          if (cancelled) return
-
-          if (selection) {
-            const result = await makePick(selection.player.id, selection.player.player_id, selection.position, selection.slotNumber, selection.player.bats)
-
-            if (result === 'duplicate') {
-              // Player already in DB (stale closure or StrictMode race).
-              // Blacklist so the next effect run skips them automatically.
-              failedPlayerSeasonIds.add(selection.player.id)
-              console.warn('[CPU Draft] Duplicate player blacklisted:', selection.player.display_name, selection.player.id, '- will auto-retry')
-              // Don't pause - the effect will re-fire via setCpuThinking(false) in finally,
-              // and the blacklist will exclude this player on the next run.
-              return
-            }
-
-            if (result === 'error') {
-              // Non-duplicate failure (DB error, missing slot, etc.) - pause to prevent loop
-              console.error('[CPU Draft] makePick error for player:', selection.player.display_name, selection.player.id)
-              pauseDraft()
-              alert('ERROR: CPU draft pick failed. Draft paused. Check console for details.')
-              return
-            }
-
-            // Success - show inline ticker for this pick (clears after 3 seconds)
-            if (!cancelled) {
-              if (lastCpuPickTimer.current) clearTimeout(lastCpuPickTimer.current)
-              setLastCpuPick({
-                teamName: currentTeam.name,
-                playerName: selection.player.display_name || 'Unknown Player',
-                position: selection.position,
-                year: selection.player.year,
-              })
-              lastCpuPickTimer.current = setTimeout(() => setLastCpuPick(null), 3000)
-            }
-          } else {
-            console.error('[CPU Draft] CRITICAL ERROR - CPU could not find a player to draft!', {
-              playersAvailable: players.length,
-              alreadyDrafted: draftedPlayerIds.size,
-              teamRosterFilled: currentTeam.roster.filter(s => s.isFilled).length,
-            })
-            alert('CRITICAL ERROR: CPU could not find a player to draft. Check console for details.')
-          }
-
-        } catch (error) {
-          console.error('[CPU Draft] ERROR during draft operation:', error)
-          alert('ERROR during CPU draft. Check console for details.')
-        } finally {
-          // Always reset both guards so the next effect run can proceed.
-          // setCpuThinking(false) MUST always run - it's in the dependency array and
-          // drives the pick-to-pick cycle. Skipping it (via cancelled check) would stall the draft.
-          // React 18 safely ignores state updates on unmounted instances.
-          cpuDraftInProgress = false
-          setCpuThinking(false)
+        if (response.result === 'not_cpu_turn') {
+          // Shouldn't happen since we check currentTeam.control, but handle gracefully
+          console.warn('[CPU Draft] API says not CPU turn')
+          return
         }
-      })()
 
-    // Cleanup: mark this instance as cancelled so async work skips UI updates.
-    // Do NOT reset cpuDraftInProgress here - that's what caused the StrictMode race condition.
+        if (response.result === 'duplicate') {
+          // Player already in DB - blacklist and retry
+          if (response.playerSeasonId) {
+            failedPlayerSeasonIds.add(response.playerSeasonId)
+          }
+          console.warn('[CPU Draft] Duplicate player - will auto-retry')
+          return
+        }
+
+        if (response.result === 'error') {
+          console.error('[CPU Draft] API error:', response.error)
+          pauseDraft()
+          alert(`ERROR: CPU draft pick failed. Draft paused.\n\n${response.error}`)
+          return
+        }
+
+        if (response.result === 'success' && response.pick && response.session) {
+          // Apply the pick to local state
+          applyCpuPick(
+            {
+              teamId: response.pick.teamId,
+              playerSeasonId: response.pick.playerSeasonId,
+              playerId: response.pick.playerId,
+              position: response.pick.position,
+              slotNumber: response.pick.slotNumber,
+              bats: response.pick.bats,
+            },
+            response.session
+          )
+
+          // Show inline ticker for this pick (clears after 3 seconds)
+          if (!cancelled) {
+            if (lastCpuPickTimer.current) clearTimeout(lastCpuPickTimer.current)
+            setLastCpuPick({
+              teamName: currentTeam.name,
+              playerName: response.pick.playerName,
+              position: response.pick.position,
+              year: response.pick.year,
+            })
+            lastCpuPickTimer.current = setTimeout(() => setLastCpuPick(null), 3000)
+          }
+        }
+      } catch (error) {
+        console.error('[CPU Draft] ERROR during API call:', error)
+        pauseDraft()
+        alert('ERROR during CPU draft. Check console for details.')
+      } finally {
+        // Always reset guards so the next effect run can proceed
+        cpuDraftInProgress = false
+        setCpuThinking(false)
+      }
+    })()
+
+    // Cleanup: mark this instance as cancelled so async work skips UI updates
     return () => {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.currentPick, session?.status, currentTeam?.id, players.length, loading, makePick, cpuThinking])
+  }, [session?.currentPick, session?.status, currentTeam?.id, applyCpuPick, pauseDraft, cpuThinking])
 
   const handlePlayerSelect = useCallback((player: PlayerSeason) => {
     if (!currentTeam || currentTeam.control !== 'human') {

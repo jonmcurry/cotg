@@ -13,6 +13,7 @@ import leaguesRouter from './routes/leagues'
 import draftRouter from './routes/draft'
 import picksRouter from './routes/picks'
 import playersRouter from './routes/players'
+import cpuRouter from './routes/cpu'
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -51,6 +52,7 @@ app.get('/api/health', async (_req, res) => {
 app.use('/api/leagues', leaguesRouter)
 app.use('/api/draft/sessions', draftRouter)
 app.use('/api/draft/sessions', picksRouter)
+app.use('/api/draft/sessions', cpuRouter)
 app.use('/api/players', playersRouter)
 
 // Start server

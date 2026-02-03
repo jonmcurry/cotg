@@ -109,6 +109,7 @@ interface DraftState {
 
   // Pick actions
   makePick: (playerSeasonId: string, playerId: string | undefined, position: PositionCode, slotNumber: number, bats?: 'L' | 'R' | 'B' | null) => Promise<'success' | 'duplicate' | 'error'>
+  applyCpuPick: (pick: { teamId: string; playerSeasonId: string; playerId: string; position: PositionCode; slotNumber: number; bats?: 'L' | 'R' | 'B' | null }, session: { currentPick: number; currentRound: number; status: DraftSession['status'] }) => void
   getCurrentPickingTeam: () => DraftTeam | null
   getNextPickingTeam: () => DraftTeam | null
 
@@ -398,6 +399,65 @@ export const useDraftStore = create<DraftState>()(
           console.error('[DraftStore] makePick error:', err)
           return 'error'
         }
+      },
+
+      applyCpuPick: (pick, sessionUpdate) => {
+        const session = get().session
+        if (!session) return
+
+        const teamIndex = session.teams.findIndex(t => t.id === pick.teamId)
+        if (teamIndex === -1) return
+
+        const team = session.teams[teamIndex]
+        const currentPickIndex = session.currentPick - 1
+        const currentPick = session.picks[currentPickIndex]
+        if (!currentPick) return
+
+        // Find the roster slot
+        const rosterSlotIndex = team.roster.findIndex(
+          slot => slot.position === pick.position && slot.slotNumber === pick.slotNumber
+        )
+
+        if (rosterSlotIndex === -1) {
+          console.error('[applyCpuPick] Roster slot not found:', pick.position, pick.slotNumber)
+          return
+        }
+
+        // Update roster
+        const updatedRoster = [...team.roster]
+        updatedRoster[rosterSlotIndex] = {
+          ...updatedRoster[rosterSlotIndex],
+          playerSeasonId: pick.playerSeasonId,
+          isFilled: true,
+          playerBats: pick.bats,
+        }
+
+        const updatedTeams = [...session.teams]
+        updatedTeams[teamIndex] = {
+          ...team,
+          roster: updatedRoster,
+        }
+
+        // Update pick record
+        const updatedPicks = [...session.picks]
+        updatedPicks[currentPickIndex] = {
+          ...currentPick,
+          playerSeasonId: pick.playerSeasonId,
+          playerId: pick.playerId,
+          pickTime: new Date(),
+        }
+
+        const updatedSession: DraftSession = {
+          ...session,
+          teams: updatedTeams,
+          picks: updatedPicks,
+          currentPick: sessionUpdate.currentPick,
+          currentRound: sessionUpdate.currentRound,
+          status: sessionUpdate.status,
+          updatedAt: new Date(),
+        }
+
+        set({ session: updatedSession })
       },
 
       getCurrentPickingTeam: () => {
