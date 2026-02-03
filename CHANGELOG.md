@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - 2026-02-03 (Feature Slice 2: Draft Sessions + Picks API Migration)
+- Completed second feature slice of the Vercel/Render/Supabase migration
+- Backend: Created `backend/src/routes/draft.ts` with full CRUD for draft sessions
+- Backend: Created `backend/src/routes/picks.ts` for making draft picks
+- Backend: Snake draft pick order generation moved to server
+- Backend: Duplicate player detection returns 409 with structured response
+- Frontend: Refactored `draftStore.ts` to use API client instead of direct Supabase
+- createSession, loadSession, saveSession, makePick now call backend API
+- Local state management preserved for UI responsiveness
+
 ### Changed - 2026-02-03 (Feature Slice 1: Leagues API Migration)
 - Completed first feature slice of the Vercel/Render/Supabase migration
 - Backend: Created `backend/src/routes/leagues.ts` with full CRUD (GET, POST, PUT, DELETE)
