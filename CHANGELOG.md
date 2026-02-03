@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - 2026-02-02 (Auto-Generate Lineups, Rotation, and Bullpen)
+- Auto-generates optimal depth charts for all teams when entering the Clubhouse after a draft
+- Lineups vs RHP favor L/B batters; lineups vs LHP favor R/B batters (platoon optimization)
+- Defensive positions assigned via greedy best-fit in scarcity order (C, SS, 2B, 3B, 1B, OF, DH)
+- Batting order uses OBP/OPS/HR heuristic (leadoff = best OBP, cleanup = most HRs, etc.)
+- Starting rotation auto-filled with 4 SPs sorted by APBA rating
+- Closer and setup men auto-assigned from CL and RP roster slots
+- Skips teams that already have depth charts configured; users can manually edit after auto-generation
+
 ### Changed - 2026-02-02 (Random Team Names)
 - Replaced generic "Team Alpha/Beta/Gamma" default names with randomly generated baseball-themed names (e.g., "Portland Grizzlies", "Nashville Firebirds")
 - 32 cities and 32 mascots shuffled on each draft setup for unique combinations

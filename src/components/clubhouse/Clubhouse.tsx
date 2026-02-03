@@ -11,6 +11,7 @@ import RosterView from '../draft/RosterView'
 import LineupEditor from './LineupEditor'
 import RotationEditor from './RotationEditor'
 import { useDraftStore } from '../../stores/draftStore'
+import { generateOptimalDepthChart } from '../../utils/autoLineup'
 
 interface Props {
     session: DraftSession
@@ -58,7 +59,7 @@ function validateTeamReadiness(team: DraftTeam): string[] {
 }
 
 export default function Clubhouse({ session, onExit, onStartSeason }: Props) {
-    const { generateSeasonSchedule } = useDraftStore()
+    const { generateSeasonSchedule, updateTeamDepthChart } = useDraftStore()
     const [selectedTeamId, setSelectedTeamId] = useState<string>(session.teams[0]?.id || '')
     const [viewMode, setViewMode] = useState<ViewMode>('roster')
     const [players, setPlayers] = useState<PlayerSeason[]>([])
@@ -163,6 +164,21 @@ export default function Clubhouse({ session, onExit, onStartSeason }: Props) {
         setLoading(true)
         loadDraftedPlayers()
     }, [seasonIdsCacheKey, session.teams])
+
+    // Auto-generate depth charts for teams that don't have one yet
+    // Runs once after player data finishes loading
+    useEffect(() => {
+        if (loading || players.length === 0) return
+
+        for (const team of session.teams) {
+            // Skip teams that already have a configured depth chart
+            const hasLineup = team.depthChart?.lineupVS_RHP?.some(s => s.playerSeasonId)
+            if (hasLineup) continue
+
+            const depthChart = generateOptimalDepthChart(team, players)
+            updateTeamDepthChart(team.id, depthChart)
+        }
+    }, [loading, players, session.teams, updateTeamDepthChart])
 
     // Validate all teams for season readiness
     const validationIssues = useMemo(() => {
