@@ -424,13 +424,15 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
         draftedPlayerIds.add(pick.player_id)
       }
 
-      // Fill roster slot for the team
+      // Fill roster slot for the team using position and slot_number
       const team = teams.find(t => t.id === pick.draft_team_id)
-      if (team && pick.player_season_id) {
-        const emptySlot = team.roster.find(s => !s.isFilled)
-        if (emptySlot) {
-          emptySlot.playerSeasonId = pick.player_season_id
-          emptySlot.isFilled = true
+      if (team && pick.player_season_id && pick.position && pick.slot_number) {
+        const rosterSlot = team.roster.find(
+          s => s.position === pick.position && s.slotNumber === pick.slot_number
+        )
+        if (rosterSlot) {
+          rosterSlot.playerSeasonId = pick.player_season_id
+          rosterSlot.isFilled = true
         }
       }
     }

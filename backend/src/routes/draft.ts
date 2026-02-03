@@ -51,6 +51,8 @@ interface DraftPick {
   playerSeasonId: string | null
   playerId: string | null
   pickTime: string | null
+  position?: PositionCode | null
+  slotNumber?: number | null
 }
 
 interface DraftSession {
@@ -229,6 +231,8 @@ router.get('/:id', async (req: Request, res: Response) => {
           playerSeasonId: dbPick.player_season_id,
           playerId: dbPick.player_id,
           pickTime: dbPick.created_at,
+          position: dbPick.position || null,
+          slotNumber: dbPick.slot_number || null,
         }
       }
     })

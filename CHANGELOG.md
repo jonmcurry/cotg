@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-03 (Roster Not Displaying - Missing Position/Slot in API Response)
+- **CRITICAL BUG FIX**: Fixed roster showing 5/21 players at Round 15, CPU "could not find a player to draft" error
+  - **Root Cause**: Backend API not returning `position` and `slot_number` fields to frontend
+    - Database stores position/slot_number correctly (columns added in previous fix)
+    - Backend GET `/api/draft/sessions/:id` endpoint queries all fields but doesn't map position/slot to response
+    - `DraftPick` interface missing `position` and `slotNumber` fields
+    - Pick overlay logic (lines 224-234) doesn't include position/slot_number from database
+    - Frontend `loadSession()` requires these fields to reconstruct rosters from picks
+    - Without them, roster reconstruction fails completely, showing 0/21 or 5/21 players
+    - CPU roster rebuilding used broken "find first unfilled slot" logic instead of position/slot matching
+    - Eventually CPU couldn't find valid positions, error: "CPU could not find a player to draft"
+  - **Solution**: Add position/slot fields to API response and fix CPU roster rebuilding
+    - Added `position` and `slotNumber` to `DraftPick` interface in draft.ts
+    - Updated pick overlay logic to include `position` and `slot_number` from database
+    - Fixed CPU roster rebuilding to use position/slot matching instead of "first unfilled"
+    - Frontend can now correctly reconstruct rosters from API data
+  - **Files Modified**:
+    - backend/src/routes/draft.ts - Lines 46-54 (add fields to interface), 227-232 (include in response)
+    - backend/src/routes/cpu.ts - Lines 427-436 (use position/slot matching for roster rebuilding)
+    - roster-draft-bug-investigation.md - Investigation findings (temporary)
+  - Status: ✅ RESOLVED - Rosters now display correctly and CPU can complete all picks
+
 ### Fixed - 2026-02-03 (CPU Draft 500 Error - Missing OF and BN in Position Constraint)
 - **CRITICAL BUG FIX**: Fixed 500 Internal Server Error occurring after first CPU draft pick
   - **Root Cause**: Database CHECK constraint on `draft_picks.position` was incomplete
