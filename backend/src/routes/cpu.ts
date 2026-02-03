@@ -221,22 +221,46 @@ function selectBestPlayer(
   excludePlayerSeasonIds: Set<string> = new Set(),
   currentRound: number = 1
 ): { player: PlayerSeason; position: PositionCode; slotNumber: number } | null {
+  console.log('[selectBestPlayer] Starting selection:', {
+    totalPlayers: availablePlayers.length,
+    draftedCount: draftedPlayerIds.size,
+    excludedCount: excludePlayerSeasonIds.size,
+    teamId: team.id,
+    round: currentRound
+  })
+
   // FIXED Issue #6: Filter out both drafted players and blacklisted player seasons
   const undraftedPlayers = availablePlayers.filter(p =>
     !draftedPlayerIds.has(p.player_id) &&
     !excludePlayerSeasonIds.has(p.id)
   )
 
-  if (undraftedPlayers.length === 0) return null
+  console.log('[selectBestPlayer] After filtering:', {
+    undraftedCount: undraftedPlayers.length
+  })
+
+  if (undraftedPlayers.length === 0) {
+    console.error('[selectBestPlayer] FAIL: No undrafted players available')
+    return null
+  }
 
   const unfilledPositions = getUnfilledPositions(team)
   const uniqueUnfilledPositions = [...new Set(unfilledPositions)]
 
+  console.log('[selectBestPlayer] Unfilled positions:', {
+    positions: uniqueUnfilledPositions,
+    count: uniqueUnfilledPositions.length
+  })
+
   if (uniqueUnfilledPositions.length === 0) {
     const benchSlotsAvailable = team.roster.filter(slot => slot.position === 'BN' && !slot.isFilled).length
+    console.log('[selectBestPlayer] No unfilled positions, checking bench:', {
+      benchSlots: benchSlotsAvailable
+    })
     if (benchSlotsAvailable > 0) {
       uniqueUnfilledPositions.push('BN')
     } else {
+      console.error('[selectBestPlayer] FAIL: No unfilled positions and no bench slots')
       return null
     }
   }
@@ -258,6 +282,11 @@ function selectBestPlayer(
       meetsPlayingTimeRequirements(player, position)
     )
 
+    console.log(`[selectBestPlayer] Position ${position}:`, {
+      eligibleCount: eligible.length,
+      weight: adjustedWeight
+    })
+
     if (eligible.length === 0) continue
 
     for (const player of eligible) {
@@ -266,19 +295,29 @@ function selectBestPlayer(
     }
   }
 
+  console.log('[selectBestPlayer] Total candidates:', {
+    candidateCount: allScoredCandidates.length
+  })
+
   if (allScoredCandidates.length === 0) {
+    console.log('[selectBestPlayer] No candidates found, trying bench positions')
     if (!uniqueUnfilledPositions.includes('BN')) {
       const benchSlotsAvailable = team.roster.filter(slot => slot.position === 'BN' && !slot.isFilled).length
+      console.log('[selectBestPlayer] Bench slots available:', benchSlotsAvailable)
       if (benchSlotsAvailable > 0) {
         const benchWeight = adjustScarcityByRound(POSITION_SCARCITY['BN'] || 0.5, currentRound)
         const benchCandidates = undraftedPlayers.filter(player => meetsPlayingTimeRequirements(player, 'BN'))
+        console.log('[selectBestPlayer] Bench candidates after playing time filter:', benchCandidates.length)
         for (const player of benchCandidates) {
           const score = calculateWeightedScore(player, 'BN', team, 0.1, benchWeight, currentRound)
           allScoredCandidates.push({ player, position: 'BN', score })
         }
       }
     }
-    if (allScoredCandidates.length === 0) return null
+    if (allScoredCandidates.length === 0) {
+      console.error('[selectBestPlayer] FAIL: No candidates found after all filtering')
+      return null
+    }
   }
 
   allScoredCandidates.sort((a, b) => b.score - a.score)
@@ -454,6 +493,13 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
       ? seasons
       : [session.season_year || new Date().getFullYear()]
 
+    console.log('[CPU API] Loading player pool:', {
+      requestSeasons: seasons,
+      sessionSeasonYear: session.season_year,
+      sessionSelectedSeasons: session.selected_seasons,
+      finalYearList: yearList
+    })
+
     // Fetch balanced pool: top hitters + top pitchers
     const { data: hittersData, error: hittersError } = await supabase
       .from('player_seasons')
@@ -498,12 +544,33 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
       return res.status(500).json({ result: 'error', error: 'No players available in pool' })
     }
 
+    console.log('[CPU API] Player pool loaded:', {
+      totalPlayers: allPlayers.length,
+      draftedPlayers: draftedPlayerIds.size,
+      excludedPlayers: excludePlayerSeasonIds.length,
+      currentTeam: currentTeam.team_name,
+      round,
+      pickNumber: session.current_pick_number
+    })
+
     // Run CPU selection algorithm
     // FIXED Issue #6: Pass excludePlayerSeasonIds to prevent duplicate retries
     const excludeSet = new Set<string>(excludePlayerSeasonIds)
     const selection = selectBestPlayer(allPlayers, currentTeam, draftedPlayerIds, excludeSet, round)
 
     if (!selection) {
+      console.error('[CPU API] FAILED TO SELECT PLAYER - Diagnostic info:', {
+        playerPoolSize: allPlayers.length,
+        draftedCount: draftedPlayerIds.size,
+        excludedCount: excludeSet.size,
+        availableAfterFilter: allPlayers.filter(p => !draftedPlayerIds.has(p.player_id) && !excludeSet.has(p.id)).length,
+        teamRoster: currentTeam.roster.map(s => ({
+          position: s.position,
+          slotNumber: s.slotNumber,
+          filled: s.isFilled,
+          playerSeasonId: s.playerSeasonId
+        }))
+      })
       return res.json({ result: 'error', error: 'CPU could not find a player to draft' })
     }
 
