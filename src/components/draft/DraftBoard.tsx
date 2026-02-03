@@ -344,12 +344,12 @@ If this persists, the database may be updating. Wait a few minutes and try again
           console.error('[CPU Draft] ERROR during draft operation:', error)
           alert('ERROR during CPU draft. Check console for details.')
         } finally {
-          // Always reset the module-level guard so the next effect run can proceed.
-          // setCpuThinking only if this instance is still active (avoids stale state updates).
+          // Always reset both guards so the next effect run can proceed.
+          // setCpuThinking(false) MUST always run - it's in the dependency array and
+          // drives the pick-to-pick cycle. Skipping it (via cancelled check) would stall the draft.
+          // React 18 safely ignores state updates on unmounted instances.
           cpuDraftInProgress = false
-          if (!cancelled) {
-            setCpuThinking(false)
-          }
+          setCpuThinking(false)
         }
       })()
 
