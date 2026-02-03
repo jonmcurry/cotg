@@ -181,7 +181,7 @@ export function playerQualifiesForPosition(
  * Check if player meets minimum playing time requirements for a roster position
  * Position players (C, 1B, 2B, SS, 3B, OF, DH): Must have 200+ at-bats
  * Pitchers (SP, RP, CL): Must have 30+ innings pitched (90+ outs)
- * Bench (BN): Either position player OR pitcher qualifications
+ * Bench (BN): Position player qualifications only (200+ at-bats, no pitchers)
  */
 export function meetsPlayingTimeRequirements(
   player: PlayerSeason,
@@ -202,9 +202,9 @@ export function meetsPlayingTimeRequirements(
     return inningsPitchedOuts >= 90
   }
 
-  // Bench can be either position player OR pitcher
+  // Bench requires position players with 200+ at-bats (no pitchers)
   if (rosterPosition === 'BN') {
-    return atBats >= 200 || inningsPitchedOuts >= 90
+    return atBats >= 200
   }
 
   // Fallback: allow if either qualification is met

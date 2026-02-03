@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-02 (Bench Slots Filled With Pitchers)
+- Fixed CPU draft filling bench/reserve slots with pitchers instead of position players
+- Removed pitcher positions (`P`, `SP`, `RP`) from `POSITION_ELIGIBILITY['BN']` so only position players are eligible for bench
+- Updated `meetsPlayingTimeRequirements` for BN to require 200+ at-bats only (removed pitcher fallback of 90+ outs)
+
 ### Fixed - 2026-02-02 (409 Infinite Loop - Duplicate player_season_id Constraint)
 - Fixed CPU draft getting stuck in infinite 409 error loop when `player_id` is null on player records
 - Root cause: deduplication only tracked `player_id` (cross-season); when null, already-drafted players were never excluded from the pool

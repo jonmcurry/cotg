@@ -107,7 +107,7 @@ export const POSITION_ELIGIBILITY: Record<PositionCode, string[]> = {
   'RP': ['P', 'RP'],
   'CL': ['P', 'RP', 'CL'],
   'DH': ['C', '1B', '2B', 'SS', '3B', 'OF', 'LF', 'CF', 'RF', 'P', 'SP', 'RP', 'CL', 'DH'],
-  'BN': ['C', '1B', '2B', 'SS', '3B', 'OF', 'LF', 'CF', 'RF', 'P', 'SP', 'RP', 'DH'],
+  'BN': ['C', '1B', '2B', 'SS', '3B', 'OF', 'LF', 'CF', 'RF', 'DH'],
 }
 
 // Post-Draft / Clubhouse Types
