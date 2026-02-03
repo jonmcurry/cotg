@@ -34,6 +34,8 @@ interface DraftSessionApiResponse {
     playerSeasonId: string | null
     playerId: string | null
     pickTime: string | null
+    position: PositionCode | null
+    slotNumber: number | null
   }>
   selectedSeasons: number[]
   createdAt: string
@@ -167,16 +169,24 @@ export const useDraftStore = create<DraftState>()(
             roster: createRosterSlots(),
           }))
 
-          // Fill rosters from picks
+          // Fill rosters from picks using position and slotNumber from database
           data.picks.forEach(pick => {
-            if (pick.playerSeasonId) {
+            if (pick.playerSeasonId && pick.position && pick.slotNumber) {
               const team = teamsWithRosters.find(t => t.id === pick.teamId)
               if (team) {
-                // Find first unfilled slot (simplified - real logic would need position mapping)
-                const emptySlot = team.roster.find(s => !s.isFilled)
-                if (emptySlot) {
-                  emptySlot.playerSeasonId = pick.playerSeasonId
-                  emptySlot.isFilled = true
+                // Find the exact roster slot using position and slotNumber from pick data
+                const rosterSlotIndex = team.roster.findIndex(
+                  slot => slot.position === pick.position && slot.slotNumber === pick.slotNumber
+                )
+
+                if (rosterSlotIndex !== -1) {
+                  team.roster[rosterSlotIndex] = {
+                    ...team.roster[rosterSlotIndex],
+                    playerSeasonId: pick.playerSeasonId,
+                    isFilled: true,
+                  }
+                } else {
+                  console.error('[loadSession] Roster slot not found for pick:', pick.position, pick.slotNumber, pick.pickNumber)
                 }
               }
             }

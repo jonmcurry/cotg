@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-03 (Roster Corruption - Missing Position/Slot Data in Database)
+- **CRITICAL BUG FIX**: Fixed roster corruption causing only 4 players to show after 15 rounds
+  - **Root Cause**: Database `draft_picks` table was missing `position` and `slot_number` columns
+    - Backend API accepted position/slotNumber in requests but never persisted them to database
+    - When `loadSession()` reconstructed rosters from picks, it used broken "find first unfilled slot" logic
+    - All picks were placed in wrong roster slots, causing complete roster corruption
+    - Eventually CPU couldn't find valid positions to draft to, failing with "Could not find a player to draft"
+  - **Previous Incomplete Fix**: Changed from `loadSession()` to `applyCpuPick()` to avoid triggering broken roster reconstruction
+    - This avoided the symptom but didn't fix the root cause
+    - Page refresh or component remount would still trigger loadSession and corrupt rosters
+  - **Proper Solution**: Added position and slot_number columns to database schema
+    - Created migration: `20260203_add_position_slot_to_draft_picks.sql`
+    - Deleted all corrupted test picks (user mentioned 672 picks in database)
+    - Backend now stores position/slotNumber for every pick (picks.ts and cpu.ts)
+    - loadSession() now correctly reconstructs rosters using exact position/slot from database
+  - **Files Modified**:
+    - supabase/migrations/20260203_add_position_slot_to_draft_picks.sql - NEW migration
+    - backend/src/routes/picks.ts - Store position/slot_number when making picks
+    - backend/src/routes/cpu.ts - Store position/slot_number for CPU picks
+    - src/stores/draftStore.ts - Fix loadSession roster reconstruction using position/slot
+    - supabase/migrations/README.md - Document migration
+    - docs/fixes/DRAFT_PICKS_MISSING_POSITION_SLOT.md - Fix plan and analysis
+  - Status: ✅ RESOLVED - Rosters now persist correctly across page refreshes and session reloads
+
 ### Fixed - 2026-02-03 (CPU Draft Player Reload Issue)
 - **CRITICAL BUG FIX**: Fixed player reload issue that caused CPU draft to hang after first pick
   - **Root Cause**: Using `loadSession()` after each CPU pick didn't preserve `selectedSeasons` array

@@ -26,6 +26,8 @@ interface DraftPick {
   playerSeasonId: string | null
   playerId: string | null
   pickTime: string | null
+  position: PositionCode | null
+  slotNumber: number | null
 }
 
 /**
@@ -55,6 +57,8 @@ router.get('/:sessionId/picks', async (req: Request, res: Response) => {
       playerSeasonId: row.player_season_id,
       playerId: row.player_id,
       pickTime: row.created_at,
+      position: row.position || null,
+      slotNumber: row.slot_number || null,
     }))
 
     return res.json(picks)
@@ -148,6 +152,8 @@ router.post('/:sessionId/picks', async (req: Request, res: Response) => {
         pick_number: session.current_pick_number,
         round: round,
         pick_in_round: pickInRound,
+        position: position,
+        slot_number: slotNumber,
       }, {
         onConflict: 'draft_session_id,pick_number',
       })

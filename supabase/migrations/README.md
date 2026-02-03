@@ -39,6 +39,7 @@ psql -h db.xxx.supabase.co -U postgres -d postgres -f migrations/20260203_add_co
 
 | Date       | Migration                                       | Status | Notes                                      |
 |------------|------------------------------------------------|--------|--------------------------------------------|
+| 2026-02-03 | add_position_slot_to_draft_picks               | ✅     | Added position and slot_number columns for roster reconstruction |
 | 2026-02-03 | add_control_column_to_draft_teams              | ✅     | Added missing control column for team type |
 
 ## Creating New Migrations

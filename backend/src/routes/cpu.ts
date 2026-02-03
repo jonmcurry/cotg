@@ -508,6 +508,8 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
         pick_number: session.current_pick_number,
         round: round,
         pick_in_round: pickInRound,
+        position: selection.position,
+        slot_number: selection.slotNumber,
       }, {
         onConflict: 'draft_session_id,pick_number',
       })
