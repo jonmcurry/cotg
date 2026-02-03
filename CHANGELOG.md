@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - 2026-02-03 (Phase 4: Production Deployment + Database Migrations)
+- **Production Deployment Complete**: Application successfully deployed to production
+  - Frontend: Vercel (https://cotg-sigma.vercel.app)
+  - Backend API: Render (https://cotg-api.onrender.com)
+  - Database: Supabase (PostgreSQL)
+  - End-to-end testing verified: leagues, drafts, CPU AI, all features working
+- **Database Migration System**: Created migration infrastructure for schema tracking
+  - Added `supabase/migrations/` directory with version-controlled SQL migrations
+  - Created `20260203_add_control_column_to_draft_teams.sql` migration
+    - Adds missing `control` column to `draft_teams` table for human/CPU team types
+    - Includes constraint validation and column documentation
+    - Resolves 500 error discovered during production deployment
+  - Created comprehensive `migrations/README.md` with best practices
+    - Migration naming conventions and application instructions
+    - Rollback strategies and idempotency guidelines
+    - Migration history tracking table
+- **Deployment Documentation Updates**:
+  - Added "Step 0: Apply Database Migrations" to deployment guide
+  - Ensures reproducible fresh deployments with correct schema
+- **Production Issues Resolved**:
+  - Fixed CORS configuration (removed trailing slash from origin URL)
+  - Applied missing database schema changes from local to production
+  - Verified all API endpoints functional in production environment
+
 ### Changed - 2026-02-03 (Phase 5: Cleanup and Documentation)
 - Completed Phase 5 of the Vercel/Render/Supabase migration
 - **Type Organization**: Created `src/types/player.ts` for shared PlayerSeason type
