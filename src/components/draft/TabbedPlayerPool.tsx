@@ -5,7 +5,7 @@
 
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { FixedSizeList as List } from 'react-window'
-import type { PlayerSeason } from '../../utils/cpuDraftLogic'
+import type { PlayerSeason } from '../../types/player'
 
 interface Props {
   players: PlayerSeason[]

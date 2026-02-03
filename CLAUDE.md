@@ -28,7 +28,38 @@ APBA Baseball Web - A web-based implementation of the APBA baseball tabletop gam
 - League management
 - Game simulation
 
-## Tech Stack
-- Vanilla JavaScript (ES6 modules)
-- Supabase for data persistence
-- No build tools (direct browser imports)
+## Architecture
+
+### 3-Tier Architecture (Vercel + Render + Supabase)
+
+**Frontend (Vercel)**
+- React 18 with TypeScript
+- Vite build tool
+- TailwindCSS for styling
+- Zustand for state management
+- React Router for navigation
+
+**Backend API (Render)**
+- Node.js/Express server
+- TypeScript
+- RESTful API endpoints
+- Server-side computation (CPU draft AI, lineup generation, schedule generation)
+
+**Database (Supabase)**
+- PostgreSQL database
+- Historical player data (1901-2024)
+- Draft sessions, picks, teams, leagues
+- Row Level Security policies
+
+### API Architecture
+
+All data operations flow through the backend API:
+1. Frontend makes requests to backend API (`VITE_API_URL`)
+2. Backend validates and processes requests
+3. Backend communicates with Supabase using service role key
+4. Backend returns processed data to frontend
+
+**Security Benefits:**
+- Service role key never exposed to client
+- Backend can add auth, rate limiting, caching
+- Single source of truth for business logic

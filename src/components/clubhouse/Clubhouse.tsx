@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import type { DraftSession, DraftTeam } from '../../types/draft.types'
-import type { PlayerSeason } from '../../utils/cpuDraftLogic'
+import type { PlayerSeason } from '../../types/player'
 import { transformPlayerSeasonData } from '../../utils/transformPlayerData'
 import RosterView from '../draft/RosterView'
 import LineupEditor from './LineupEditor'

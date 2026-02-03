@@ -4,7 +4,7 @@
  * Used by DraftBoard and Clubhouse to avoid duplicate transformation logic
  */
 
-import type { PlayerSeason } from './cpuDraftLogic'
+import type { PlayerSeason } from '../types/player'
 
 /**
  * Raw player data shape from Supabase query with players!inner join

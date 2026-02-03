@@ -6,7 +6,7 @@
 
 import { useState, useEffect } from 'react'
 import type { DraftTeam, LineupSlot, TeamDepthChart, PositionCode } from '../../types/draft.types'
-import type { PlayerSeason } from '../../utils/cpuDraftLogic'
+import type { PlayerSeason } from '../../types/player'
 import { useDraftStore } from '../../stores/draftStore'
 
 interface Props {

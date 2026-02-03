@@ -7,7 +7,7 @@
 import { useState, useMemo } from 'react'
 import type { DraftTeam, PositionCode } from '../../types/draft.types'
 import { POSITION_NAMES, POSITION_ELIGIBILITY } from '../../types/draft.types'
-import type { PlayerSeason } from '../../utils/cpuDraftLogic'
+import type { PlayerSeason } from '../../types/player'
 
 interface Props {
   player: PlayerSeason

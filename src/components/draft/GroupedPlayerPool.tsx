@@ -4,7 +4,7 @@
  */
 
 import { useState, useMemo } from 'react'
-import type { PlayerSeason } from '../../utils/cpuDraftLogic'
+import type { PlayerSeason } from '../../types/player'
 import { getPitcherGrade } from '../../utils/apbaRating'
 
 interface Props {

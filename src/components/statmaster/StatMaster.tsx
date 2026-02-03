@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import type { DraftSession } from '../../types/draft.types'
-import type { PlayerSeason } from '../../utils/cpuDraftLogic'
+import type { PlayerSeason } from '../../types/player'
 import { useDraftStore } from '../../stores/draftStore'
 import { simulateGames, getTeamRecord, getNextGame } from '../../utils/statMaster'
 import { calculateStandings } from '../../utils/scheduleGenerator'

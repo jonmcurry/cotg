@@ -10,7 +10,7 @@
 
 import type { DraftTeam } from '../types/draft.types'
 import type { ScheduledGame, GameResult } from '../types/schedule.types'
-import type { PlayerSeason } from './cpuDraftLogic'
+import type { PlayerSeason } from '../types/player'
 
 export interface AllStarRoster {
   squadName: string
