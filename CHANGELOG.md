@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-03 (CPU Draft Player Reload Issue)
+- **CRITICAL BUG FIX**: Fixed player reload issue that caused CPU draft to hang after first pick
+  - **Root Cause**: Using `loadSession()` after each CPU pick didn't preserve `selectedSeasons` array
+    - Backend response doesn't include selectedSeasons in draft session updates
+    - When loadSession() reloaded the session, selectedSeasons became empty
+    - Empty selectedSeasons triggered player loading effect, showing "Loading Players... Preparing 0 season(s)"
+    - Second CPU pick couldn't proceed because players weren't available
+  - **Solution**: Changed from `loadSession()` to `applyCpuPick()` for CPU draft updates
+    - Only updates changed fields (currentPick, picks, roster, status)
+    - Preserves all other session state including selectedSeasons
+    - Players remain loaded and available for subsequent picks
+  - **Files Modified**:
+    - src/components/draft/DraftBoard.tsx - Use applyCpuPick instead of loadSession for CPU picks
+  - Status: ✅ RESOLVED - CPU draft now proceeds smoothly through all picks without player reload
+
 ### Fixed - 2026-02-03 (CPU Draft Race Condition - Backend Status Sync)
 - **CRITICAL BUG FIX**: Fixed race condition where CPU draft tried to run before backend status updated
   - **Root Cause**: `startDraft()` updated local state immediately but saved to backend asynchronously without waiting

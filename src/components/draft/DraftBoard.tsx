@@ -349,11 +349,23 @@ If this persists, the database may be updating. Wait a few minutes and try again
             currentPickFromAPI: response.session.currentPick
           })
 
-          // Reload entire session from backend to get authoritative state
-          // This ensures UI is always in sync with the database
-          console.log('[CPU Draft] 🔄 Calling loadSession...')
-          await loadSession(session.id)
-          console.log('[CPU Draft] ✅ loadSession completed - waiting for React re-render')
+          // Update session with pick data - don't reload entire session to avoid
+          // triggering player reload (loadSession doesn't preserve selectedSeasons)
+          applyCpuPick(
+            {
+              teamId: response.pick.teamId,
+              playerSeasonId: response.pick.playerSeasonId,
+              playerId: response.pick.playerId,
+              position: response.pick.position,
+              slotNumber: response.pick.slotNumber,
+              bats: response.pick.bats,
+            },
+            {
+              currentPick: response.session.currentPick,
+              currentRound: response.session.currentRound,
+              status: response.session.status,
+            }
+          )
 
           // Show inline ticker for this pick (clears after 3 seconds)
           if (!cancelled) {
