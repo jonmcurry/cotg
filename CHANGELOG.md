@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - 2026-02-03 (Phase 5: Cleanup and Documentation)
+- Completed Phase 5 of the Vercel/Render/Supabase migration
+- **Type Organization**: Created `src/types/player.ts` for shared PlayerSeason type
+  - Moved PlayerSeason interface from cpuDraftLogic.ts to proper types directory
+  - Updated 15 component and utility files to use new import path
+- **Removed Unused Files**: Cleaned up frontend codebase per migration plan
+  - Deleted `src/utils/cpuDraftLogic.ts` (427 lines) - logic moved to backend
+  - Deleted `src/utils/autoLineup.ts` (246 lines) - logic moved to backend
+  - Removed 5 outdated fix documentation files from docs/
+  - Total reduction: ~800 lines of unused code removed
+- **Documentation Updates**:
+  - Updated `CLAUDE.md` with 3-tier architecture overview
+  - Updated `README.md` with current features, tech stack, and deployment instructions
+  - Added local development setup guide with both frontend and backend
+  - Documented deployment process to Vercel + Render + Supabase
+- **Architecture Benefits Realized**:
+  - All heavy computation now executes on backend API
+  - Frontend bundle size reduced significantly
+  - Clear separation of concerns between frontend and backend
+  - Security: Service role key never exposed to client
+
 ### Added - 2026-02-03 (Phase 3: Environment Configuration and Deployment Setup)
 - Completed Phase 3 of the Vercel/Render/Supabase migration
 - Created `render.yaml` for Infrastructure as Code deployment on Render
