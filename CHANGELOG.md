@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - 2026-02-03 (Cloud Migration Plan)
+- Created comprehensive migration plan document for Vercel + Render + Supabase architecture
+- Plan covers: Backend API setup (Express/Node.js), Frontend refactor, Environment configuration, Deployment
+- Identified 4 files with direct Supabase calls to refactor: draftStore, leagueStore, DraftBoard, Clubhouse
+- Identified 3 heavy computation utilities to move to backend: cpuDraftLogic, autoLineup, scheduleGenerator
+- Defined 20+ API endpoints for leagues, draft sessions, picks, teams, players, CPU draft, auto-lineup, and schedule
+- See `docs/MIGRATION_VERCEL_RENDER_SUPABASE.md` for full checklist
+
 ### Fixed - 2026-02-02 (409 Duplicate Player Auto-Retry)
 - Fixed CPU draft looping on 409 duplicate player errors caused by React StrictMode stale closures
 - Added module-level `failedPlayerSeasonIds` blacklist that persists across effect runs
