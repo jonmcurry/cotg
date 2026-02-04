@@ -165,18 +165,25 @@ function playerQualifiesForPosition(playerPosition: string, rosterPosition: Posi
 }
 
 // Check playing time requirements
-function meetsPlayingTimeRequirements(player: PlayerSeason, rosterPosition: PositionCode): boolean {
+function meetsPlayingTimeRequirements(player: PlayerSeason, rosterPosition: PositionCode, currentRound: number = 1): boolean {
   const atBats = player.at_bats || 0
   const inningsPitchedOuts = player.innings_pitched_outs || 0
 
+  // ADAPTIVE REQUIREMENTS: Relax in late rounds (15+) to ensure draft completion
+  // Early/mid rounds (1-14): Full requirements (200 AB / 90 IP)
+  // Late rounds (15-21): Relaxed requirements (100 AB / 45 IP)
+  const isLateRound = currentRound >= 15
+  const minAtBats = isLateRound ? 100 : 200
+  const minInningsPitchedOuts = isLateRound ? 45 : 90
+
   const isPositionPlayerSlot = ['C', '1B', '2B', 'SS', '3B', 'OF', 'DH'].includes(rosterPosition)
-  if (isPositionPlayerSlot) return atBats >= 200
+  if (isPositionPlayerSlot) return atBats >= minAtBats
 
   const isPitcherSlot = ['SP', 'RP', 'CL'].includes(rosterPosition)
-  if (isPitcherSlot) return inningsPitchedOuts >= 90
+  if (isPitcherSlot) return inningsPitchedOuts >= minInningsPitchedOuts
 
-  if (rosterPosition === 'BN') return atBats >= 200
-  return atBats >= 200 || inningsPitchedOuts >= 90
+  if (rosterPosition === 'BN') return atBats >= minAtBats
+  return atBats >= minAtBats || inningsPitchedOuts >= minInningsPitchedOuts
 }
 
 // Calculate weighted score for a player
@@ -226,7 +233,8 @@ function selectBestPlayer(
     draftedCount: draftedPlayerIds.size,
     excludedCount: excludePlayerSeasonIds.size,
     teamId: team.id,
-    round: currentRound
+    round: currentRound,
+    isLateRound: currentRound >= 15
   })
 
   // FIXED Issue #6: Filter out both drafted players and blacklisted player seasons
@@ -279,7 +287,7 @@ function selectBestPlayer(
 
     const eligible = undraftedPlayers.filter(player =>
       playerQualifiesForPosition(player.primary_position, position) &&
-      meetsPlayingTimeRequirements(player, position)
+      meetsPlayingTimeRequirements(player, position, currentRound)
     )
 
     console.log(`[selectBestPlayer] Position ${position}:`, {
@@ -306,7 +314,7 @@ function selectBestPlayer(
       console.log('[selectBestPlayer] Bench slots available:', benchSlotsAvailable)
       if (benchSlotsAvailable > 0) {
         const benchWeight = adjustScarcityByRound(POSITION_SCARCITY['BN'] || 0.5, currentRound)
-        const benchCandidates = undraftedPlayers.filter(player => meetsPlayingTimeRequirements(player, 'BN'))
+        const benchCandidates = undraftedPlayers.filter(player => meetsPlayingTimeRequirements(player, 'BN', currentRound))
         console.log('[selectBestPlayer] Bench candidates after playing time filter:', benchCandidates.length)
         for (const player of benchCandidates) {
           const score = calculateWeightedScore(player, 'BN', team, 0.1, benchWeight, currentRound)
