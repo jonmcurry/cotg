@@ -342,12 +342,12 @@ router.post('/:teamId/auto-lineup', async (req: Request, res: Response) => {
     const depthChart = generateOptimalDepthChart(roster, players)
 
     // console.log('[Lineup API] Generated depth chart for team:', teamId, {
-      lineupVS_RHP: depthChart.lineupVS_RHP.filter(s => s.playerSeasonId).length,
-      lineupVS_LHP: depthChart.lineupVS_LHP.filter(s => s.playerSeasonId).length,
-      rotation: depthChart.rotation.filter(s => s.playerSeasonId).length,
-      closer: depthChart.bullpen.closer ? 'assigned' : 'none',
-      setup: depthChart.bullpen.setup.length,
-    })
+    //   lineupVS_RHP: depthChart.lineupVS_RHP.filter(s => s.playerSeasonId).length,
+    //   lineupVS_LHP: depthChart.lineupVS_LHP.filter(s => s.playerSeasonId).length,
+    //   rotation: depthChart.rotation.filter(s => s.playerSeasonId).length,
+    //   closer: depthChart.bullpen.closer ? 'assigned' : 'none',
+    //   setup: depthChart.bullpen.setup.length,
+    // })
 
     return res.json({ depthChart })
   } catch (err) {

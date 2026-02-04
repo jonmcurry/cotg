@@ -285,11 +285,11 @@ router.post('/:sessionId/picks', async (req: Request, res: Response) => {
     }
 
     // console.log('[Picks API] Pick made:', {
-      session: sessionId,
-      pick: session.current_pick_number,
-      team: currentTeam.team_name,
-      player: playerSeasonId,
-    })
+    //   session: sessionId,
+    //   pick: session.current_pick_number,
+    //   team: currentTeam.team_name,
+    //   player: playerSeasonId,
+    // })
 
     return res.status(201).json({
       result: 'success',

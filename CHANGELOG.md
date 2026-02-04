@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-03 (CPU Draft Null Position Bug)
+- **CRITICAL BUG FIX**: Fixed TypeError crash when CPU encounters players with null positions during draft
+  - **Root Cause**: `playerQualifiesForPosition()` function called `.toUpperCase()` on null/undefined position values
+  - Error: "Cannot read properties of null (reading 'toUpperCase')"
+  - Occurred after implementing case sensitivity fix, which didn't account for null values
+  - **Solution**: Added null/undefined guard before `.toUpperCase()` call
+  - Function now returns `false` for null/undefined/empty positions (player doesn't qualify)
+  - **Testing**: Test-Driven Development (TDD) approach
+    - Created test-cpu-null-position.js to reproduce bug (test failed as expected)
+    - Implemented fix to make test pass
+    - All 5 test cases passing: valid uppercase, valid lowercase, null, undefined, empty string
+  - **Additional Fixes**: Resolved TypeScript compilation errors from previous console.log fix
+    - Fixed multi-line console.log comments in lineup.ts, picks.ts, schedule.ts
+    - Clean TypeScript build confirmed
+  - Files modified: backend/src/routes/cpu.ts (line 162-171)
+  - Related fixes: lineup.ts, picks.ts, schedule.ts (multi-line comment corrections)
+  - Test file: backend/test-cpu-null-position.js
+  - Documentation: docs/fixes/CPU_DRAFT_NULL_POSITION_FIX.md
+  - Status: ✅ TESTED AND VERIFIED - Ready for deployment
+
 ### Performance - 2026-02-03 (Remove Console.log Overhead)
 - **CRITICAL PERFORMANCE FIX**: Removed excessive console.log statements causing severe performance degradation
   - **Root Cause**: 419 console.log statements across 36 files running on every operation

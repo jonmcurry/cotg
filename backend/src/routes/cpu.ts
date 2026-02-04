@@ -160,6 +160,11 @@ function getUnfilledPositions(team: DraftTeam): PositionCode[] {
 
 // Check if player qualifies for a position
 function playerQualifiesForPosition(playerPosition: string, rosterPosition: PositionCode): boolean {
+  // Handle null/undefined/empty positions gracefully
+  if (!playerPosition) {
+    return false
+  }
+
   const eligiblePositions = POSITION_ELIGIBILITY[rosterPosition] || []
   // Case-insensitive comparison to handle database variations (SS vs ss vs Ss)
   const normalizedPlayerPosition = playerPosition.toUpperCase()

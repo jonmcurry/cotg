@@ -11,6 +11,9 @@ Rule 7: Create a .md file with what your plan is to resolve issues or to develop
 Rule 8: No shortcuts - fully resolve issues by solving it the right way and not creating cascading failures elsewhere.
 Rule 9: Commit to github
 Rule 10: Keep track with the changelog.md file
+Rule 11:Instruct Claude to first write a test case that reproduces the bug, without modifying the source code.
+Once the test fails (confirming the bug is reproducible), ask it to modify the code to make the test pass.
+This Test-Driven Development (TDD) approach provides clear success and failure criteria for each step.
 
 ## Collaboration Guidelines
 - **Challenge and question**: Don't immediately agree or proceed with requests that seem suboptimal, unclear, or potentially problematic
@@ -19,9 +22,7 @@ Rule 10: Keep track with the changelog.md file
 - **Seek clarification**: Ask follow-up questions when requirements are ambiguous or could be interpreted multiple ways
 - **Propose improvements**: Suggest better patterns, more robust solutions, or cleaner implementations when appropriate
 - **Be a thoughtful collaborator**: Act as a good teammate who helps improve the overall quality and direction of the project
-Instruct Claude to first write a test case that reproduces the bug, without modifying the source code.
-Once the test fails (confirming the bug is reproducible), ask it to modify the code to make the test pass.
-This Test-Driven Development (TDD) approach provides clear success and failure criteria for each step.
+
 
 ## Project Overview
 APBA Baseball Web - A web-based implementation of the APBA baseball tabletop game with:

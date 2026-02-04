@@ -263,10 +263,10 @@ router.post('/:sessionId/schedule', async (req: Request, res: Response) => {
     const schedule = generateSchedule(sessionId, teams, gamesPerTeam, scheduleStartDate)
 
     // console.log('[Schedule API] Generated schedule for session:', sessionId, {
-      teams: teams.length,
-      games: schedule.games.length,
-      gamesPerTeam: schedule.totalGamesPerTeam
-    })
+    //   teams: teams.length,
+    //   games: schedule.games.length,
+    //   gamesPerTeam: schedule.totalGamesPerTeam
+    // })
 
     return res.status(201).json({ schedule })
   } catch (err) {
