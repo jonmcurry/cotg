@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-03 (CPU Draft Case Sensitivity Bug)
+- **CRITICAL BUG FIX**: Fixed "CPU could not find a player to draft" error caused by case-sensitive position matching
+  - **Root Cause**: `playerQualifiesForPosition()` function in `backend/src/routes/cpu.ts` used case-sensitive string comparison
+  - Database stored position values in varying cases (e.g., "ss" vs "SS", "lf" vs "LF")
+  - Case mismatch caused eligible players to be incorrectly filtered out
+  - **Solution**: Implemented case-insensitive position matching using `.toUpperCase()` comparison
+  - Now handles all case variations: SS/ss/Ss, OF/of/Of, LF/lf/Lf, P/p, etc.
+  - **Testing**: Created comprehensive test suite with 18 test cases, all passing
+  - Files: backend/src/routes/cpu.ts (line 162-166)
+  - Test files: backend/test-cpu-draft-unit.js, backend/test-cpu-draft-fixed.js
+  - Documentation: docs/fixes/CPU_DRAFT_CASE_SENSITIVITY_FIX.md
+  - Status: ✅ TESTED AND VERIFIED - Ready for deployment
+
 ### Fixed - 2026-02-03 (Code Review Issues 1-17 - All Critical and Major Issues Resolved)
 - **ALL CODE REVIEW ISSUES FIXED**: Resolved all 17 issues from comprehensive code review (4 CRITICAL, 8 MAJOR, 5 MINOR)
 
