@@ -151,7 +151,7 @@ export const useDraftStore = create<DraftState>()(
           })
 
           set({ session })
-          console.log('[DraftStore] Session created:', session.id)
+          // console.log('[DraftStore] Session created:', session.id)
         } catch (err) {
           const message = err instanceof ApiError ? err.message : 'Unknown error'
           console.error('[DraftStore] Error creating session:', err)
@@ -198,7 +198,7 @@ export const useDraftStore = create<DraftState>()(
           })
 
           set({ session })
-          console.log('[DraftStore] Session loaded:', session.id, session.name)
+          // console.log('[DraftStore] Session loaded:', session.id, session.name)
         } catch (err) {
           const message = err instanceof ApiError ? err.message : 'Unknown error'
           console.error('[DraftStore] Error loading session:', err)
@@ -211,12 +211,12 @@ export const useDraftStore = create<DraftState>()(
         if (!session) return
 
         try {
-          console.log('[DraftStore] SAVING Saving session to backend:', {
-            id: session.id,
-            status: session.status,
-            currentPick: session.currentPick,
-            currentRound: session.currentRound
-          })
+          // console.log('[DraftStore] SAVING Saving session to backend:', {
+          //   id: session.id,
+          //   status: session.status,
+          //   currentPick: session.currentPick,
+          //   currentRound: session.currentRound
+          // })
 
           const response = await api.put(`/draft/sessions/${session.id}`, {
             status: session.status,
@@ -224,7 +224,7 @@ export const useDraftStore = create<DraftState>()(
             currentRound: session.currentRound,
           })
 
-          console.log('[DraftStore] SUCCESS Session saved successfully, backend response:', response)
+          // console.log('[DraftStore] SUCCESS Session saved successfully, backend response:', response)
 
           // Update local timestamp
           set({
@@ -247,12 +247,12 @@ export const useDraftStore = create<DraftState>()(
           return
         }
 
-        console.log('[startDraft] START Starting draft, current status:', session.status)
+        // console.log('[startDraft] START Starting draft, current status:', session.status)
 
         // FIXED Issue #1: Update backend FIRST, then update local state
         // This prevents race condition where CPU effect triggers before backend updates
         try {
-          console.log('[startDraft] SAVING Updating backend to in_progress...')
+          // console.log('[startDraft] SAVING Updating backend to in_progress...')
 
           // Call API directly to update backend first - await ensures DB commits
           await api.put(`/draft/sessions/${session.id}`, {
@@ -261,7 +261,7 @@ export const useDraftStore = create<DraftState>()(
             currentRound: session.currentRound,
           })
 
-          console.log('[startDraft] SUCCESS Backend updated, DB transaction committed')
+          // console.log('[startDraft] SUCCESS Backend updated, DB transaction committed')
 
           // NOW update local state - this triggers CPU effect, which will see correct backend status
           set({
@@ -271,7 +271,7 @@ export const useDraftStore = create<DraftState>()(
               updatedAt: new Date(),
             }
           })
-          console.log('[startDraft] UPDATE Local state updated - draft ready, CPU can start')
+          // console.log('[startDraft] UPDATE Local state updated - draft ready, CPU can start')
         } catch (err) {
           console.error('[startDraft] ERROR CRITICAL: Failed to save draft status to backend!', err)
           throw new Error('Failed to start draft: backend update failed')

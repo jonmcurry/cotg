@@ -79,7 +79,7 @@ export const useLeagueStore = create<LeagueState>()(
 
           const league = transformApiResponse(data)
           set({ currentLeague: league })
-          console.log('[LeagueStore] League created:', league.id, league.name)
+          // console.log('[LeagueStore] League created:', league.id, league.name)
           return league
         } catch (err) {
           const message = err instanceof ApiError ? err.message : 'Unknown error'
@@ -93,7 +93,7 @@ export const useLeagueStore = create<LeagueState>()(
           const data = await api.get<LeagueApiResponse[]>('/leagues')
           const leagues = data.map(transformApiResponse)
           set({ leagues })
-          console.log('[LeagueStore] Loaded', leagues.length, 'leagues')
+          // console.log('[LeagueStore] Loaded', leagues.length, 'leagues')
         } catch (err) {
           const message = err instanceof ApiError ? err.message : 'Unknown error'
           console.error('[LeagueStore] Error loading leagues:', err)
@@ -106,7 +106,7 @@ export const useLeagueStore = create<LeagueState>()(
           const data = await api.get<LeagueApiResponse>(`/leagues/${leagueId}`)
           const league = transformApiResponse(data)
           set({ currentLeague: league })
-          console.log('[LeagueStore] Loaded league:', league.id, league.name, 'status:', league.status)
+          // console.log('[LeagueStore] Loaded league:', league.id, league.name, 'status:', league.status)
           return league
         } catch (err) {
           const message = err instanceof ApiError ? err.message : 'Unknown error'
@@ -125,7 +125,7 @@ export const useLeagueStore = create<LeagueState>()(
             set({ currentLeague: null })
           }
           set({ leagues: get().leagues.filter(l => l.id !== leagueId) })
-          console.log('[LeagueStore] Deleted league:', leagueId)
+          // console.log('[LeagueStore] Deleted league:', leagueId)
         } catch (err) {
           const message = err instanceof ApiError ? err.message : 'Unknown error'
           console.error('[LeagueStore] Error deleting league:', err)
@@ -143,7 +143,7 @@ export const useLeagueStore = create<LeagueState>()(
           if (current?.id === leagueId) {
             set({ currentLeague: league })
           }
-          console.log('[LeagueStore] Updated league status:', leagueId, '->', status)
+          // console.log('[LeagueStore] Updated league status:', leagueId, '->', status)
         } catch (err) {
           const message = err instanceof ApiError ? err.message : 'Unknown error'
           console.error('[LeagueStore] Error updating league status:', err)
@@ -160,7 +160,7 @@ export const useLeagueStore = create<LeagueState>()(
           if (current?.id === leagueId) {
             set({ currentLeague: league })
           }
-          console.log('[LeagueStore] Linked draft session', draftSessionId, 'to league', leagueId)
+          // console.log('[LeagueStore] Linked draft session', draftSessionId, 'to league', leagueId)
         } catch (err) {
           const message = err instanceof ApiError ? err.message : 'Unknown error'
           console.error('[LeagueStore] Error linking draft session:', err)

@@ -453,7 +453,7 @@ export function simulateGames(
         updatedGames[i] = { ...game, result }
         simulated++
 
-        console.log(`[StatMaster] ${awayTeam.name} ${result.awayScore} @ ${homeTeam.name} ${result.homeScore}`)
+        // console.log(`[StatMaster] ${awayTeam.name} ${result.awayScore} @ ${homeTeam.name} ${result.homeScore}`)
     }
 
     return updatedGames

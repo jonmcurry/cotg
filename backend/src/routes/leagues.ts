@@ -153,7 +153,7 @@ router.post('/', async (req: Request, res: Response) => {
       return res.status(500).json({ error: `Failed to create league: ${error.message}` })
     }
 
-    console.log('[Leagues API] Created league:', data.id, config.name)
+    // console.log('[Leagues API] Created league:', data.id, config.name)
     return res.status(201).json(transformLeagueRow(data))
   } catch (err) {
     console.error('[Leagues API] Exception:', err)
@@ -198,7 +198,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       return res.status(500).json({ error: `Failed to update league: ${error.message}` })
     }
 
-    console.log('[Leagues API] Updated league:', id, Object.keys(dbUpdates))
+    // console.log('[Leagues API] Updated league:', id, Object.keys(dbUpdates))
     return res.json(transformLeagueRow(data))
   } catch (err) {
     console.error('[Leagues API] Exception:', err)
@@ -224,7 +224,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
       return res.status(500).json({ error: `Failed to delete league: ${error.message}` })
     }
 
-    console.log('[Leagues API] Deleted league:', id)
+    // console.log('[Leagues API] Deleted league:', id)
     return res.status(204).send()
   } catch (err) {
     console.error('[Leagues API] Exception:', err)

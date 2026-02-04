@@ -97,8 +97,8 @@ function generateSchedule(
   const gamesPerMatchup = Math.floor(gamesPerTeam / (numTeams - 1))
   const actualGamesPerTeam = gamesPerMatchup * (numTeams - 1)
 
-  console.log(`[ScheduleGen] Generating ${actualGamesPerTeam} games per team`)
-  console.log(`[ScheduleGen] Each team plays each opponent ${gamesPerMatchup} times`)
+  // console.log(`[ScheduleGen] Generating ${actualGamesPerTeam} games per team`)
+  // console.log(`[ScheduleGen] Each team plays each opponent ${gamesPerMatchup} times`)
 
   // Generate all series
   const allSeries: Series[] = []
@@ -209,8 +209,8 @@ function generateSchedule(
     currentGameIndex: 0
   }
 
-  console.log(`[ScheduleGen] Generated ${games.length} total games`)
-  console.log(`[ScheduleGen] Season: ${schedule.seasonStartDate.toLocaleDateString()} to ${schedule.seasonEndDate.toLocaleDateString()}`)
+  // console.log(`[ScheduleGen] Generated ${games.length} total games`)
+  // console.log(`[ScheduleGen] Season: ${schedule.seasonStartDate.toLocaleDateString()} to ${schedule.seasonEndDate.toLocaleDateString()}`)
 
   return schedule
 }
@@ -262,7 +262,7 @@ router.post('/:sessionId/schedule', async (req: Request, res: Response) => {
     const scheduleStartDate = startDate ? new Date(startDate) : new Date()
     const schedule = generateSchedule(sessionId, teams, gamesPerTeam, scheduleStartDate)
 
-    console.log('[Schedule API] Generated schedule for session:', sessionId, {
+    // console.log('[Schedule API] Generated schedule for session:', sessionId, {
       teams: teams.length,
       games: schedule.games.length,
       gamesPerTeam: schedule.totalGamesPerTeam

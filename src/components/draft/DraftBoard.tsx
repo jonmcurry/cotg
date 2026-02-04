@@ -49,13 +49,13 @@ export default function DraftBoard({ onExit, onComplete }: Props) {
   const maxRetries = 3
 
   // Debug: Log every render to track session state changes
-  console.log('[DraftBoard] RENDER Component render:', {
-    sessionId: session?.id,
-    currentPick: session?.currentPick,
-    currentRound: session?.currentRound,
-    status: session?.status,
-    picksCount: session?.picks.length
-  })
+  // console.log('[DraftBoard] RENDER Component render:', {
+  //   sessionId: session?.id,
+  //   currentPick: session?.currentPick,
+  //   currentRound: session?.currentRound,
+  //   status: session?.status,
+  //   picksCount: session?.picks.length
+  // })
 
   const [players, setPlayers] = useState<PlayerSeason[]>([])
   const [loading, setLoading] = useState(true)
@@ -84,14 +84,14 @@ export default function DraftBoard({ onExit, onComplete }: Props) {
   const nextTeam = getNextPickingTeam()
 
   // Debug: Log current team to see why CPU draft isn't running
-  console.log('[DraftBoard] TEAM Current team:', {
-    currentTeam: currentTeam ? {
-      id: currentTeam.id,
-      name: currentTeam.name,
-      control: currentTeam.control
-    } : null,
-    cpuThinking
-  })
+  // console.log('[DraftBoard] TEAM Current team:', {
+  //   currentTeam: currentTeam ? {
+  //     id: currentTeam.id,
+  //     name: currentTeam.name,
+  //     control: currentTeam.control
+  //   } : null,
+  //   cpuThinking
+  // })
 
   // Create stable reference to selected seasons for useEffect dependency
   // Only changes when actual seasons change, not when picks are made
@@ -195,7 +195,7 @@ If this persists, the database may be updating. Wait a few minutes and try again
       } catch (err) {
         // FIXED Issue #8: Don't show error if request was aborted (cleanup)
         if (signal.aborted) {
-          console.log('[Player Load] Load aborted (cleanup)')
+          // console.log('[Player Load] Load aborted (cleanup)')
           return
         }
         console.error('[Player Load] CRITICAL ERROR - Exception:', err)
@@ -225,20 +225,20 @@ If this persists, the database may be updating. Wait a few minutes and try again
   }, [selectedSeasonsKey])
 
   // Debug: Track dependency changes
-  useEffect(() => {
-    console.log('[CPU Draft] DEPS Dependencies changed:', {
-      'session?.currentPick': session?.currentPick,
-      'session?.status': session?.status,
-      'currentTeam?.id': currentTeam?.id,
-      'applyCpuPick': typeof applyCpuPick,
-      'pauseDraft': typeof pauseDraft
-    })
-  }, [session?.currentPick, session?.status, currentTeam?.id, applyCpuPick, pauseDraft])
+  // useEffect(() => {
+  //   console.log('[CPU Draft] DEPS Dependencies changed:', {
+  //     'session?.currentPick': session?.currentPick,
+  //     'session?.status': session?.status,
+  //     'currentTeam?.id': currentTeam?.id,
+  //     'applyCpuPick': typeof applyCpuPick,
+  //     'pauseDraft': typeof pauseDraft
+  //   })
+  // }, [session?.currentPick, session?.status, currentTeam?.id, applyCpuPick, pauseDraft])
 
   // CPU auto-draft logic - uses backend API for pick selection and execution
   // Component-scoped cpuDraftInProgress guard with proper cleanup prevents race conditions
   useEffect(() => {
-    console.log('[CPU Draft] EFFECT Effect triggered, checking conditions:', {
+    // console.log('[CPU Draft] EFFECT Effect triggered, checking conditions:', {
       hasSession: !!session,
       hasCurrentTeam: !!currentTeam,
       currentTeamControl: currentTeam?.control,
@@ -250,38 +250,38 @@ If this persists, the database may be updating. Wait a few minutes and try again
     let cancelled = false // StrictMode cleanup: set true on unmount to skip UI updates
 
     if (!session) {
-      console.log('[CPU Draft] BLOCKED No session')
+      // console.log('[CPU Draft] BLOCKED No session')
       return
     }
 
     // Reset retry counter when session changes
     if (lastSessionIdRef.current !== session.id) {
-      console.log('[CPU Draft] Session changed, resetting retry counter')
+      // console.log('[CPU Draft] Session changed, resetting retry counter')
       cpuRetryCountRef.current = 0
       lastSessionIdRef.current = session.id
     }
 
     if (!currentTeam) {
-      console.log('[CPU Draft] BLOCKED No current team')
+      // console.log('[CPU Draft] BLOCKED No current team')
       return
     }
     if (currentTeam.control !== 'cpu') {
-      console.log('[CPU Draft] BLOCKED Current team is not CPU (control=' + currentTeam.control + ')')
+      // console.log('[CPU Draft] BLOCKED Current team is not CPU (control=' + currentTeam.control + ')')
       return
     }
 
     // Component-scoped guard: properly cleaned up on unmount
     if (cpuDraftInProgressRef.current) {
-      console.log('[CPU Draft] BLOCKED CPU draft already in progress')
+      // console.log('[CPU Draft] BLOCKED CPU draft already in progress')
       return
     }
 
     if (session.status !== 'in_progress') {
-      console.log('[CPU Draft] BLOCKED Session status is not in_progress (status=' + session.status + ')')
+      // console.log('[CPU Draft] BLOCKED Session status is not in_progress (status=' + session.status + ')')
       return
     }
 
-    console.log('[CPU Draft] SUCCESS All guards passed - starting CPU draft pick')
+    // console.log('[CPU Draft] SUCCESS All guards passed - starting CPU draft pick')
 
     // Clear the failed-player blacklist when starting a new draft session
     if (session.id !== lastSessionIdRef.current) {
@@ -321,15 +321,15 @@ If this persists, the database may be updating. Wait a few minutes and try again
     // Async IIFE - checks cancelled flag before side effects
     ;(async () => {
       try {
-        console.log('[CPU Draft] START Async IIFE started, cancelled=' + cancelled)
+        // console.log('[CPU Draft] START Async IIFE started, cancelled=' + cancelled)
 
         // Check if this effect instance was cancelled (StrictMode unmount)
         if (cancelled) {
-          console.log('[CPU Draft] BLOCKED Async IIFE blocked by cancelled flag')
+          // console.log('[CPU Draft] BLOCKED Async IIFE blocked by cancelled flag')
           return
         }
 
-        console.log('[CPU Draft] API Calling CPU pick API:', `/draft/sessions/${session.id}/cpu-pick`)
+        // console.log('[CPU Draft] API Calling CPU pick API:', `/draft/sessions/${session.id}/cpu-pick`)
 
         // FIXED Issue #6: Send blacklisted player IDs to prevent infinite retry loop
         const response = await api.post<CpuPickResponse>(
@@ -340,8 +340,8 @@ If this persists, the database may be updating. Wait a few minutes and try again
           }
         )
 
-        console.log('[CPU Draft] RESPONSE API response received:', response.result)
-        console.log('[CPU Draft] DETAILS Response details:', {
+        // console.log('[CPU Draft] RESPONSE API response received:', response.result)
+        // console.log('[CPU Draft] DETAILS Response details:', {
           result: response.result,
           hasPick: !!response.pick,
           hasSession: !!response.session,
@@ -372,16 +372,16 @@ If this persists, the database may be updating. Wait a few minutes and try again
 
           // Automatic retry with exponential backoff
           cpuRetryCountRef.current += 1
-          console.log(`[CPU Draft] RETRY Attempt ${cpuRetryCountRef.current}/${maxRetries}`)
+          // console.log(`[CPU Draft] RETRY Attempt ${cpuRetryCountRef.current}/${maxRetries}`)
 
           if (cpuRetryCountRef.current < maxRetries) {
             // Exponential backoff: 1s, 2s, 4s
             const delayMs = Math.pow(2, cpuRetryCountRef.current - 1) * 1000
-            console.log(`[CPU Draft] RETRY Waiting ${delayMs}ms before retry...`)
+            // console.log(`[CPU Draft] RETRY Waiting ${delayMs}ms before retry...`)
 
             // Don't pause draft, just wait and let effect retry
             setTimeout(() => {
-              console.log('[CPU Draft] RETRY Triggering retry by resetting guard')
+              // console.log('[CPU Draft] RETRY Triggering retry by resetting guard')
               cpuDraftInProgressRef.current = false
             }, delayMs)
             return
@@ -397,7 +397,7 @@ If this persists, the database may be updating. Wait a few minutes and try again
         if (response.result === 'success' && response.pick && response.session) {
           // Reset retry counter on success
           cpuRetryCountRef.current = 0
-          console.log('[CPU Draft] SUCCESS CPU pick successful:', {
+          // console.log('[CPU Draft] SUCCESS CPU pick successful:', {
             pick: response.pick.pickNumber,
             player: response.pick.playerName,
             currentPickBefore: session.currentPick,
@@ -439,16 +439,16 @@ If this persists, the database may be updating. Wait a few minutes and try again
 
         // Automatic retry with exponential backoff
         cpuRetryCountRef.current += 1
-        console.log(`[CPU Draft] RETRY (Exception) Attempt ${cpuRetryCountRef.current}/${maxRetries}`)
+        // console.log(`[CPU Draft] RETRY (Exception) Attempt ${cpuRetryCountRef.current}/${maxRetries}`)
 
         if (cpuRetryCountRef.current < maxRetries) {
           // Exponential backoff: 1s, 2s, 4s
           const delayMs = Math.pow(2, cpuRetryCountRef.current - 1) * 1000
-          console.log(`[CPU Draft] RETRY Waiting ${delayMs}ms before retry...`)
+          // console.log(`[CPU Draft] RETRY Waiting ${delayMs}ms before retry...`)
 
           // Don't pause draft, just wait and let effect retry
           setTimeout(() => {
-            console.log('[CPU Draft] RETRY Triggering retry by resetting guard')
+            // console.log('[CPU Draft] RETRY Triggering retry by resetting guard')
             cpuDraftInProgressRef.current = false
           }, delayMs)
           return
@@ -503,7 +503,7 @@ If this persists, the database may be updating. Wait a few minutes and try again
 
   // FIXED Issue #11: Retry handler for CPU draft errors
   const handleRetry = useCallback(() => {
-    console.log('[CPU Draft] Manual retry triggered, resetting counter')
+    // console.log('[CPU Draft] Manual retry triggered, resetting counter')
     cpuRetryCountRef.current = 0
     setCpuError(null)
     resumeDraft()

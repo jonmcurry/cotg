@@ -105,7 +105,7 @@ export default function StatMaster({ session, onExit }: Props) {
                 if (allData.length > 0) {
                     const transformedPlayers = allData.map(transformPlayerSeasonData)
                     setPlayers(transformedPlayers)
-                    console.log(`[StatMaster] Loaded ${transformedPlayers.length} players in ${Math.ceil(seasonIds.length / BATCH_SIZE)} batches`)
+                    // console.log(`[StatMaster] Loaded ${transformedPlayers.length} players in ${Math.ceil(seasonIds.length / BATCH_SIZE)} batches`)
                 }
             } catch (err) {
                 console.error('[StatMaster] Exception loading players:', err)
@@ -189,7 +189,7 @@ export default function StatMaster({ session, onExit }: Props) {
         )
         updateScheduleInStore(updatedGames, 1)
 
-        console.log(`[StatMaster] All-Star Game: ${awaySquad.squadName} ${result.awayScore} @ ${homeSquad.squadName} ${result.homeScore}`)
+        // console.log(`[StatMaster] All-Star Game: ${awaySquad.squadName} ${result.awayScore} @ ${homeSquad.squadName} ${result.homeScore}`)
         setSimulating(false)
     }
 

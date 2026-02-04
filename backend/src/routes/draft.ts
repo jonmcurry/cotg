@@ -344,7 +344,7 @@ router.post('/', async (req: Request, res: Response) => {
       updatedAt: newSession.updated_at,
     }
 
-    console.log('[Draft API] Created session:', session.id, 'with', teams.length, 'teams')
+    // console.log('[Draft API] Created session:', session.id, 'with', teams.length, 'teams')
     return res.status(201).json(session)
   } catch (err) {
     console.error('[Draft API] Exception:', err)
@@ -386,7 +386,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       return res.status(500).json({ error: `Failed to update session: ${error.message}` })
     }
 
-    console.log('[Draft API] Updated session:', id, Object.keys(dbUpdates))
+    // console.log('[Draft API] Updated session:', id, Object.keys(dbUpdates))
     return res.json({
       id: data.id,
       name: data.session_name,
@@ -425,7 +425,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
       return res.status(500).json({ error: `Failed to delete session: ${error.message}` })
     }
 
-    console.log('[Draft API] Deleted session:', id)
+    // console.log('[Draft API] Deleted session:', id)
     return res.status(204).send()
   } catch (err) {
     console.error('[Draft API] Exception:', err)

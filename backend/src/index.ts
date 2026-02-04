@@ -61,6 +61,6 @@ app.use('/api/teams', lineupRouter)
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`COTG API server running on port ${PORT}`)
-  console.log(`Health check: http://localhost:${PORT}/api/health`)
+  // console.log(`COTG API server running on port ${PORT}`)
+  // console.log(`Health check: http://localhost:${PORT}/api/health`)
 })

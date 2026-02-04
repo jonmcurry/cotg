@@ -94,7 +94,7 @@ export default function GroupedPlayerPool({
       .filter(group => group.availableSeasons.length > 0)
       .sort((a, b) => b.bestRating - a.bestRating)
 
-    console.log('[GroupedPlayerPool] Total seasons:', totalSeasons, '| Drafted:', draftedSeasons, '| Available groups:', result.length)
+    // console.log('[GroupedPlayerPool] Total seasons:', totalSeasons, '| Drafted:', draftedSeasons, '| Available groups:', result.length)
     return result
   }, [players, draftedPlayerIds])
 

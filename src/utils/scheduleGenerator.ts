@@ -41,8 +41,8 @@ export function generateSchedule(
     const gamesPerMatchup = Math.floor(gamesPerTeam / (numTeams - 1))
     const actualGamesPerTeam = gamesPerMatchup * (numTeams - 1)
 
-    console.log(`[ScheduleGen] Generating ${actualGamesPerTeam} games per team`)
-    console.log(`[ScheduleGen] Each team plays each opponent ${gamesPerMatchup} times`)
+    // console.log(`[ScheduleGen] Generating ${actualGamesPerTeam} games per team`)
+    // console.log(`[ScheduleGen] Each team plays each opponent ${gamesPerMatchup} times`)
 
     // Generate all series (each matchup produces 2 series: home and away)
     const allSeries: Series[] = []
@@ -161,15 +161,15 @@ export function generateSchedule(
         currentGameIndex: 0
     }
 
-    console.log(`[ScheduleGen] Generated ${games.length} total games`)
-    console.log(`[ScheduleGen] Season runs from ${schedule.seasonStartDate.toLocaleDateString()} to ${schedule.seasonEndDate.toLocaleDateString()}`)
+    // console.log(`[ScheduleGen] Generated ${games.length} total games`)
+    // console.log(`[ScheduleGen] Season runs from ${schedule.seasonStartDate.toLocaleDateString()} to ${schedule.seasonEndDate.toLocaleDateString()}`)
 
     // Log team game counts
-    teams.forEach(t => {
-        const homeGames = games.filter(g => g.homeTeamId === t.id).length
-        const awayGames = games.filter(g => g.awayTeamId === t.id).length
-        console.log(`[ScheduleGen] ${t.name}: ${homeGames} home, ${awayGames} away, ${homeGames + awayGames} total`)
-    })
+    // teams.forEach(t => {
+    //     const homeGames = games.filter(g => g.homeTeamId === t.id).length
+    //     const awayGames = games.filter(g => g.awayTeamId === t.id).length
+    //     console.log(`[ScheduleGen] ${t.name}: ${homeGames} home, ${awayGames} away, ${homeGames + awayGames} total`)
+    // })
 
     return schedule
 }
