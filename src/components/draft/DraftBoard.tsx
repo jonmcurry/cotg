@@ -239,13 +239,13 @@ If this persists, the database may be updating. Wait a few minutes and try again
   // Component-scoped cpuDraftInProgress guard with proper cleanup prevents race conditions
   useEffect(() => {
     // console.log('[CPU Draft] EFFECT Effect triggered, checking conditions:', {
-      hasSession: !!session,
-      hasCurrentTeam: !!currentTeam,
-      currentTeamControl: currentTeam?.control,
-      cpuDraftInProgress: cpuDraftInProgressRef.current,
-      sessionStatus: session?.status,
-      currentPick: session?.currentPick
-    })
+    //   hasSession: !!session,
+    //   hasCurrentTeam: !!currentTeam,
+    //   currentTeamControl: currentTeam?.control,
+    //   cpuDraftInProgress: cpuDraftInProgressRef.current,
+    //   sessionStatus: session?.status,
+    //   currentPick: session?.currentPick
+    // })
 
     let cancelled = false // StrictMode cleanup: set true on unmount to skip UI updates
 
@@ -342,12 +342,12 @@ If this persists, the database may be updating. Wait a few minutes and try again
 
         // console.log('[CPU Draft] RESPONSE API response received:', response.result)
         // console.log('[CPU Draft] DETAILS Response details:', {
-          result: response.result,
-          hasPick: !!response.pick,
-          hasSession: !!response.session,
-          error: response.error,
-          fullResponse: response
-        })
+        //   result: response.result,
+        //   hasPick: !!response.pick,
+        //   hasSession: !!response.session,
+        //   error: response.error,
+        //   fullResponse: response
+        // })
 
         // Final cancelled check before updating state
         if (cancelled) return
@@ -398,11 +398,11 @@ If this persists, the database may be updating. Wait a few minutes and try again
           // Reset retry counter on success
           cpuRetryCountRef.current = 0
           // console.log('[CPU Draft] SUCCESS CPU pick successful:', {
-            pick: response.pick.pickNumber,
-            player: response.pick.playerName,
-            currentPickBefore: session.currentPick,
-            currentPickFromAPI: response.session.currentPick
-          })
+          //   pick: response.pick.pickNumber,
+          //   player: response.pick.playerName,
+          //   currentPickBefore: session.currentPick,
+          //   currentPickFromAPI: response.session.currentPick
+          // })
 
           // Update session with pick data - don't reload entire session to avoid
           // triggering player reload (loadSession doesn't preserve selectedSeasons)

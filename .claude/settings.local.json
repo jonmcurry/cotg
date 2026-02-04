@@ -52,7 +52,9 @@
       "Bash(npx tsc:*)",
       "Bash(node dist/test-cpu-draft.js:*)",
       "Bash(node:*)",
-      "Bash(perl -i -pe:*)"
+      "Bash(perl -i -pe:*)",
+      "Bash(chmod:*)",
+      "Bash(./test-frontend-build.sh:*)"
     ]
   }
 }

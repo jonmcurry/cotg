@@ -218,7 +218,7 @@ export const useDraftStore = create<DraftState>()(
           //   currentRound: session.currentRound
           // })
 
-          const response = await api.put(`/draft/sessions/${session.id}`, {
+          await api.put(`/draft/sessions/${session.id}`, {
             status: session.status,
             currentPick: session.currentPick,
             currentRound: session.currentRound,

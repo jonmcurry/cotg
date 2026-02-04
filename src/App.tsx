@@ -24,7 +24,7 @@ export default function App() {
 
   const handleCreateLeague = async (config: LeagueConfig) => {
     const seasonYear = new Date().getFullYear()
-    const league = await createLeague(config, seasonYear)
+    await createLeague(config, seasonYear)
     // console.log('[App] League created:', league.id, league.name)
     setScreen('config')
   }
