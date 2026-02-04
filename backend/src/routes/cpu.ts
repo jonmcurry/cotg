@@ -172,18 +172,23 @@ function playerQualifiesForPosition(playerPosition: string, rosterPosition: Posi
 }
 
 // Check playing time requirements
-function meetsPlayingTimeRequirements(player: PlayerSeason, rosterPosition: PositionCode): boolean {
+// useRelaxed: When true, uses lower thresholds (100 AB / 45 IP) as fallback
+function meetsPlayingTimeRequirements(player: PlayerSeason, rosterPosition: PositionCode, useRelaxed: boolean = false): boolean {
   const atBats = player.at_bats || 0
   const inningsPitchedOuts = player.innings_pitched_outs || 0
 
+  // Relaxed thresholds for fallback when no candidates found
+  const minAtBats = useRelaxed ? 100 : 200
+  const minInningsPitchedOuts = useRelaxed ? 45 : 90
+
   const isPositionPlayerSlot = ['C', '1B', '2B', 'SS', '3B', 'OF', 'DH'].includes(rosterPosition)
-  if (isPositionPlayerSlot) return atBats >= 200
+  if (isPositionPlayerSlot) return atBats >= minAtBats
 
   const isPitcherSlot = ['SP', 'RP', 'CL'].includes(rosterPosition)
-  if (isPitcherSlot) return inningsPitchedOuts >= 90
+  if (isPitcherSlot) return inningsPitchedOuts >= minInningsPitchedOuts
 
-  if (rosterPosition === 'BN') return atBats >= 200
-  return atBats >= 200 || inningsPitchedOuts >= 90
+  if (rosterPosition === 'BN') return atBats >= minAtBats
+  return atBats >= minAtBats || inningsPitchedOuts >= minInningsPitchedOuts
 }
 
 // Calculate weighted score for a player
@@ -307,14 +312,39 @@ function selectBestPlayer(
   // })
 
   if (allScoredCandidates.length === 0) {
-    // console.log('[selectBestPlayer] No candidates found, trying bench positions')
+    // FALLBACK 1: Try with relaxed playing time requirements (100 AB instead of 200)
+    // This ensures draft can complete when high-AB players are exhausted
+    console.log('[selectBestPlayer] No candidates with strict requirements, trying relaxed thresholds...')
+    for (const position of uniqueUnfilledPositions) {
+      const baseWeight = POSITION_SCARCITY[position] || 1.0
+      const adjustedWeight = adjustScarcityByRound(baseWeight, currentRound)
+
+      const eligible = undraftedPlayers.filter(player =>
+        playerQualifiesForPosition(player.primary_position, position) &&
+        meetsPlayingTimeRequirements(player, position, true)  // useRelaxed = true
+      )
+
+      if (eligible.length === 0) continue
+
+      for (const player of eligible) {
+        const score = calculateWeightedScore(player, position, team, 0.1, adjustedWeight, currentRound)
+        allScoredCandidates.push({ player, position, score })
+      }
+    }
+    console.log(`[selectBestPlayer] Found ${allScoredCandidates.length} candidates with relaxed requirements`)
+  }
+
+  if (allScoredCandidates.length === 0) {
+    // FALLBACK 2: Try bench positions
     if (!uniqueUnfilledPositions.includes('BN')) {
       const benchSlotsAvailable = team.roster.filter(slot => slot.position === 'BN' && !slot.isFilled).length
-      // console.log('[selectBestPlayer] Bench slots available:', benchSlotsAvailable)
       if (benchSlotsAvailable > 0) {
         const benchWeight = adjustScarcityByRound(POSITION_SCARCITY['BN'] || 0.5, currentRound)
-        const benchCandidates = undraftedPlayers.filter(player => meetsPlayingTimeRequirements(player, 'BN'))
-        // console.log('[selectBestPlayer] Bench candidates after playing time filter:', benchCandidates.length)
+        // Try strict first, then relaxed for bench
+        let benchCandidates = undraftedPlayers.filter(player => meetsPlayingTimeRequirements(player, 'BN'))
+        if (benchCandidates.length === 0) {
+          benchCandidates = undraftedPlayers.filter(player => meetsPlayingTimeRequirements(player, 'BN', true))
+        }
         for (const player of benchCandidates) {
           const score = calculateWeightedScore(player, 'BN', team, 0.1, benchWeight, currentRound)
           allScoredCandidates.push({ player, position: 'BN', score })
@@ -322,7 +352,7 @@ function selectBestPlayer(
       }
     }
     if (allScoredCandidates.length === 0) {
-      console.error('[selectBestPlayer] FAIL: No candidates found after all filtering')
+      console.error('[selectBestPlayer] FAIL: No candidates found after all filtering (including relaxed)')
       return null
     }
   }
@@ -694,3 +724,14 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
 })
 
 export default router
+
+// Export types and functions for testing
+export {
+  selectBestPlayer,
+  meetsPlayingTimeRequirements,
+  playerQualifiesForPosition,
+  getUnfilledPositions,
+  ROSTER_REQUIREMENTS,
+  POSITION_ELIGIBILITY,
+}
+export type { PlayerSeason, DraftTeam, RosterSlot, PositionCode }
