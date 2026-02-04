@@ -165,25 +165,18 @@ function playerQualifiesForPosition(playerPosition: string, rosterPosition: Posi
 }
 
 // Check playing time requirements
-function meetsPlayingTimeRequirements(player: PlayerSeason, rosterPosition: PositionCode, currentRound: number = 1): boolean {
+function meetsPlayingTimeRequirements(player: PlayerSeason, rosterPosition: PositionCode): boolean {
   const atBats = player.at_bats || 0
   const inningsPitchedOuts = player.innings_pitched_outs || 0
 
-  // ADAPTIVE REQUIREMENTS: Relax in late rounds (15+) to ensure draft completion
-  // Early/mid rounds (1-14): Full requirements (200 AB / 90 IP)
-  // Late rounds (15-21): Relaxed requirements (100 AB / 45 IP)
-  const isLateRound = currentRound >= 15
-  const minAtBats = isLateRound ? 100 : 200
-  const minInningsPitchedOuts = isLateRound ? 45 : 90
-
   const isPositionPlayerSlot = ['C', '1B', '2B', 'SS', '3B', 'OF', 'DH'].includes(rosterPosition)
-  if (isPositionPlayerSlot) return atBats >= minAtBats
+  if (isPositionPlayerSlot) return atBats >= 200
 
   const isPitcherSlot = ['SP', 'RP', 'CL'].includes(rosterPosition)
-  if (isPitcherSlot) return inningsPitchedOuts >= minInningsPitchedOuts
+  if (isPitcherSlot) return inningsPitchedOuts >= 90
 
-  if (rosterPosition === 'BN') return atBats >= minAtBats
-  return atBats >= minAtBats || inningsPitchedOuts >= minInningsPitchedOuts
+  if (rosterPosition === 'BN') return atBats >= 200
+  return atBats >= 200 || inningsPitchedOuts >= 90
 }
 
 // Calculate weighted score for a player
@@ -233,8 +226,7 @@ function selectBestPlayer(
     draftedCount: draftedPlayerIds.size,
     excludedCount: excludePlayerSeasonIds.size,
     teamId: team.id,
-    round: currentRound,
-    isLateRound: currentRound >= 15
+    round: currentRound
   })
 
   // FIXED Issue #6: Filter out both drafted players and blacklisted player seasons
@@ -287,7 +279,7 @@ function selectBestPlayer(
 
     const eligible = undraftedPlayers.filter(player =>
       playerQualifiesForPosition(player.primary_position, position) &&
-      meetsPlayingTimeRequirements(player, position, currentRound)
+      meetsPlayingTimeRequirements(player, position)
     )
 
     console.log(`[selectBestPlayer] Position ${position}:`, {
@@ -314,7 +306,7 @@ function selectBestPlayer(
       console.log('[selectBestPlayer] Bench slots available:', benchSlotsAvailable)
       if (benchSlotsAvailable > 0) {
         const benchWeight = adjustScarcityByRound(POSITION_SCARCITY['BN'] || 0.5, currentRound)
-        const benchCandidates = undraftedPlayers.filter(player => meetsPlayingTimeRequirements(player, 'BN', currentRound))
+        const benchCandidates = undraftedPlayers.filter(player => meetsPlayingTimeRequirements(player, 'BN'))
         console.log('[selectBestPlayer] Bench candidates after playing time filter:', benchCandidates.length)
         for (const player of benchCandidates) {
           const score = calculateWeightedScore(player, 'BN', team, 0.1, benchWeight, currentRound)
@@ -523,9 +515,9 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
       console.warn('[CPU API] Session selected_seasons from DB:', session.selected_seasons)
     }
 
-    // FIXED: Remove pool size limits - CPU can now search ALL available players
-    // This ensures adequate coverage for all positions across all 21 draft rounds
-    // Playing time filtering handled by meetsPlayingTimeRequirements() with adaptive thresholds
+    // FIXED: Remove pool size limits - ONLY change from original
+    // Original logic restored: 200 AB for hitters, 90 IP for pitchers
+    // CPU can now search ALL available players instead of top 600/400
     const { data: hittersData, error: hittersError } = await supabase
       .from('player_seasons')
       .select(`
@@ -536,9 +528,9 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
         players!inner (display_name, first_name, last_name, bats)
       `)
       .in('year', yearList)
-      .gte('at_bats', 50)  // Lowered from 200 to allow adaptive filtering in meetsPlayingTimeRequirements
+      .gte('at_bats', 200)
       .order('apba_rating', { ascending: false, nullsFirst: false })
-      // No limit - query all available hitters
+      // Removed .limit(600) - this is the ONLY change
 
     const { data: pitchersData, error: pitchersError } = await supabase
       .from('player_seasons')
@@ -550,10 +542,10 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
         players!inner (display_name, first_name, last_name, bats)
       `)
       .in('year', yearList)
-      .gte('innings_pitched_outs', 30)  // Lowered from 90 to allow adaptive filtering
+      .gte('innings_pitched_outs', 90)
       .lt('at_bats', 200)
       .order('apba_rating', { ascending: false, nullsFirst: false })
-      // No limit - query all available pitchers
+      // Removed .limit(400) - this is the ONLY change
 
     if (hittersError || pitchersError) {
       console.error('[CPU API] Error loading players:', hittersError || pitchersError)
