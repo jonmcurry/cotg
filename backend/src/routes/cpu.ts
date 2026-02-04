@@ -552,9 +552,13 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
       console.warn('[CPU API] Session selected_seasons from DB:', session.selected_seasons)
     }
 
-    // FIXED: Remove pool size limits - ONLY change from original
-    // Original logic restored: 200 AB for hitters, 90 IP for pitchers
-    // CPU can now search ALL available players instead of top 600/400
+    // FIXED: Load pool with RELAXED thresholds (100 AB / 45 IP) to support fallback
+    // The selectBestPlayer function will still prefer 200+ AB players first (strict),
+    // but can fall back to 100+ AB players when strict pool is exhausted.
+    // This ensures the draft can always complete even in late rounds.
+    const RELAXED_AB_THRESHOLD = 100  // Matches meetsPlayingTimeRequirements relaxed threshold
+    const RELAXED_IP_THRESHOLD = 45   // Matches meetsPlayingTimeRequirements relaxed threshold
+
     const { data: hittersData, error: hittersError } = await supabase
       .from('player_seasons')
       .select(`
@@ -565,9 +569,8 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
         players!inner (display_name, first_name, last_name, bats)
       `)
       .in('year', yearList)
-      .gte('at_bats', 200)
+      .gte('at_bats', RELAXED_AB_THRESHOLD)
       .order('apba_rating', { ascending: false, nullsFirst: false })
-      // Removed .limit(600) - this is the ONLY change
 
     const { data: pitchersData, error: pitchersError } = await supabase
       .from('player_seasons')
@@ -579,10 +582,9 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
         players!inner (display_name, first_name, last_name, bats)
       `)
       .in('year', yearList)
-      .gte('innings_pitched_outs', 90)
-      .lt('at_bats', 200)
+      .gte('innings_pitched_outs', RELAXED_IP_THRESHOLD)
+      .lt('at_bats', RELAXED_AB_THRESHOLD)
       .order('apba_rating', { ascending: false, nullsFirst: false })
-      // Removed .limit(400) - this is the ONLY change
 
     if (hittersError || pitchersError) {
       console.error('[CPU API] Error loading players:', hittersError || pitchersError)

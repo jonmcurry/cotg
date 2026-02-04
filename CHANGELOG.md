@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-04 (CPU Draft Pool Threshold Bug)
+- **CRITICAL BUG FIX**: Fixed CPU failing to find players in late draft rounds when high-AB players exhausted
+  - **Root Cause**: Database query used strict threshold (200 AB) but fallback logic needed relaxed threshold (100 AB)
+  - When all catchers with 200+ AB were drafted, CPU couldn't find 100-199 AB catchers even though they exist
+  - The `meetsPlayingTimeRequirements` fallback to 100 AB was useless because those players weren't in the pool
+  - **Solution**: Changed database query thresholds to match relaxed fallback thresholds
+    - Hitters: 200 AB -> 100 AB (matches relaxed threshold)
+    - Pitchers: 90 IP -> 45 IP (matches relaxed threshold)
+  - `selectBestPlayer` still prefers 200+ AB players first (strict), falls back to 100+ AB when needed
+  - **Testing**: Test-Driven Development (TDD) approach
+    - Created unit test to reproduce bug (test failed as expected)
+    - Implemented fix (test passes)
+    - Test removed per project guidelines
+  - Files modified: backend/src/routes/cpu.ts (lines 555-586)
+  - Status: Ready for deployment
+
 ### Fixed - 2026-02-03 (Frontend TypeScript Compilation Errors)
 - **CRITICAL BUILD FIX**: Fixed TypeScript compilation errors preventing frontend builds
   - **Root Cause**: Multi-line console.log statements in DraftBoard.tsx only partially commented
