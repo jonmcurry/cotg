@@ -19,6 +19,9 @@ Rule 10: Keep track with the changelog.md file
 - **Seek clarification**: Ask follow-up questions when requirements are ambiguous or could be interpreted multiple ways
 - **Propose improvements**: Suggest better patterns, more robust solutions, or cleaner implementations when appropriate
 - **Be a thoughtful collaborator**: Act as a good teammate who helps improve the overall quality and direction of the project
+Instruct Claude to first write a test case that reproduces the bug, without modifying the source code.
+Once the test fails (confirming the bug is reproducible), ask it to modify the code to make the test pass.
+This Test-Driven Development (TDD) approach provides clear success and failure criteria for each step.
 
 ## Project Overview
 APBA Baseball Web - A web-based implementation of the APBA baseball tabletop game with:

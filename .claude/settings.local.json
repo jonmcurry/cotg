@@ -46,7 +46,12 @@
       "Bash(git rm:*)",
       "Bash(git restore:*)",
       "Bash(git reset:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(npm run test:cpu-draft:*)",
+      "Bash(npx ts-node:*)",
+      "Bash(npx tsc:*)",
+      "Bash(node dist/test-cpu-draft.js:*)",
+      "Bash(node:*)"
     ]
   }
 }
