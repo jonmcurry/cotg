@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-05 (Clubhouse Screen Flickering/Infinite Refresh)
+- **BUG FIX**: Fixed Clubhouse screen (Roster, Lineups, Rotation tabs) constantly flickering after draft completion
+  - **Problem**: Screen flickered/refreshed in an infinite loop when navigating to Clubhouse
+  - **Root Cause**: Infinite useEffect dependency loop in Clubhouse.tsx
+    1. First useEffect depended on `session.teams` AND `seasonIdsCacheKey` (redundant)
+    2. Second useEffect called `updateTeamDepthChart()` which changes `session.teams` reference
+    3. This triggered first useEffect again -> `setLoading(true)` -> `setLoading(false)` -> second useEffect -> repeat forever
+  - **Solution**:
+    1. Removed redundant `session.teams` from first useEffect deps (already captured via `seasonIdsCacheKey`)
+    2. Added `useRef` guard in second useEffect to ensure lineups only generated once per session
+  - **Files Modified**:
+    - src/components/clubhouse/Clubhouse.tsx (fix useEffect dependencies and add guard ref)
+    - PLAN-clubhouse-flickering.md (documented investigation and fix)
+
 ### Fixed - 2026-02-04 (Undefined Player Names in Draft UI)
 - **BUG FIX**: Fixed player names showing as "undefined undefined" / "Unknown Player" in draft UI
   - **Problem**: `/pool-full` endpoint returns flat format (`player.display_name`)

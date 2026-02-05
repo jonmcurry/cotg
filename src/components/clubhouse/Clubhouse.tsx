@@ -3,7 +3,7 @@
  * Post-draft management interface for setting depth charts and rotations
  */
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import type { DraftSession, DraftTeam } from '../../types/draft.types'
 import type { PlayerSeason } from '../../types/player'
 import { transformPlayerSeasonData } from '../../utils/transformPlayerData'
@@ -68,6 +68,9 @@ export default function Clubhouse({ session, onExit, onStartSeason }: Props) {
     const [generatingSchedule, setGeneratingSchedule] = useState(false)
     const [scheduleError, setScheduleError] = useState<string | null>(null)
 
+    // Track if lineups have been generated this session to prevent infinite loops
+    const lineupsGeneratedRef = useRef(false)
+
     const selectedTeam = session.teams.find(t => t.id === selectedTeamId)
 
     // Cache key: derive from the set of drafted player season IDs
@@ -80,6 +83,8 @@ export default function Clubhouse({ session, onExit, onStartSeason }: Props) {
     }, [session.teams])
 
     // Load drafted players - re-fetches when roster composition changes
+    // NOTE: Only depends on seasonIdsCacheKey (not session.teams) to prevent infinite loops
+    // when depth charts are updated (which changes session.teams reference)
     useEffect(() => {
         async function loadDraftedPlayers() {
             try {
@@ -114,14 +119,20 @@ export default function Clubhouse({ session, onExit, onStartSeason }: Props) {
 
         setLoading(true)
         loadDraftedPlayers()
-    }, [seasonIdsCacheKey, session.teams])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [seasonIdsCacheKey])
 
     // Auto-generate depth charts for teams that don't have one yet
-    // Runs once after player data finishes loading - uses backend API
+    // Runs ONCE after player data finishes loading - uses backend API
+    // Uses ref guard to prevent infinite loops from session.teams reference changes
     useEffect(() => {
         if (loading || players.length === 0) return
+        if (lineupsGeneratedRef.current) return // Already generated this session
 
         async function generateLineups() {
+            // Mark as generated BEFORE async calls to prevent re-entry
+            lineupsGeneratedRef.current = true
+
             for (const team of session.teams) {
                 // Skip teams that already have a configured depth chart
                 const hasLineup = team.depthChart?.lineupVS_RHP?.some(s => s.playerSeasonId)
@@ -152,7 +163,8 @@ export default function Clubhouse({ session, onExit, onStartSeason }: Props) {
         }
 
         generateLineups()
-    }, [loading, players.length, session.teams, updateTeamDepthChart])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [loading, players.length])
 
     // Validate all teams for season readiness
     const validationIssues = useMemo(() => {
