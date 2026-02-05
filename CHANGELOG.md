@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-05 (CPU Batch Picks SQL Typo)
+- **BUG FIX**: Fixed typo in batch CPU picks ON CONFLICT clause
+  - **Problem**: SQL referenced `EXCLUDED.player_session_id` which doesn't exist
+  - **Error**: `column excluded.player_session_id does not exist`
+  - **Solution**: Fixed to `EXCLUDED.player_season_id` (season, not session)
+  - **Files Modified**: backend/src/routes/cpu.ts
+
 ### Performance - 2026-02-05 (CPU Draft Pick Speed Optimization - Phase 2: Batch Picks)
 - **PERFORMANCE FIX**: Eliminated frontend round-trip latency with batch CPU picks endpoint
   - **Problem**: Even with server-side caching, each CPU pick required a full frontend-backend round-trip

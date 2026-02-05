@@ -10,7 +10,7 @@
 
 import { Pool } from 'pg'
 import * as dotenv from 'dotenv'
-import { calculatePlayerRating, getRatingDescription } from '../src/utils/apbaRating.js'
+import { calculatePlayerRating, getRatingDescription } from '../src/utils/apbaRating'
 
 dotenv.config()
 

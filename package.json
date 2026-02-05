@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "deploy:migrations": "bash scripts/deploy-migrations.sh",
     "import:lahman": "tsx scripts/import-lahman.ts",
-    "generate:apba-cards": "tsx scripts/generate-apba-cards.ts"
+    "generate:apba-cards": "tsx scripts/generate-apba-cards.ts",
+    "calculate:ratings": "tsx scripts/calculate-apba-ratings.ts"
   },
   "dependencies": {
     "@tailwindcss/typography": "^0.5.19",
