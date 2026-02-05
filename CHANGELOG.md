@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-04 (CPU Draft Supabase Row Limit Bug)
+- **CRITICAL BUG FIX**: Fixed CPU failing to find 2B/SS players due to Supabase default 1000 row limit
+  - **Root Cause**: Supabase returns max 1000 rows by default without explicit `.range()`
+  - Even after removing explicit `.limit()` calls, Supabase's default limit was still active
+  - CPU pool only got top 1000 players by rating; 2B/SS players not in top 1000 were excluded
+  - Frontend showed 24,886 players but CPU only searched 1000
+  - **Solution**: Added explicit `.range(0, 49999)` to override default limit
+  - CPU now queries up to 50,000 players to ensure all positions are represented
+  - **Diagnostic logging added** to track 2B/SS player counts and position breakdown
+  - Files modified: backend/src/routes/cpu.ts
+  - Status: Ready for deployment
+
 ### Fixed - 2026-02-04 (CPU Draft Pool Threshold Bug)
 - **CRITICAL BUG FIX**: Fixed CPU failing to find players in late draft rounds when high-AB players exhausted
   - **Root Cause**: Database query used strict threshold (200 AB) but fallback logic needed relaxed threshold (100 AB)

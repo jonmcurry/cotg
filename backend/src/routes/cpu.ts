@@ -574,6 +574,12 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
     const RELAXED_AB_THRESHOLD = 100  // Matches meetsPlayingTimeRequirements relaxed threshold
     const RELAXED_IP_THRESHOLD = 45   // Matches meetsPlayingTimeRequirements relaxed threshold
 
+    // CRITICAL FIX: Supabase has a default 1000 row limit!
+    // Without explicit range, only top 1000 players by rating are returned.
+    // 2B/SS players might not be in top 1000, causing "player not found" errors.
+    // Use explicit large range to get ALL players matching the criteria.
+    const MAX_POOL_SIZE = 50000  // Large enough for any multi-decade draft
+
     const { data: hittersData, error: hittersError } = await supabase
       .from('player_seasons')
       .select(`
@@ -586,6 +592,7 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
       .in('year', yearList)
       .gte('at_bats', RELAXED_AB_THRESHOLD)
       .order('apba_rating', { ascending: false, nullsFirst: false })
+      .range(0, MAX_POOL_SIZE - 1)  // Explicit range to override Supabase default 1000 limit
 
     const { data: pitchersData, error: pitchersError } = await supabase
       .from('player_seasons')
@@ -600,6 +607,7 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
       .gte('innings_pitched_outs', RELAXED_IP_THRESHOLD)
       .lt('at_bats', RELAXED_AB_THRESHOLD)
       .order('apba_rating', { ascending: false, nullsFirst: false })
+      .range(0, MAX_POOL_SIZE - 1)  // Explicit range to override Supabase default 1000 limit
 
     if (hittersError || pitchersError) {
       console.error('[CPU API] Error loading players:', hittersError || pitchersError)
