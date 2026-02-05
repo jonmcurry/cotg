@@ -55,7 +55,8 @@
       "Bash(perl -i -pe:*)",
       "Bash(chmod:*)",
       "Bash(./test-frontend-build.sh:*)",
-      "Bash(npm test:*)"
+      "Bash(npm test:*)",
+      "Bash(npm uninstall:*)"
     ]
   }
 }
