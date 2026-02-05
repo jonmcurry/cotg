@@ -46,6 +46,19 @@ interface DraftPick {
   slotNumber: number | null
 }
 
+// Database row type
+interface DbPickRow {
+  pick_number: number
+  round: number
+  pick_in_round: number
+  draft_team_id: string
+  player_season_id: string | null
+  player_id: string | null
+  position: string | null
+  slot_number: number | null
+  created_at: string
+}
+
 /**
  * GET /api/draft/sessions/:sessionId/picks
  * Get all picks for a session
@@ -59,7 +72,7 @@ router.get('/:sessionId/picks', async (req: Request, res: Response) => {
       [sessionId]
     )
 
-    const picks: DraftPick[] = result.rows.map(row => ({
+    const picks: DraftPick[] = result.rows.map((row: DbPickRow) => ({
       pickNumber: row.pick_number,
       round: row.round,
       pickInRound: row.pick_in_round,
@@ -67,7 +80,7 @@ router.get('/:sessionId/picks', async (req: Request, res: Response) => {
       playerSeasonId: row.player_season_id,
       playerId: row.player_id,
       pickTime: row.created_at,
-      position: row.position || null,
+      position: row.position as PositionCode || null,
       slotNumber: row.slot_number || null,
     }))
 

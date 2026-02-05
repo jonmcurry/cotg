@@ -47,6 +47,12 @@ interface TeamBasic {
   name: string
 }
 
+// Database row type
+interface DbTeamRow {
+  id: string
+  team_name: string
+}
+
 /**
  * Distributes games into realistic series lengths (2-4 games)
  */
@@ -251,7 +257,7 @@ router.post('/:sessionId/schedule', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Need at least 2 teams to generate a schedule' })
     }
 
-    const teams: TeamBasic[] = teamsResult.rows.map(t => ({
+    const teams: TeamBasic[] = teamsResult.rows.map((t: DbTeamRow) => ({
       id: t.id,
       name: t.team_name
     }))

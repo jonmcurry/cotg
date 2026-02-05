@@ -23,7 +23,7 @@ export const pool = new Pool({
 })
 
 // Log pool errors
-pool.on('error', (err) => {
+pool.on('error', (err: Error) => {
   console.error('[DB] Unexpected pool error:', err)
 })
 

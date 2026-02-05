@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-05 (Render TypeScript Build Errors)
+- **BUG FIX**: Fixed TypeScript compilation errors on Render deployment
+  - **Problem**: Render doesn't install devDependencies in production, causing @types/pg to be missing
+  - **Problem**: Implicit 'any' types in callback parameters causing strict mode errors
+  - **Solution**:
+    - Moved @types/pg from devDependencies to dependencies in backend/package.json
+    - Added explicit database row interfaces (DbSessionRow, DbTeamRow, DbPickRow) in route files
+    - Added Error type to pool error handler in db.ts
+  - **Files Modified**:
+    - backend/package.json (moved @types/pg to dependencies)
+    - backend/src/lib/db.ts (typed err parameter)
+    - backend/src/routes/draft.ts (added row type interfaces)
+    - backend/src/routes/picks.ts (added DbPickRow interface)
+    - backend/src/routes/schedule.ts (added DbTeamRow interface)
+
 ### Changed - 2026-02-05 (Database Migration: Supabase to Neon PostgreSQL)
 - **MIGRATION**: Complete database migration from Supabase to Neon PostgreSQL
   - **Motivation**: Move to serverless PostgreSQL with better connection pooling

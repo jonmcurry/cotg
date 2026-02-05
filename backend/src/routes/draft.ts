@@ -70,6 +70,36 @@ interface DraftSession {
   updatedAt: string
 }
 
+// Database row types
+interface DbSessionRow {
+  id: string
+  session_name: string
+  status: DraftStatus
+  num_teams: number
+  current_pick_number: number
+  current_round: number
+  selected_seasons: number[]
+  created_at: string
+  updated_at: string
+}
+
+interface DbTeamRow {
+  id: string
+  team_name: string
+  control: string
+  draft_order: number
+}
+
+interface DbPickRow {
+  pick_number: number
+  draft_team_id: string
+  player_season_id: string | null
+  player_id: string | null
+  position: string | null
+  slot_number: number | null
+  created_at: string
+}
+
 // Helper: Create roster slots for a team
 function createRosterSlots(): RosterSlot[] {
   const roster: RosterSlot[] = []
@@ -125,7 +155,7 @@ router.get('/', async (_req: Request, res: Response) => {
     `)
 
     // Transform to API format
-    const sessions = result.rows.map(row => ({
+    const sessions = result.rows.map((row: DbSessionRow) => ({
       id: row.id,
       name: row.session_name,
       status: row.status,
@@ -176,7 +206,7 @@ router.get('/:id', async (req: Request, res: Response) => {
     )
 
     // Transform teams
-    const teams: DraftTeam[] = teamsResult.rows.map(row => ({
+    const teams: DraftTeam[] = teamsResult.rows.map((row: DbTeamRow) => ({
       id: row.id,
       name: row.team_name,
       control: (row.control || 'cpu') as TeamControl,
@@ -186,8 +216,8 @@ router.get('/:id', async (req: Request, res: Response) => {
     }))
 
     // Fill roster from picks
-    const picksMap = new Map<string, typeof picksResult.rows[0][]>()
-    picksResult.rows.forEach(pick => {
+    const picksMap = new Map<string, DbPickRow[]>()
+    picksResult.rows.forEach((pick: DbPickRow) => {
       if (pick.player_season_id) {
         const teamPicks = picksMap.get(pick.draft_team_id) || []
         teamPicks.push(pick)
@@ -204,7 +234,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       : []
 
     // Overlay completed picks from database
-    picksResult.rows.forEach(dbPick => {
+    picksResult.rows.forEach((dbPick: DbPickRow) => {
       const pickIndex = picks.findIndex(p => p.pickNumber === dbPick.pick_number)
       if (pickIndex !== -1 && dbPick.player_season_id) {
         picks[pickIndex] = {
@@ -212,7 +242,7 @@ router.get('/:id', async (req: Request, res: Response) => {
           playerSeasonId: dbPick.player_season_id,
           playerId: dbPick.player_id,
           pickTime: dbPick.created_at,
-          position: dbPick.position || null,
+          position: dbPick.position as PositionCode || null,
           slotNumber: dbPick.slot_number || null,
         }
       }
@@ -298,7 +328,7 @@ router.post('/', async (req: Request, res: Response) => {
     ])
 
     // Build response
-    const teams: DraftTeam[] = teamsResult.rows.map(row => ({
+    const teams: DraftTeam[] = teamsResult.rows.map((row: DbTeamRow) => ({
       id: row.id,
       name: row.team_name,
       control: row.control as TeamControl,
