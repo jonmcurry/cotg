@@ -68,36 +68,56 @@ export async function getSessionData(sessionId: string): Promise<CachedSessionDa
     return cached
   }
 
-  // Load from database
+  // Load from database with retry logic for Neon cold starts
   console.log(`[SessionCache] MISS for session ${sessionId}, loading...`)
   const startTime = Date.now()
+  const maxRetries = 2
+  let lastError: Error | null = null
 
-  // Run all 3 queries in parallel
-  const [sessionResult, teamsResult, picksResult] = await Promise.all([
-    pool.query('SELECT * FROM draft_sessions WHERE id = $1', [sessionId]),
-    pool.query('SELECT * FROM draft_teams WHERE draft_session_id = $1 ORDER BY draft_order', [sessionId]),
-    pool.query('SELECT * FROM draft_picks WHERE draft_session_id = $1 ORDER BY pick_number', [sessionId])
-  ])
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // Run all 3 queries in parallel
+      const [sessionResult, teamsResult, picksResult] = await Promise.all([
+        pool.query('SELECT * FROM draft_sessions WHERE id = $1', [sessionId]),
+        pool.query('SELECT * FROM draft_teams WHERE draft_session_id = $1 ORDER BY draft_order', [sessionId]),
+        pool.query('SELECT * FROM draft_picks WHERE draft_session_id = $1 ORDER BY pick_number', [sessionId])
+      ])
 
-  if (sessionResult.rows.length === 0) {
-    console.log(`[SessionCache] Session not found: ${sessionId}`)
-    return null
+      if (sessionResult.rows.length === 0) {
+        console.log(`[SessionCache] Session not found: ${sessionId}`)
+        return null
+      }
+
+      const data: CachedSessionData = {
+        session: sessionResult.rows[0],
+        teams: teamsResult.rows,
+        picks: picksResult.rows,
+        loadedAt: Date.now()
+      }
+
+      const loadTime = Date.now() - startTime
+      console.log(`[SessionCache] Loaded session data in ${loadTime}ms (${data.teams.length} teams, ${data.picks.length} picks)`)
+
+      // Store in cache
+      sessionCache.set(sessionId, data)
+
+      return data
+    } catch (error) {
+      lastError = error as Error
+      console.warn(`[SessionCache] Query attempt ${attempt}/${maxRetries} failed:`, error instanceof Error ? error.message : error)
+
+      if (attempt < maxRetries) {
+        // Wait before retry (exponential backoff)
+        const delayMs = Math.pow(2, attempt - 1) * 1000
+        console.log(`[SessionCache] Retrying in ${delayMs}ms...`)
+        await new Promise(resolve => setTimeout(resolve, delayMs))
+      }
+    }
   }
 
-  const data: CachedSessionData = {
-    session: sessionResult.rows[0],
-    teams: teamsResult.rows,
-    picks: picksResult.rows,
-    loadedAt: Date.now()
-  }
-
-  const loadTime = Date.now() - startTime
-  console.log(`[SessionCache] Loaded session data in ${loadTime}ms (${data.teams.length} teams, ${data.picks.length} picks)`)
-
-  // Store in cache
-  sessionCache.set(sessionId, data)
-
-  return data
+  // All retries failed
+  console.error(`[SessionCache] All ${maxRetries} attempts failed for session ${sessionId}`)
+  throw lastError
 }
 
 /**
