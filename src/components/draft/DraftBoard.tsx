@@ -573,6 +573,17 @@ If this persists, the database may be updating. Wait a few minutes and try again
         />
       </div>
 
+      {/* DEBUG: Visible state indicator - REMOVE AFTER FIX */}
+      <div className="fixed top-2 right-2 z-50 bg-black/90 text-xs text-green-400 font-mono p-2 rounded max-w-xs">
+        <div>Pick: {session.currentPick}/{session.numTeams * 21}</div>
+        <div>Round: {session.currentRound}/21</div>
+        <div>Status: {session.status}</div>
+        <div>Team: {currentTeam?.name || 'None'}</div>
+        <div>Control: {currentTeam?.control || 'N/A'}</div>
+        <div>CPU Active: {cpuThinking ? 'YES' : 'NO'}</div>
+        <div>Picks Made: {session.picks.filter(p => p.playerSeasonId).length}</div>
+      </div>
+
       {/* Main Content - War Room Desk */}
       <div className="flex-1 container mx-auto px-4 py-8 relative z-10">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 h-full">
