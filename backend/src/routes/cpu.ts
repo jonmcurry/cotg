@@ -568,16 +568,14 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
     }
 
     // FIXED: Load pool with RELAXED thresholds (100 AB / 45 IP) to support fallback
-    // The selectBestPlayer function will still prefer 200+ AB players first (strict),
-    // but can fall back to 100+ AB players when strict pool is exhausted.
-    // This ensures the draft can always complete even in late rounds.
-    const RELAXED_AB_THRESHOLD = 100  // Matches meetsPlayingTimeRequirements relaxed threshold
-    const RELAXED_IP_THRESHOLD = 45   // Matches meetsPlayingTimeRequirements relaxed threshold
+    const RELAXED_AB_THRESHOLD = 100
+    const RELAXED_IP_THRESHOLD = 45
 
-    // CRITICAL FIX: Supabase has a server-side max-rows limit (default 1000)
-    // that CANNOT be overridden by .range() - it's a hard server limit.
-    // Solution: Use pagination to fetch ALL players in batches.
+    // PERFORMANCE FIX: Use parallel batch fetching (like frontend does)
+    // Instead of sequential: fetch 0-999, wait, fetch 1000-1999, wait...
+    // Do parallel: fetch [0-999, 1000-1999, 2000-2999] simultaneously
     const BATCH_SIZE = 1000
+    const PARALLEL_BATCHES = 5  // Fetch 5 batches at once
     const playerSelect = `
       id, player_id, year, team_id, primary_position, apba_rating, war,
       at_bats, batting_avg, hits, home_runs, rbi, stolen_bases,
@@ -586,69 +584,88 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
       players!inner (display_name, first_name, last_name, bats)
     `
 
-    // Fetch ALL hitters using pagination
-    const allHitters: any[] = []
-    let hittersOffset = 0
-    let hittersError: any = null
-    while (true) {
-      const { data, error } = await supabase
-        .from('player_seasons')
-        .select(playerSelect)
-        .in('year', yearList)
-        .gte('at_bats', RELAXED_AB_THRESHOLD)
-        .order('apba_rating', { ascending: false, nullsFirst: false })
-        .range(hittersOffset, hittersOffset + BATCH_SIZE - 1)
-
-      if (error) {
-        hittersError = error
-        break
+    // Helper to fetch a batch
+    const fetchBatch = async (type: 'hitters' | 'pitchers', offset: number) => {
+      if (type === 'hitters') {
+        return supabase
+          .from('player_seasons')
+          .select(playerSelect)
+          .in('year', yearList)
+          .gte('at_bats', RELAXED_AB_THRESHOLD)
+          .order('apba_rating', { ascending: false, nullsFirst: false })
+          .range(offset, offset + BATCH_SIZE - 1)
+      } else {
+        return supabase
+          .from('player_seasons')
+          .select(playerSelect)
+          .in('year', yearList)
+          .gte('innings_pitched_outs', RELAXED_IP_THRESHOLD)
+          .lt('at_bats', RELAXED_AB_THRESHOLD)
+          .order('apba_rating', { ascending: false, nullsFirst: false })
+          .range(offset, offset + BATCH_SIZE - 1)
       }
-
-      if (!data || data.length === 0) break
-      allHitters.push(...data)
-      console.log(`[CPU API] Fetched hitters batch: offset=${hittersOffset}, count=${data.length}, total=${allHitters.length}`)
-
-      if (data.length < BATCH_SIZE) break  // Last batch
-      hittersOffset += BATCH_SIZE
     }
 
-    // Fetch ALL pitchers using pagination
-    const allPitchers: any[] = []
-    let pitchersOffset = 0
-    let pitchersError: any = null
-    while (true) {
-      const { data, error } = await supabase
-        .from('player_seasons')
-        .select(playerSelect)
-        .in('year', yearList)
-        .gte('innings_pitched_outs', RELAXED_IP_THRESHOLD)
-        .lt('at_bats', RELAXED_AB_THRESHOLD)
-        .order('apba_rating', { ascending: false, nullsFirst: false })
-        .range(pitchersOffset, pitchersOffset + BATCH_SIZE - 1)
+    // Fetch all players using PARALLEL batch fetching
+    const fetchAllParallel = async (type: 'hitters' | 'pitchers'): Promise<{ data: any[], error: any }> => {
+      const allData: any[] = []
+      let offset = 0
+      let hasMore = true
 
-      if (error) {
-        pitchersError = error
-        break
+      while (hasMore) {
+        // Create batch of parallel requests
+        const batchPromises = []
+        for (let i = 0; i < PARALLEL_BATCHES; i++) {
+          batchPromises.push(fetchBatch(type, offset + (i * BATCH_SIZE)))
+        }
+
+        // Execute all in parallel
+        const results = await Promise.all(batchPromises)
+
+        // Process results
+        let batchHadData = false
+        for (const result of results) {
+          if (result.error) {
+            return { data: allData, error: result.error }
+          }
+          if (result.data && result.data.length > 0) {
+            allData.push(...result.data)
+            batchHadData = true
+            if (result.data.length < BATCH_SIZE) {
+              hasMore = false  // This batch wasn't full, we're at the end
+            }
+          } else {
+            hasMore = false  // Empty batch means we're done
+          }
+        }
+
+        if (!batchHadData) hasMore = false
+        offset += PARALLEL_BATCHES * BATCH_SIZE
       }
 
-      if (!data || data.length === 0) break
-      allPitchers.push(...data)
-      console.log(`[CPU API] Fetched pitchers batch: offset=${pitchersOffset}, count=${data.length}, total=${allPitchers.length}`)
-
-      if (data.length < BATCH_SIZE) break  // Last batch
-      pitchersOffset += BATCH_SIZE
+      return { data: allData, error: null }
     }
 
-    if (hittersError || pitchersError) {
-      console.error('[CPU API] Error loading players:', hittersError || pitchersError)
+    console.log('[CPU API] Starting parallel player fetch...')
+    const startTime = Date.now()
+
+    // Fetch hitters and pitchers in parallel
+    const [hittersResult, pitchersResult] = await Promise.all([
+      fetchAllParallel('hitters'),
+      fetchAllParallel('pitchers')
+    ])
+
+    const loadTime = Date.now() - startTime
+    console.log(`[CPU API] Parallel fetch complete in ${loadTime}ms: ${hittersResult.data.length} hitters, ${pitchersResult.data.length} pitchers`)
+
+    if (hittersResult.error || pitchersResult.error) {
+      console.error('[CPU API] Error loading players:', hittersResult.error || pitchersResult.error)
       return res.status(500).json({ result: 'error', error: 'Failed to load player pool' })
     }
 
-    console.log(`[CPU API] Pagination complete: ${allHitters.length} hitters, ${allPitchers.length} pitchers`)
-
     const allPlayers = [
-      ...allHitters.map(transformPlayerRow),
-      ...allPitchers.map(transformPlayerRow),
+      ...hittersResult.data.map(transformPlayerRow),
+      ...pitchersResult.data.map(transformPlayerRow),
     ]
 
     if (allPlayers.length === 0) {
