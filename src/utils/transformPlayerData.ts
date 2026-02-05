@@ -15,6 +15,13 @@ import type { PlayerSeason } from '../types/player'
  * - Flat: raw.display_name (from /pool-full endpoint - server-side cache)
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+// Helper to safely convert to number or null
+function toNumberOrNull(value: unknown): number | null {
+  if (value === null || value === undefined) return null
+  const num = Number(value)
+  return isNaN(num) ? null : num
+}
+
 export function transformPlayerSeasonData(raw: any): PlayerSeason {
   // Handle both nested (Supabase join) and flat (server cache) formats
   const playerData = raw.players || raw
@@ -25,24 +32,24 @@ export function transformPlayerSeasonData(raw: any): PlayerSeason {
     year: raw.year,
     team_id: raw.team_id,
     primary_position: raw.primary_position,
-    apba_rating: raw.apba_rating,
-    war: raw.war,
-    at_bats: raw.at_bats !== null && raw.at_bats !== undefined ? Number(raw.at_bats) : null,
-    batting_avg: raw.batting_avg,
+    apba_rating: toNumberOrNull(raw.apba_rating),
+    war: toNumberOrNull(raw.war),
+    at_bats: toNumberOrNull(raw.at_bats),
+    batting_avg: toNumberOrNull(raw.batting_avg),
     hits: raw.hits,
     home_runs: raw.home_runs,
     rbi: raw.rbi,
     stolen_bases: raw.stolen_bases,
-    on_base_pct: raw.on_base_pct,
-    slugging_pct: raw.slugging_pct,
-    innings_pitched_outs: raw.innings_pitched_outs !== null && raw.innings_pitched_outs !== undefined ? Number(raw.innings_pitched_outs) : null,
+    on_base_pct: toNumberOrNull(raw.on_base_pct),
+    slugging_pct: toNumberOrNull(raw.slugging_pct),
+    innings_pitched_outs: toNumberOrNull(raw.innings_pitched_outs),
     wins: raw.wins,
     losses: raw.losses,
-    era: raw.era,
+    era: toNumberOrNull(raw.era),
     strikeouts_pitched: raw.strikeouts_pitched,
     saves: raw.saves,
     shutouts: raw.shutouts,
-    whip: raw.whip,
+    whip: toNumberOrNull(raw.whip),
     display_name: playerData.display_name,
     first_name: playerData.first_name,
     last_name: playerData.last_name,

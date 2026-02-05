@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-05 (Player Rating Display Error)
+- **BUG FIX**: Fixed `apba_rating.toFixed is not a function` error in player pool display
+  - **Problem**: PostgreSQL returns numeric columns as strings via pg driver; calling `.toFixed()` on a string throws an error
+  - **Root Cause**: `transformPlayerSeasonData()` was not converting numeric fields from raw data
+  - **Solution**: Added `toNumberOrNull()` helper function to safely convert all numeric fields (apba_rating, war, batting_avg, on_base_pct, slugging_pct, era, whip, innings_pitched_outs, at_bats) to proper JavaScript numbers
+  - **Files Modified**: src/utils/transformPlayerData.ts
+
 ### Security - 2026-02-05 (Credential Exposure Remediation)
 - **SECURITY FIX**: Removed exposed database credentials from git history
   - **Problem**: Neon PostgreSQL connection string was accidentally committed in docs/PLAN-supabase-to-neon-migration.md
