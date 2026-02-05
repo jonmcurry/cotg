@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-05 (CPU Batch Empty Picks Not Updating Session State)
+- **BUG FIX**: Fixed draft appearing stuck when CPU batch endpoint returns 0 picks
+  - **Problem**: Starting a draft caused CPU to appear waiting but never making picks
+  - **Root Cause**: `applyCpuPicksBatch` had early return when `picks.length === 0`:
+    ```typescript
+    if (!session || picks.length === 0) return  // BUG: session state not updated!
+    ```
+    When backend returned 0 picks (e.g., if team wasn't CPU in database), the session
+    state was never updated from the backend's response, so useEffect dependencies
+    didn't change and the effect didn't re-trigger.
+  - **Solution**: Changed early return to only check for null session:
+    ```typescript
+    if (!session) return  // FIX: process sessionUpdate even with 0 picks
+    ```
+    This ensures frontend/backend stay in sync regardless of picks count.
+  - **Files Modified**: src/stores/draftStore.ts
+  - **Test Added**: src/stores/draftStore.test.ts (TDD approach)
+
 ### Fixed - 2026-02-05 (CPU Batch State Update Blocked by Cancelled Flag)
 - **BUG FIX**: Fixed CPU picks not updating frontend despite backend processing
   - **Problem**: Browser console showed "Starting batch CPU picks..." then nothing

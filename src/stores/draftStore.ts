@@ -533,10 +533,14 @@ export const useDraftStore = create<DraftState>()(
       applyCpuPicksBatch: (picks, sessionUpdate) => {
         console.log('[applyCpuPicksBatch] Called with:', { picksCount: picks.length, sessionUpdate })
         const session = get().session
-        if (!session || picks.length === 0) {
-          console.log('[applyCpuPicksBatch] EARLY RETURN: no session or empty picks', { hasSession: !!session, picksLength: picks.length })
+        if (!session) {
+          console.log('[applyCpuPicksBatch] EARLY RETURN: no session')
           return
         }
+        // FIX: Even if picks is empty, we must update session state from backend
+        // This ensures frontend/backend stay in sync. Without this fix, when the
+        // batch endpoint returns 0 picks, the session state wasn't updated and
+        // the useEffect dependencies didn't change, causing the draft to appear stuck.
 
         // Clone teams and picks arrays once
         let updatedTeams = [...session.teams]
