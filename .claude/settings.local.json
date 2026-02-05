@@ -56,7 +56,8 @@
       "Bash(chmod:*)",
       "Bash(./test-frontend-build.sh:*)",
       "Bash(npm test:*)",
-      "Bash(npm uninstall:*)"
+      "Bash(npm uninstall:*)",
+      "Bash(git filter-branch:*)"
     ]
   }
 }
