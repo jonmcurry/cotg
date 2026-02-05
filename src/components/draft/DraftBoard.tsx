@@ -380,10 +380,13 @@ If this persists, the database may be updating. Wait a few minutes and try again
       }
     })()
 
-    // Cleanup: mark this instance as cancelled and reset guards
+    // Cleanup: only mark as cancelled, do NOT reset cpuDraftInProgressRef
+    // The ref is reset in the finally block when the async operation completes
+    // Resetting here causes re-entry when session state changes trigger effect re-run
     return () => {
       cancelled = true
-      cpuDraftInProgressRef.current = false
+      // NOTE: Do NOT set cpuDraftInProgressRef.current = false here!
+      // That causes multiple batch calls when state updates trigger useEffect re-run
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.currentPick, session?.status, currentTeam?.id, applyCpuPicksBatch, pauseDraft])
