@@ -5,6 +5,7 @@
 
 import { Router, Request, Response } from 'express'
 import { supabase } from '../lib/supabase'
+import { getOrLoadPlayerPool } from '../lib/playerPoolCache'
 
 const router = Router()
 
@@ -77,6 +78,55 @@ function applyYearFilter(query: any, yearList: number[]) {
   return query.in('year', yearList)
 }
 
+/**
+ * GET /api/players/pool-full
+ * Get FULL player pool using server-side cache (same cache as CPU picks)
+ *
+ * This is MUCH faster than paginated /pool endpoint because:
+ * 1. Uses split queries (hitters vs pitchers) - avoids slow OR filter
+ * 2. Caches result for 30 min - subsequent requests instant
+ * 3. Single request instead of 70+ paginated requests
+ *
+ * Query params:
+ * - sessionId: draft session ID (required for caching)
+ * - seasons: comma-separated years (e.g., "1901,1902,...,2025")
+ */
+router.get('/pool-full', async (req: Request, res: Response) => {
+  try {
+    const { sessionId, seasons } = req.query
+
+    if (!sessionId || typeof sessionId !== 'string') {
+      return res.status(400).json({ error: 'sessionId parameter is required' })
+    }
+
+    if (!seasons) {
+      return res.status(400).json({ error: 'seasons parameter is required' })
+    }
+
+    const yearList = String(seasons).split(',').map(Number)
+
+    console.log(`[Players API] Loading full pool for session ${sessionId}, ${yearList.length} seasons`)
+    const startTime = Date.now()
+
+    // Use the same cache as CPU picks - this is the key optimization
+    const players = await getOrLoadPlayerPool(sessionId, yearList)
+
+    const loadTime = Date.now() - startTime
+    console.log(`[Players API] Full pool ready: ${players.length} players in ${loadTime}ms`)
+
+    return res.json(players)
+  } catch (err) {
+    console.error('[Players API] Exception in pool-full:', err)
+    return res.status(500).json({ error: 'Failed to load player pool' })
+  }
+})
+
+/**
+ * GET /api/players/pool
+ * Get player pool for drafting (paginated - DEPRECATED for large datasets)
+ *
+ * NOTE: For 100+ seasons, use /pool-full instead to avoid query timeouts
+ */
 router.get('/pool', async (req: Request, res: Response) => {
   try {
     const { seasons, limit = '1000', offset = '0', countOnly } = req.query

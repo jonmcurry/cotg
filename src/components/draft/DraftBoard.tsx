@@ -121,59 +121,18 @@ export default function DraftBoard({ onExit, onComplete }: Props) {
         const { api } = await import('../../lib/api')
         const seasonsParam = session.selectedSeasons.join(',')
 
-        // First, get total count for progress indication
-        const countResponse = await api.get<{ count: number }>(`/players/pool?seasons=${seasonsParam}&countOnly=true`)
-        const totalPlayers = countResponse.count || 0
+        // Use cached pool endpoint - single request instead of 70+ paginated requests
+        // This uses the same server-side cache as CPU picks
+        console.log('[Player Load] Loading full player pool from cache...')
+        setLoadingProgress({ loaded: 0, total: 1, hasMore: true })
 
-        if (totalPlayers === 0) {
-          console.error('[Player Load] WARNING: totalPlayers is 0!')
-          console.error('[Player Load] This will skip the loading loop and show "No players found" error')
-          console.error('[Player Load] Debugging info:')
-          console.error('  - session:', session)
-          console.error('  - session.selectedSeasons:', session.selectedSeasons)
-        }
-        setLoadingProgress({ loaded: 0, total: totalPlayers, hasMore: true })
+        const allPlayers = await api.get<any[]>(
+          `/players/pool-full?sessionId=${session.id}&seasons=${seasonsParam}`
+        )
 
-        // Fetch all players using parallel batch loading (3 batches at a time)
-        const allPlayers: any[] = []
-        const batchSize = 1000
-        const parallelBatches = 3
-        let offset = 0
+        console.log(`[Player Load] Received ${allPlayers?.length || 0} players`)
 
-        while (offset < totalPlayers) {
-          // Create array of batch promises (up to 3 at a time)
-          const batchPromises = []
-          for (let i = 0; i < parallelBatches && offset < totalPlayers; i++) {
-            const currentOffset = offset
-
-            batchPromises.push(
-              api.get<any[]>(`/players/pool?seasons=${seasonsParam}&offset=${currentOffset}&limit=${batchSize}`)
-            )
-
-            offset += batchSize
-          }
-
-          // Wait for all parallel batches to complete
-          const results = await Promise.all(batchPromises)
-
-          // Process results
-          for (const data of results) {
-            if (data && data.length > 0) {
-              allPlayers.push(...data)
-            }
-          }
-
-          // Update progress after parallel batches complete
-          // Use actual received data length (allPlayers.length) not requested offset
-          // Progress only updates after Promise.all completes, so no race condition between batches
-          setLoadingProgress({
-            loaded: allPlayers.length,
-            total: totalPlayers,
-            hasMore: allPlayers.length < totalPlayers
-          })
-        }
-
-        if (allPlayers.length === 0) {
+        if (!allPlayers || allPlayers.length === 0) {
           console.error('[Player Load] CRITICAL ERROR - No players found for selected seasons:', session.selectedSeasons)
           alert(`CRITICAL ERROR: No players found for selected seasons: ${session.selectedSeasons.join(', ')}
 
@@ -186,6 +145,8 @@ TROUBLESHOOTING STEPS:
 If this persists, the database may be updating. Wait a few minutes and try again.`)
           return
         }
+
+        setLoadingProgress({ loaded: allPlayers.length, total: allPlayers.length, hasMore: false })
 
         // Transform data to typed PlayerSeason objects (shared utility)
         // Handles numeric coercion for at_bats/innings_pitched_outs and flattens player join data

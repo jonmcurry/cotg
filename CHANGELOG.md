@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-04 (Frontend Player Pool 502 Bad Gateway)
+- **CRITICAL FIX**: Fixed 502 Bad Gateway when loading player pool on draft screen
+  - **Problem**: Frontend made 70+ paginated requests to `/api/players/pool`
+    - High-offset queries (12000+) timed out due to OR filter + pagination overhead
+    - Server crashed returning 502 Bad Gateway with CORS errors
+  - **Root Cause**: Query `WHERE (at_bats >= 200 OR innings_pitched_outs >= 30)` with high offset
+  - **Solution**: Created new `/api/players/pool-full` endpoint that:
+    - Uses same server-side cache as CPU picks (playerPoolCache.ts)
+    - Splits queries into hitters vs pitchers (avoids slow OR filter)
+    - Returns all 69,000+ players in single request (cached)
+    - First load: ~30s, subsequent loads: <1s (cache hit)
+  - **Files Modified**:
+    - backend/src/routes/players.ts (added /pool-full endpoint)
+    - src/components/draft/DraftBoard.tsx (use /pool-full instead of paginated /pool)
+    - backend/src/routes/players.test.ts (documented fix)
+
 ### Performance - 2026-02-04 (CPU Draft Player Pool Caching)
 - **CRITICAL PERFORMANCE FIX**: Implemented server-side player pool caching for 30-60x faster CPU picks
   - **Problem**: CPU draft was reloading 69,000+ players from Supabase for EVERY pick
