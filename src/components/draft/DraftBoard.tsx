@@ -292,7 +292,10 @@ If this persists, the database may be updating. Wait a few minutes and try again
           }
         )
 
-        if (cancelled) return
+        // NOTE: Do NOT return early if cancelled here!
+        // The state update must happen even if the effect was "cancelled" by re-render.
+        // The cancelled flag is only for skipping UI updates (ticker), not state updates.
+        // Previously: if (cancelled) return  <-- THIS WAS THE BUG!
 
         if (response.result === 'error') {
           console.error('[CPU Batch] API error:', response.error)
