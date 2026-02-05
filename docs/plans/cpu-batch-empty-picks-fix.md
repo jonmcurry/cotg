@@ -35,4 +35,4 @@ Modify `applyCpuPicksBatch` to update session state even when picks array is emp
 - [x] Fix `applyCpuPicksBatch` to not early-return when only picks is empty
 - [x] Verify test passes
 - [x] Update CHANGELOG.md
-- [ ] Commit to GitHub
+- [x] Commit to GitHub

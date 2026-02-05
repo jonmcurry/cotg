@@ -124,13 +124,15 @@ export default function DraftBoard({ onExit, onComplete }: Props) {
         // Use cached pool endpoint - single request instead of 70+ paginated requests
         // This uses the same server-side cache as CPU picks
         console.log('[Player Load] Loading full player pool from cache...')
+        const loadStartTime = Date.now()
         setLoadingProgress({ loaded: 0, total: 1, hasMore: true })
 
         const allPlayers = await api.get<any[]>(
           `/players/pool-full?sessionId=${session.id}&seasons=${seasonsParam}`
         )
 
-        console.log(`[Player Load] Received ${allPlayers?.length || 0} players`)
+        const loadTime = Date.now() - loadStartTime
+        console.log(`[Player Load] Received ${allPlayers?.length || 0} players in ${loadTime}ms`)
 
         if (!allPlayers || allPlayers.length === 0) {
           console.error('[Player Load] CRITICAL ERROR - No players found for selected seasons:', session.selectedSeasons)
