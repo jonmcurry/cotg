@@ -92,6 +92,7 @@ function applyYearFilter(query: any, yearList: number[]) {
  * - seasons: comma-separated years (e.g., "1901,1902,...,2025")
  */
 router.get('/pool-full', async (req: Request, res: Response) => {
+  console.log('[Players API] /pool-full route hit')
   try {
     const { sessionId, seasons } = req.query
 
