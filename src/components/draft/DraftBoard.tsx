@@ -311,14 +311,23 @@ If this persists, the database may be updating. Wait a few minutes and try again
           return
         }
 
-        console.log('[CPU Batch] API response:', response)
+        console.log('[CPU Batch] API response:', JSON.stringify(response, null, 2))
+        console.log('[CPU Batch] Response check:', {
+          result: response.result,
+          hasPicks: !!response.picks,
+          picksLength: response.picks?.length,
+          hasSession: !!response.session,
+          sessionData: response.session
+        })
 
         if (response.result === 'success' && response.picks && response.session) {
+          console.log('[CPU Batch] SUCCESS condition met, calling applyCpuPicksBatch')
           cpuRetryCountRef.current = 0
           const batchTime = Date.now() - startTime
           console.log(`[CPU Batch] Completed ${response.picks.length} picks in ${batchTime}ms`)
 
           // Apply all picks at once using batch function
+          console.log('[CPU Batch] Calling applyCpuPicksBatch with', response.picks.length, 'picks')
           applyCpuPicksBatch(
             response.picks.map(pick => ({
               pickNumber: pick.pickNumber,
@@ -335,6 +344,7 @@ If this persists, the database may be updating. Wait a few minutes and try again
               status: response.session.status,
             }
           )
+          console.log('[CPU Batch] applyCpuPicksBatch completed')
 
           // Show ticker for the last pick in the batch
           if (!cancelled && response.picks.length > 0) {

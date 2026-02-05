@@ -531,8 +531,12 @@ export const useDraftStore = create<DraftState>()(
       },
 
       applyCpuPicksBatch: (picks, sessionUpdate) => {
+        console.log('[applyCpuPicksBatch] Called with:', { picksCount: picks.length, sessionUpdate })
         const session = get().session
-        if (!session || picks.length === 0) return
+        if (!session || picks.length === 0) {
+          console.log('[applyCpuPicksBatch] EARLY RETURN: no session or empty picks', { hasSession: !!session, picksLength: picks.length })
+          return
+        }
 
         // Clone teams and picks arrays once
         let updatedTeams = [...session.teams]
@@ -590,6 +594,12 @@ export const useDraftStore = create<DraftState>()(
           updatedAt: new Date(),
         }
 
+        console.log('[applyCpuPicksBatch] Setting new session state:', {
+          newCurrentPick: updatedSession.currentPick,
+          newCurrentRound: updatedSession.currentRound,
+          newStatus: updatedSession.status,
+          picksProcessed: picks.length
+        })
         set({ session: updatedSession })
       },
 
