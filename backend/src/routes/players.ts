@@ -4,55 +4,79 @@
  */
 
 import { Router, Request, Response } from 'express'
-import { supabase } from '../lib/supabase'
+import { pool } from '../lib/db'
 import { getOrLoadPlayerPool } from '../lib/playerPoolCache'
 
 const router = Router()
 
 // Common select fields for player_seasons
 const PLAYER_SEASON_SELECT = `
-  id,
-  player_id,
-  year,
-  team_id,
-  primary_position,
-  apba_rating,
-  war,
-  at_bats,
-  batting_avg,
-  hits,
-  home_runs,
-  rbi,
-  stolen_bases,
-  on_base_pct,
-  slugging_pct,
-  innings_pitched_outs,
-  wins,
-  losses,
-  era,
-  strikeouts_pitched,
-  saves,
-  shutouts,
-  whip,
-  players!inner (
-    id,
-    display_name,
-    first_name,
-    last_name,
-    bats
-  )
+  ps.id,
+  ps.player_id,
+  ps.year,
+  ps.team_id,
+  ps.primary_position,
+  ps.apba_rating,
+  ps.war,
+  ps.at_bats,
+  ps.batting_avg,
+  ps.hits,
+  ps.home_runs,
+  ps.rbi,
+  ps.stolen_bases,
+  ps.on_base_pct,
+  ps.slugging_pct,
+  ps.innings_pitched_outs,
+  ps.wins,
+  ps.losses,
+  ps.era,
+  ps.strikeouts_pitched,
+  ps.saves,
+  ps.shutouts,
+  ps.whip,
+  p.id as player_id_nested,
+  p.display_name,
+  p.first_name,
+  p.last_name,
+  p.bats
 `
 
-/**
- * GET /api/players/pool
- * Get player pool for drafting
- *
- * Query params:
- * - seasons: comma-separated years (e.g., "2023,2024")
- * - limit: max players to return (default 1000)
- * - offset: pagination offset (default 0)
- * - countOnly: if "true", only return count (for progress indication)
- */
+// Transform database row to API response format
+function transformPlayerRow(row: any) {
+  return {
+    id: row.id,
+    player_id: row.player_id,
+    year: row.year,
+    team_id: row.team_id,
+    primary_position: row.primary_position,
+    apba_rating: row.apba_rating,
+    war: row.war,
+    at_bats: row.at_bats,
+    batting_avg: row.batting_avg,
+    hits: row.hits,
+    home_runs: row.home_runs,
+    rbi: row.rbi,
+    stolen_bases: row.stolen_bases,
+    on_base_pct: row.on_base_pct,
+    slugging_pct: row.slugging_pct,
+    innings_pitched_outs: row.innings_pitched_outs,
+    wins: row.wins,
+    losses: row.losses,
+    era: row.era,
+    strikeouts_pitched: row.strikeouts_pitched,
+    saves: row.saves,
+    shutouts: row.shutouts,
+    whip: row.whip,
+    players: {
+      id: row.player_id,
+      display_name: row.display_name,
+      first_name: row.first_name,
+      last_name: row.last_name,
+      bats: row.bats
+    }
+  }
+}
+
 // Helper: Check if years are consecutive (for range query optimization)
 function areYearsConsecutive(years: number[]): boolean {
   if (years.length <= 1) return true
@@ -61,21 +85,6 @@ function areYearsConsecutive(years: number[]): boolean {
     if (sorted[i] !== sorted[i - 1] + 1) return false
   }
   return true
-}
-
-// Helper: Apply year filter - uses range query if consecutive (MUCH faster for 100+ years)
-function applyYearFilter(query: any, yearList: number[]) {
-  if (yearList.length === 0) return query
-
-  // If years are consecutive, use range query (faster than .in() with many values)
-  if (areYearsConsecutive(yearList)) {
-    const minYear = Math.min(...yearList)
-    const maxYear = Math.max(...yearList)
-    return query.gte('year', minYear).lte('year', maxYear)
-  }
-
-  // Non-consecutive years: use .in() (slower but necessary)
-  return query.in('year', yearList)
 }
 
 /**
@@ -140,45 +149,54 @@ router.get('/pool', async (req: Request, res: Response) => {
     const limitNum = Math.min(Number(limit), 1000) // Cap at 1000 per request
     const offsetNum = Number(offset)
 
+    // Build year filter
+    const useRangeQuery = areYearsConsecutive(yearList)
+    const minYear = Math.min(...yearList)
+    const maxYear = Math.max(...yearList)
+
     // Log if using range optimization
-    if (areYearsConsecutive(yearList) && yearList.length > 10) {
-      console.log(`[Players API] Using range query optimization: ${Math.min(...yearList)}-${Math.max(...yearList)}`)
+    if (useRangeQuery && yearList.length > 10) {
+      console.log(`[Players API] Using range query optimization: ${minYear}-${maxYear}`)
+    }
+
+    let yearClause: string
+    let yearParams: any[]
+
+    if (useRangeQuery) {
+      yearClause = 'ps.year >= $1 AND ps.year <= $2'
+      yearParams = [minYear, maxYear]
+    } else {
+      yearClause = 'ps.year = ANY($1)'
+      yearParams = [yearList]
     }
 
     // Count-only request (for progress indication)
     if (countOnly === 'true') {
-      let countQuery = supabase
-        .from('player_seasons')
-        .select('id', { count: 'exact', head: true })
-
-      countQuery = applyYearFilter(countQuery, yearList)
-      const { count, error } = await countQuery.or('at_bats.gte.200,innings_pitched_outs.gte.30')
-
-      if (error) {
-        console.error('[Players API] Count error:', error)
-        return res.status(500).json({ error: `Failed to count players: ${error.message}` })
-      }
-
-      return res.json({ count: count || 0 })
+      const countQuery = `
+        SELECT COUNT(*) as count
+        FROM player_seasons ps
+        WHERE ${yearClause}
+          AND (ps.at_bats >= 200 OR ps.innings_pitched_outs >= 30)
+      `
+      const result = await pool.query(countQuery, yearParams)
+      return res.json({ count: parseInt(result.rows[0]?.count || '0', 10) })
     }
 
     // Full data request
-    let dataQuery = supabase
-      .from('player_seasons')
-      .select(PLAYER_SEASON_SELECT)
+    const dataQuery = `
+      SELECT ${PLAYER_SEASON_SELECT}
+      FROM player_seasons ps
+      INNER JOIN players p ON ps.player_id = p.id
+      WHERE ${yearClause}
+        AND (ps.at_bats >= 200 OR ps.innings_pitched_outs >= 30)
+      ORDER BY ps.apba_rating DESC NULLS LAST
+      LIMIT $${yearParams.length + 1} OFFSET $${yearParams.length + 2}
+    `
 
-    dataQuery = applyYearFilter(dataQuery, yearList)
-    const { data, error } = await dataQuery
-      .or('at_bats.gte.200,innings_pitched_outs.gte.30')
-      .order('apba_rating', { ascending: false })
-      .range(offsetNum, offsetNum + limitNum - 1)
+    const result = await pool.query(dataQuery, [...yearParams, limitNum, offsetNum])
+    const data = result.rows.map(transformPlayerRow)
 
-    if (error) {
-      console.error('[Players API] Pool error:', error)
-      return res.status(500).json({ error: `Failed to fetch player pool: ${error.message}` })
-    }
-
-    return res.json(data || [])
+    return res.json(data)
   } catch (err) {
     console.error('[Players API] Exception:', err)
     return res.status(500).json({ error: 'Internal server error' })
@@ -200,29 +218,17 @@ router.post('/batch', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'ids array is required' })
     }
 
-    // Batch queries to avoid URL length limits (100 IDs per batch)
-    const BATCH_SIZE = 100
-    const allData: any[] = []
+    const query = `
+      SELECT ${PLAYER_SEASON_SELECT}
+      FROM player_seasons ps
+      INNER JOIN players p ON ps.player_id = p.id
+      WHERE ps.id = ANY($1)
+    `
 
-    for (let i = 0; i < ids.length; i += BATCH_SIZE) {
-      const batch = ids.slice(i, i + BATCH_SIZE)
+    const result = await pool.query(query, [ids])
+    const data = result.rows.map(transformPlayerRow)
 
-      const { data, error } = await supabase
-        .from('player_seasons')
-        .select(PLAYER_SEASON_SELECT)
-        .in('id', batch)
-
-      if (error) {
-        console.error('[Players API] Batch error:', error)
-        return res.status(500).json({ error: `Failed to fetch players: ${error.message}` })
-      }
-
-      if (data) {
-        allData.push(...data)
-      }
-    }
-
-    return res.json(allData)
+    return res.json(data)
   } catch (err) {
     console.error('[Players API] Exception:', err)
     return res.status(500).json({ error: 'Internal server error' })
@@ -237,21 +243,21 @@ router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params
 
-    const { data, error } = await supabase
-      .from('player_seasons')
-      .select(PLAYER_SEASON_SELECT)
-      .eq('id', id)
-      .single()
+    const query = `
+      SELECT ${PLAYER_SEASON_SELECT}
+      FROM player_seasons ps
+      INNER JOIN players p ON ps.player_id = p.id
+      WHERE ps.id = $1
+      LIMIT 1
+    `
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return res.status(404).json({ error: `Player not found: ${id}` })
-      }
-      console.error('[Players API] Get error:', error)
-      return res.status(500).json({ error: `Failed to get player: ${error.message}` })
+    const result = await pool.query(query, [id])
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: `Player not found: ${id}` })
     }
 
-    return res.json(data)
+    return res.json(transformPlayerRow(result.rows[0]))
   } catch (err) {
     console.error('[Players API] Exception:', err)
     return res.status(500).json({ error: 'Internal server error' })

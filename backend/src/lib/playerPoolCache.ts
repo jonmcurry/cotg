@@ -10,7 +10,7 @@
  * - Cleared on draft completion
  */
 
-import { supabase } from './supabase'
+import { pool } from './db'
 
 // Types matching cpu.ts
 interface PlayerSeason {
@@ -54,18 +54,8 @@ const poolCache = new Map<string, CachedPool>()
 const CACHE_TTL_MS = 30 * 60 * 1000 // 30 minutes
 
 // Config
-const BATCH_SIZE = 1000
-const PARALLEL_BATCHES = 5
 const RELAXED_AB_THRESHOLD = 100
 const RELAXED_IP_THRESHOLD = 45
-
-const playerSelect = `
-  id, player_id, year, team_id, primary_position, apba_rating, war,
-  at_bats, batting_avg, hits, home_runs, rbi, stolen_bases,
-  on_base_pct, slugging_pct, innings_pitched_outs, wins, losses,
-  era, strikeouts_pitched, saves, shutouts, whip,
-  players!inner (display_name, first_name, last_name, bats)
-`
 
 /**
  * Check if years are consecutive (for range query optimization)
@@ -107,17 +97,17 @@ function transformPlayerRow(row: any): PlayerSeason {
     saves: row.saves,
     shutouts: row.shutouts,
     whip: row.whip,
-    display_name: row.players?.display_name,
-    first_name: row.players?.first_name,
-    last_name: row.players?.last_name,
-    bats: row.players?.bats,
+    display_name: row.display_name,
+    first_name: row.first_name,
+    last_name: row.last_name,
+    bats: row.bats,
   }
 }
 
 /**
- * Load players from Supabase using parallel batch fetching
+ * Load players from Neon PostgreSQL
  */
-async function loadPlayersFromSupabase(yearList: number[]): Promise<PlayerSeason[]> {
+async function loadPlayersFromDatabase(yearList: number[]): Promise<PlayerSeason[]> {
   const useRangeQuery = areYearsConsecutive(yearList)
   const minYear = Math.min(...yearList)
   const maxYear = Math.max(...yearList)
@@ -126,89 +116,58 @@ async function loadPlayersFromSupabase(yearList: number[]): Promise<PlayerSeason
     console.log(`[Cache] Using range query optimization: ${minYear}-${maxYear}`)
   }
 
-  // Helper to apply year filter
-  const applyYearFilter = (query: any) => {
-    if (useRangeQuery) {
-      return query.gte('year', minYear).lte('year', maxYear)
-    }
-    return query.in('year', yearList)
+  // Build year filter clause
+  let yearClause: string
+  let yearParams: any[]
+
+  if (useRangeQuery) {
+    yearClause = 'ps.year >= $1 AND ps.year <= $2'
+    yearParams = [minYear, maxYear]
+  } else {
+    yearClause = 'ps.year = ANY($1)'
+    yearParams = [yearList]
   }
 
-  // Helper to fetch a batch
-  const fetchBatch = async (type: 'hitters' | 'pitchers', offset: number) => {
-    if (type === 'hitters') {
-      let query = supabase
-        .from('player_seasons')
-        .select(playerSelect)
-      query = applyYearFilter(query)
-      return query
-        .gte('at_bats', RELAXED_AB_THRESHOLD)
-        .order('apba_rating', { ascending: false, nullsFirst: false })
-        .range(offset, offset + BATCH_SIZE - 1)
-    } else {
-      let query = supabase
-        .from('player_seasons')
-        .select(playerSelect)
-      query = applyYearFilter(query)
-      return query
-        .gte('innings_pitched_outs', RELAXED_IP_THRESHOLD)
-        .lt('at_bats', RELAXED_AB_THRESHOLD)
-        .order('apba_rating', { ascending: false, nullsFirst: false })
-        .range(offset, offset + BATCH_SIZE - 1)
-    }
-  }
+  // Fetch hitters (at_bats >= threshold)
+  const hittersQuery = `
+    SELECT
+      ps.id, ps.player_id, ps.year, ps.team_id, ps.primary_position, ps.apba_rating, ps.war,
+      ps.at_bats, ps.batting_avg, ps.hits, ps.home_runs, ps.rbi, ps.stolen_bases,
+      ps.on_base_pct, ps.slugging_pct, ps.innings_pitched_outs, ps.wins, ps.losses,
+      ps.era, ps.strikeouts_pitched, ps.saves, ps.shutouts, ps.whip,
+      p.display_name, p.first_name, p.last_name, p.bats
+    FROM player_seasons ps
+    INNER JOIN players p ON ps.player_id = p.id
+    WHERE ${yearClause}
+      AND ps.at_bats >= $${yearParams.length + 1}
+    ORDER BY ps.apba_rating DESC NULLS LAST
+  `
 
-  // Fetch all players using parallel batch fetching
-  const fetchAllParallel = async (type: 'hitters' | 'pitchers'): Promise<{ data: any[], error: any }> => {
-    const allData: any[] = []
-    let offset = 0
-    let hasMore = true
+  // Fetch pitchers (innings_pitched_outs >= threshold AND at_bats < threshold)
+  const pitchersQuery = `
+    SELECT
+      ps.id, ps.player_id, ps.year, ps.team_id, ps.primary_position, ps.apba_rating, ps.war,
+      ps.at_bats, ps.batting_avg, ps.hits, ps.home_runs, ps.rbi, ps.stolen_bases,
+      ps.on_base_pct, ps.slugging_pct, ps.innings_pitched_outs, ps.wins, ps.losses,
+      ps.era, ps.strikeouts_pitched, ps.saves, ps.shutouts, ps.whip,
+      p.display_name, p.first_name, p.last_name, p.bats
+    FROM player_seasons ps
+    INNER JOIN players p ON ps.player_id = p.id
+    WHERE ${yearClause}
+      AND ps.innings_pitched_outs >= $${yearParams.length + 1}
+      AND ps.at_bats < $${yearParams.length + 2}
+    ORDER BY ps.apba_rating DESC NULLS LAST
+  `
 
-    while (hasMore) {
-      const batchPromises = []
-      for (let i = 0; i < PARALLEL_BATCHES; i++) {
-        batchPromises.push(fetchBatch(type, offset + (i * BATCH_SIZE)))
-      }
-
-      const results = await Promise.all(batchPromises)
-
-      let batchHadData = false
-      for (const result of results) {
-        if (result.error) {
-          return { data: allData, error: result.error }
-        }
-        if (result.data && result.data.length > 0) {
-          allData.push(...result.data)
-          batchHadData = true
-          if (result.data.length < BATCH_SIZE) {
-            hasMore = false
-          }
-        } else {
-          hasMore = false
-        }
-      }
-
-      if (!batchHadData) hasMore = false
-      offset += PARALLEL_BATCHES * BATCH_SIZE
-    }
-
-    return { data: allData, error: null }
-  }
-
-  // Fetch hitters and pitchers in parallel
+  // Execute both queries in parallel
   const [hittersResult, pitchersResult] = await Promise.all([
-    fetchAllParallel('hitters'),
-    fetchAllParallel('pitchers')
+    pool.query(hittersQuery, [...yearParams, RELAXED_AB_THRESHOLD]),
+    pool.query(pitchersQuery, [...yearParams, RELAXED_IP_THRESHOLD, RELAXED_AB_THRESHOLD])
   ])
 
-  if (hittersResult.error || pitchersResult.error) {
-    const err = hittersResult.error || pitchersResult.error
-    throw new Error(`Failed to load player pool: ${err.message}`)
-  }
-
   const allPlayers = [
-    ...hittersResult.data.map(transformPlayerRow),
-    ...pitchersResult.data.map(transformPlayerRow),
+    ...hittersResult.rows.map(transformPlayerRow),
+    ...pitchersResult.rows.map(transformPlayerRow),
   ]
 
   return allPlayers
@@ -234,7 +193,7 @@ export async function getOrLoadPlayerPool(
   console.log(`[Cache] MISS for session ${sessionId}, loading ${yearList.length} seasons...`)
   const startTime = Date.now()
 
-  const players = await loadPlayersFromSupabase(yearList)
+  const players = await loadPlayersFromDatabase(yearList)
 
   const loadTime = Date.now() - startTime
   console.log(`[Cache] Loaded ${players.length} players in ${loadTime}ms`)

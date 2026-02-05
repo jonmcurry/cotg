@@ -37,8 +37,6 @@ export default function StatMaster({ session, onExit }: Props) {
             loadedRef.current = true
 
             try {
-                const { supabase } = await import('../../lib/supabaseClient')
-
                 const seasonIds = currentSession.teams.flatMap(t =>
                     t.roster
                         .filter(slot => slot.isFilled && slot.playerSeasonId)
@@ -50,62 +48,23 @@ export default function StatMaster({ session, onExit }: Props) {
                     return
                 }
 
-                // Batch queries to avoid PostgREST URL length limits
-                // With 32 teams × 21 rounds = 672 UUIDs, a single .in() exceeds the ~8KB URL limit
-                const BATCH_SIZE = 100
-                const allData: any[] = []
+                // Use backend API to fetch player data
+                const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+                const response = await fetch(`${apiUrl}/api/players/batch`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids: seasonIds })
+                })
 
-                for (let i = 0; i < seasonIds.length; i += BATCH_SIZE) {
-                    const batch = seasonIds.slice(i, i + BATCH_SIZE)
-                    const { data, error } = await supabase
-                        .from('player_seasons')
-                        .select(`
-                            id,
-                            player_id,
-                            year,
-                            team_id,
-                            primary_position,
-                            apba_rating,
-                            war,
-                            at_bats,
-                            batting_avg,
-                            hits,
-                            home_runs,
-                            rbi,
-                            stolen_bases,
-                            on_base_pct,
-                            slugging_pct,
-                            innings_pitched_outs,
-                            wins,
-                            losses,
-                            era,
-                            strikeouts_pitched,
-                            saves,
-                            shutouts,
-                            whip,
-                            players!inner (
-                              display_name,
-                              first_name,
-                              last_name,
-                              bats
-                            )
-                        `)
-                        .in('id', batch)
-
-                    if (error) {
-                        console.error('[StatMaster] Error loading players batch:', error)
-                        return
-                    }
-
-                    if (data) {
-                        allData.push(...data)
-                    }
+                if (!response.ok) {
+                    throw new Error(`API request failed: ${response.status}`)
                 }
 
-                if (allData.length > 0) {
-                    const transformedPlayers = allData.map(transformPlayerSeasonData)
+                const data = await response.json()
+
+                if (data && data.length > 0) {
+                    const transformedPlayers = data.map(transformPlayerSeasonData)
                     setPlayers(transformedPlayers)
-                    // console.log(`[StatMaster] Loaded ${transformedPlayers.length} players in ${Math.ceil(seasonIds.length / BATCH_SIZE)} batches`)
                 }
             } catch (err) {
                 console.error('[StatMaster] Exception loading players:', err)

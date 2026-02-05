@@ -4,7 +4,7 @@
  */
 
 import { Router, Request, Response } from 'express'
-import { supabase } from '../lib/supabase'
+import { pool } from '../lib/db'
 
 const router = Router()
 
@@ -288,7 +288,7 @@ function transformPlayerRow(row: any): PlayerSeason {
     slugging_pct: row.slugging_pct,
     innings_pitched_outs: Number(row.innings_pitched_outs) || 0,
     era: row.era,
-    bats: row.players?.bats,
+    bats: row.bats,
   }
 }
 
@@ -321,22 +321,16 @@ router.post('/:teamId/auto-lineup', async (req: Request, res: Response) => {
     }
 
     // Load player data
-    const { data, error } = await supabase
-      .from('player_seasons')
-      .select(`
-        id, player_id, year, primary_position, apba_rating,
-        at_bats, home_runs, on_base_pct, slugging_pct,
-        innings_pitched_outs, era,
-        players!inner (bats)
-      `)
-      .in('id', playerSeasonIds)
+    const result = await pool.query(`
+      SELECT ps.id, ps.player_id, ps.year, ps.primary_position, ps.apba_rating,
+             ps.at_bats, ps.home_runs, ps.on_base_pct, ps.slugging_pct,
+             ps.innings_pitched_outs, ps.era, p.bats
+      FROM player_seasons ps
+      INNER JOIN players p ON ps.player_id = p.id
+      WHERE ps.id = ANY($1)
+    `, [playerSeasonIds])
 
-    if (error) {
-      console.error('[Lineup API] Error loading players:', error)
-      return res.status(500).json({ error: 'Failed to load player data' })
-    }
-
-    const players = (data || []).map(transformPlayerRow)
+    const players = result.rows.map(transformPlayerRow)
 
     // Generate the depth chart
     const depthChart = generateOptimalDepthChart(roster, players)

@@ -34,7 +34,7 @@ APBA Baseball Web - A web-based implementation of the APBA baseball tabletop gam
 
 ## Architecture
 
-### 3-Tier Architecture (Vercel + Render + Supabase)
+### 3-Tier Architecture (Vercel + Render + Neon)
 
 **Frontend (Vercel)**
 - React 18 with TypeScript
@@ -48,22 +48,24 @@ APBA Baseball Web - A web-based implementation of the APBA baseball tabletop gam
 - TypeScript
 - RESTful API endpoints
 - Server-side computation (CPU draft AI, lineup generation, schedule generation)
+- pg (node-postgres) driver for database access
+- Raw SQL queries with parameterized inputs
 
-**Database (Supabase)**
-- PostgreSQL database
+**Database (Neon PostgreSQL)**
+- Serverless PostgreSQL database
 - Historical player data (1901-2024)
 - Draft sessions, picks, teams, leagues
-- Row Level Security policies
+- Connection pooling via Neon pooler
 
 ### API Architecture
 
 All data operations flow through the backend API:
 1. Frontend makes requests to backend API (`VITE_API_URL`)
 2. Backend validates and processes requests
-3. Backend communicates with Supabase using service role key
+3. Backend communicates with Neon PostgreSQL using pg driver
 4. Backend returns processed data to frontend
 
 **Security Benefits:**
-- Service role key never exposed to client
+- Database credentials never exposed to client
 - Backend can add auth, rate limiting, caching
 - Single source of truth for business logic

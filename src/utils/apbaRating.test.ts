@@ -11,7 +11,6 @@
 import {
   calculateBatterRating,
   calculatePitcherRating,
-  calculatePlayerRating,
   PlayerSeasonStats
 } from './apbaRating';
 

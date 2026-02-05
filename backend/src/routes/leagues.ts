@@ -4,7 +4,7 @@
  */
 
 import { Router, Request, Response } from 'express'
-import { supabase } from '../lib/supabase'
+import { pool } from '../lib/db'
 
 const router = Router()
 
@@ -69,17 +69,8 @@ function transformLeagueRow(row: Record<string, unknown>): League {
  */
 router.get('/', async (_req: Request, res: Response) => {
   try {
-    const { data, error } = await supabase
-      .from('leagues')
-      .select('*')
-      .order('updated_at', { ascending: false })
-
-    if (error) {
-      console.error('[Leagues API] Error listing leagues:', error)
-      return res.status(500).json({ error: `Failed to list leagues: ${error.message}` })
-    }
-
-    const leagues = (data || []).map(transformLeagueRow)
+    const result = await pool.query('SELECT * FROM leagues ORDER BY updated_at DESC')
+    const leagues = result.rows.map(transformLeagueRow)
     return res.json(leagues)
   } catch (err) {
     console.error('[Leagues API] Exception:', err)
@@ -94,22 +85,13 @@ router.get('/', async (_req: Request, res: Response) => {
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params
+    const result = await pool.query('SELECT * FROM leagues WHERE id = $1', [id])
 
-    const { data, error } = await supabase
-      .from('leagues')
-      .select('*')
-      .eq('id', id)
-      .single()
-
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return res.status(404).json({ error: `League not found: ${id}` })
-      }
-      console.error('[Leagues API] Error getting league:', error)
-      return res.status(500).json({ error: `Failed to get league: ${error.message}` })
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: `League not found: ${id}` })
     }
 
-    return res.json(transformLeagueRow(data))
+    return res.json(transformLeagueRow(result.rows[0]))
   } catch (err) {
     console.error('[Leagues API] Exception:', err)
     return res.status(500).json({ error: 'Internal server error' })
@@ -131,30 +113,26 @@ router.post('/', async (req: Request, res: Response) => {
       })
     }
 
-    const { data, error } = await supabase
-      .from('leagues')
-      .insert({
-        league_name: config.name,
-        league_description: config.description || null,
-        season_year: config.seasonYear,
-        num_teams: config.numTeams,
-        games_per_season: config.gamesPerSeason,
-        playoff_format: config.playoffFormat || 'none',
-        use_apba_rules: config.useApbaRules ?? true,
-        injury_enabled: config.injuryEnabled ?? false,
-        weather_effects: config.weatherEffects ?? false,
-        status: 'draft',
-      })
-      .select()
-      .single()
+    const result = await pool.query(`
+      INSERT INTO leagues (
+        league_name, league_description, season_year, num_teams, games_per_season,
+        playoff_format, use_apba_rules, injury_enabled, weather_effects, status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING *
+    `, [
+      config.name,
+      config.description || null,
+      config.seasonYear,
+      config.numTeams,
+      config.gamesPerSeason,
+      config.playoffFormat || 'none',
+      config.useApbaRules ?? true,
+      config.injuryEnabled ?? false,
+      config.weatherEffects ?? false,
+      'draft'
+    ])
 
-    if (error) {
-      console.error('[Leagues API] Error creating league:', error)
-      return res.status(500).json({ error: `Failed to create league: ${error.message}` })
-    }
-
-    // console.log('[Leagues API] Created league:', data.id, config.name)
-    return res.status(201).json(transformLeagueRow(data))
+    return res.status(201).json(transformLeagueRow(result.rows[0]))
   } catch (err) {
     console.error('[Leagues API] Exception:', err)
     return res.status(500).json({ error: 'Internal server error' })
@@ -170,36 +148,48 @@ router.put('/:id', async (req: Request, res: Response) => {
     const { id } = req.params
     const updates = req.body
 
-    // Build update object with snake_case keys
-    const dbUpdates: Record<string, unknown> = {}
+    const setClauses: string[] = []
+    const values: any[] = []
+    let paramIndex = 1
 
-    if (updates.status !== undefined) dbUpdates.status = updates.status
-    if (updates.draftSessionId !== undefined) dbUpdates.draft_session_id = updates.draftSessionId
-    if (updates.currentGameDate !== undefined) dbUpdates.current_game_date = updates.currentGameDate
-    if (updates.name !== undefined) dbUpdates.league_name = updates.name
-    if (updates.description !== undefined) dbUpdates.league_description = updates.description
+    if (updates.status !== undefined) {
+      setClauses.push(`status = $${paramIndex++}`)
+      values.push(updates.status)
+    }
+    if (updates.draftSessionId !== undefined) {
+      setClauses.push(`draft_session_id = $${paramIndex++}`)
+      values.push(updates.draftSessionId)
+    }
+    if (updates.currentGameDate !== undefined) {
+      setClauses.push(`current_game_date = $${paramIndex++}`)
+      values.push(updates.currentGameDate)
+    }
+    if (updates.name !== undefined) {
+      setClauses.push(`league_name = $${paramIndex++}`)
+      values.push(updates.name)
+    }
+    if (updates.description !== undefined) {
+      setClauses.push(`league_description = $${paramIndex++}`)
+      values.push(updates.description)
+    }
 
-    if (Object.keys(dbUpdates).length === 0) {
+    if (setClauses.length === 0) {
       return res.status(400).json({ error: 'No valid fields to update' })
     }
 
-    const { data, error } = await supabase
-      .from('leagues')
-      .update(dbUpdates)
-      .eq('id', id)
-      .select()
-      .single()
+    values.push(id)
+    const result = await pool.query(`
+      UPDATE leagues
+      SET ${setClauses.join(', ')}, updated_at = NOW()
+      WHERE id = $${paramIndex}
+      RETURNING *
+    `, values)
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return res.status(404).json({ error: `League not found: ${id}` })
-      }
-      console.error('[Leagues API] Error updating league:', error)
-      return res.status(500).json({ error: `Failed to update league: ${error.message}` })
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: `League not found: ${id}` })
     }
 
-    // console.log('[Leagues API] Updated league:', id, Object.keys(dbUpdates))
-    return res.json(transformLeagueRow(data))
+    return res.json(transformLeagueRow(result.rows[0]))
   } catch (err) {
     console.error('[Leagues API] Exception:', err)
     return res.status(500).json({ error: 'Internal server error' })
@@ -213,18 +203,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params
-
-    const { error } = await supabase
-      .from('leagues')
-      .delete()
-      .eq('id', id)
-
-    if (error) {
-      console.error('[Leagues API] Error deleting league:', error)
-      return res.status(500).json({ error: `Failed to delete league: ${error.message}` })
-    }
-
-    // console.log('[Leagues API] Deleted league:', id)
+    await pool.query('DELETE FROM leagues WHERE id = $1', [id])
     return res.status(204).send()
   } catch (err) {
     console.error('[Leagues API] Exception:', err)

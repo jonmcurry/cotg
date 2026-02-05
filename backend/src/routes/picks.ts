@@ -4,16 +4,14 @@
  */
 
 import { Router, Request, Response } from 'express'
-import { supabase } from '../lib/supabase'
+import { pool } from '../lib/db'
 
 const router = Router()
 
-// FIXED Issue #15: Use constant instead of magic number
 const TOTAL_ROUNDS = 21
 
 type PositionCode = 'C' | '1B' | '2B' | 'SS' | '3B' | 'OF' | 'SP' | 'RP' | 'CL' | 'DH' | 'BN'
 
-// FIXED Issue #10: Position eligibility mapping (matches database primary_position to roster slots)
 const POSITION_ELIGIBILITY: Record<PositionCode, string[]> = {
   'C': ['C'],
   '1B': ['1B'],
@@ -56,18 +54,12 @@ router.get('/:sessionId/picks', async (req: Request, res: Response) => {
   try {
     const { sessionId } = req.params
 
-    const { data, error } = await supabase
-      .from('draft_picks')
-      .select('*')
-      .eq('draft_session_id', sessionId)
-      .order('pick_number')
+    const result = await pool.query(
+      'SELECT * FROM draft_picks WHERE draft_session_id = $1 ORDER BY pick_number',
+      [sessionId]
+    )
 
-    if (error) {
-      console.error('[Picks API] Error loading picks:', error)
-      return res.status(500).json({ error: `Failed to load picks: ${error.message}` })
-    }
-
-    const picks: DraftPick[] = (data || []).map(row => ({
+    const picks: DraftPick[] = result.rows.map(row => ({
       pickNumber: row.pick_number,
       round: row.round,
       pickInRound: row.pick_in_round,
@@ -89,38 +81,23 @@ router.get('/:sessionId/picks', async (req: Request, res: Response) => {
 /**
  * POST /api/draft/sessions/:sessionId/picks
  * Make a draft pick
- *
- * This is the core pick operation:
- * 1. Validates the session and current pick
- * 2. Resolves playerId if not provided
- * 3. Upserts the pick to handle idempotency
- * 4. Advances the pick counter
- *
- * Returns: { result: 'success' | 'duplicate' | 'error', pick?, session? }
  */
 router.post('/:sessionId/picks', async (req: Request, res: Response) => {
   try {
     const { sessionId } = req.params
-    const { playerSeasonId, playerId, position, slotNumber, bats }: MakePickRequest = req.body
+    const { playerSeasonId, playerId, position, slotNumber }: MakePickRequest = req.body
 
-    // FIXED Issue #4: Comprehensive input validation
     // Validate playerSeasonId
     if (!playerSeasonId || typeof playerSeasonId !== 'string' || playerSeasonId.trim().length === 0) {
       return res.status(400).json({
         result: 'error',
-        error: `playerSeasonId is required and must be a non-empty string (got: ${JSON.stringify(playerSeasonId)})`
+        error: `playerSeasonId is required and must be a non-empty string`
       })
     }
 
     // Validate position
     const VALID_POSITIONS = ['C', '1B', '2B', 'SS', '3B', 'OF', 'LF', 'CF', 'RF', 'SP', 'RP', 'CL', 'DH', 'BN']
-    if (!position || typeof position !== 'string' || position.trim().length === 0) {
-      return res.status(400).json({
-        result: 'error',
-        error: `position is required and must be a non-empty string (got: ${JSON.stringify(position)})`
-      })
-    }
-    if (!VALID_POSITIONS.includes(position)) {
+    if (!position || !VALID_POSITIONS.includes(position)) {
       return res.status(400).json({
         result: 'error',
         error: `Invalid position "${position}". Must be one of: ${VALID_POSITIONS.join(', ')}`
@@ -128,38 +105,26 @@ router.post('/:sessionId/picks', async (req: Request, res: Response) => {
     }
 
     // Validate slotNumber
-    if (slotNumber === null || slotNumber === undefined || typeof slotNumber !== 'number') {
+    if (slotNumber === null || slotNumber === undefined || typeof slotNumber !== 'number' || slotNumber < 1) {
       return res.status(400).json({
         result: 'error',
-        error: `slotNumber is required and must be a number (got: ${JSON.stringify(slotNumber)})`
-      })
-    }
-    if (slotNumber < 1 || !Number.isInteger(slotNumber)) {
-      return res.status(400).json({
-        result: 'error',
-        error: `slotNumber must be a positive integer >= 1 (got: ${slotNumber})`
+        error: `slotNumber must be a positive integer >= 1`
       })
     }
 
-    // Load session to get current pick info
-    const { data: session, error: sessionError } = await supabase
-      .from('draft_sessions')
-      .select('*')
-      .eq('id', sessionId)
-      .single()
-
-    if (sessionError || !session) {
+    // Load session
+    const sessionResult = await pool.query('SELECT * FROM draft_sessions WHERE id = $1', [sessionId])
+    if (sessionResult.rows.length === 0) {
       return res.status(404).json({ error: `Session not found: ${sessionId}` })
     }
+    const session = sessionResult.rows[0]
 
-    // Load teams to find current picking team
-    const { data: teams, error: teamsError } = await supabase
-      .from('draft_teams')
-      .select('*')
-      .eq('draft_session_id', sessionId)
-      .order('draft_order')
-
-    if (teamsError || !teams || teams.length === 0) {
+    // Load teams
+    const teamsResult = await pool.query(
+      'SELECT * FROM draft_teams WHERE draft_session_id = $1 ORDER BY draft_order',
+      [sessionId]
+    )
+    if (teamsResult.rows.length === 0) {
       return res.status(500).json({ error: 'Failed to load teams' })
     }
 
@@ -167,8 +132,8 @@ router.post('/:sessionId/picks', async (req: Request, res: Response) => {
     const round = session.current_round
     const pickInRound = ((session.current_pick_number - 1) % session.num_teams) + 1
     const sortedTeams = round % 2 === 0
-      ? [...teams].sort((a, b) => b.draft_order - a.draft_order)
-      : [...teams].sort((a, b) => a.draft_order - b.draft_order)
+      ? [...teamsResult.rows].sort((a, b) => b.draft_order - a.draft_order)
+      : [...teamsResult.rows].sort((a, b) => a.draft_order - b.draft_order)
 
     const currentTeam = sortedTeams[pickInRound - 1]
     if (!currentTeam) {
@@ -178,78 +143,52 @@ router.post('/:sessionId/picks', async (req: Request, res: Response) => {
     // Resolve playerId if not provided
     let resolvedPlayerId = playerId
     if (!resolvedPlayerId) {
-      const { data: playerSeason, error: fetchError } = await supabase
-        .from('player_seasons')
-        .select('player_id')
-        .eq('id', playerSeasonId)
-        .single()
-
-      if (fetchError || !playerSeason) {
-        console.error('[Picks API] Error fetching player_id:', fetchError)
+      const playerResult = await pool.query(
+        'SELECT player_id FROM player_seasons WHERE id = $1',
+        [playerSeasonId]
+      )
+      if (playerResult.rows.length === 0) {
         return res.status(500).json({ error: 'Failed to resolve player ID' })
       }
-
-      resolvedPlayerId = playerSeason.player_id
+      resolvedPlayerId = playerResult.rows[0].player_id
     }
 
-    // FIXED Issue #10: Validate position eligibility
-    const { data: playerSeasonData, error: positionError } = await supabase
-      .from('player_seasons')
-      .select('primary_position, games_by_position')
-      .eq('id', playerSeasonId)
-      .single()
-
-    if (positionError || !playerSeasonData) {
-      console.error('[Picks API] Error fetching player position:', positionError)
+    // Validate position eligibility
+    const positionResult = await pool.query(
+      'SELECT primary_position FROM player_seasons WHERE id = $1',
+      [playerSeasonId]
+    )
+    if (positionResult.rows.length === 0) {
       return res.status(500).json({ error: 'Failed to validate position eligibility' })
     }
 
-    // Check if player's primary_position is eligible for the requested position
+    const playerPosition = positionResult.rows[0].primary_position
     const eligiblePositions = POSITION_ELIGIBILITY[position as PositionCode]
-    const playerPosition = playerSeasonData.primary_position
 
     if (!eligiblePositions.includes(playerPosition)) {
-      console.warn('[Picks API] INVALID POSITION:', {
-        playerSeasonId,
-        playerPosition,
-        requestedPosition: position,
-        eligiblePositions,
-      })
       return res.status(400).json({
         result: 'error',
-        error: `Player position "${playerPosition}" is not eligible for roster slot "${position}". Eligible positions: ${eligiblePositions.join(', ')}`,
+        error: `Player position "${playerPosition}" is not eligible for roster slot "${position}"`,
       })
     }
 
-    // Upsert the pick (idempotent - handles duplicate submissions)
-    const { error: pickError } = await supabase
-      .from('draft_picks')
-      .upsert({
-        draft_session_id: sessionId,
-        draft_team_id: currentTeam.id,
-        player_id: resolvedPlayerId,
-        player_season_id: playerSeasonId,
-        pick_number: session.current_pick_number,
-        round: round,
-        pick_in_round: pickInRound,
-        position: position,
-        slot_number: slotNumber,
-      }, {
-        onConflict: 'draft_session_id,pick_number',
-      })
-
-    if (pickError) {
-      // Check for duplicate player constraint
+    // Upsert the pick
+    try {
+      await pool.query(`
+        INSERT INTO draft_picks (draft_session_id, draft_team_id, player_id, player_season_id, pick_number, round, pick_in_round, position, slot_number)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        ON CONFLICT (draft_session_id, pick_number) DO UPDATE SET
+          player_id = EXCLUDED.player_id, player_season_id = EXCLUDED.player_season_id,
+          position = EXCLUDED.position, slot_number = EXCLUDED.slot_number
+      `, [sessionId, currentTeam.id, resolvedPlayerId, playerSeasonId, session.current_pick_number, round, pickInRound, position, slotNumber])
+    } catch (pickError: any) {
       if (pickError.code === '23505' && pickError.message?.includes('player_season_id')) {
-        console.warn('[Picks API] DUPLICATE PLAYER:', playerSeasonId)
         return res.status(409).json({
           result: 'duplicate',
           error: 'Player already drafted in this session',
           playerSeasonId,
         })
       }
-
-      console.error('[Picks API] Error saving pick:', pickError)
       return res.status(500).json({ result: 'error', error: pickError.message })
     }
 
@@ -260,36 +199,18 @@ router.post('/:sessionId/picks', async (req: Request, res: Response) => {
     const nextRound = isComplete ? round : Math.floor((nextPickNumber - 1) / session.num_teams) + 1
     const newStatus = isComplete ? 'completed' : session.status
 
-    // Update session with new pick number
-    const { error: updateError } = await supabase
-      .from('draft_sessions')
-      .update({
-        current_pick_number: nextPickNumber,
-        current_round: nextRound,
-        status: newStatus,
-      })
-      .eq('id', sessionId)
+    // Update session
+    const updateResult = await pool.query(
+      'UPDATE draft_sessions SET current_pick_number = $1, current_round = $2, status = $3, updated_at = NOW() WHERE id = $4',
+      [nextPickNumber, nextRound, newStatus, sessionId]
+    )
 
-    // FIXED Issue #7: Return error if session update fails after pick saved
-    // This prevents database inconsistency where pick exists but counter didn't advance
-    if (updateError) {
-      console.error('[Picks API] CRITICAL: Pick saved but session update failed!', {
-        sessionId,
-        pickNumber: session.current_pick_number,
-        updateError,
-      })
+    if (updateResult.rowCount === 0) {
       return res.status(500).json({
         result: 'error',
-        error: 'Pick was saved but draft status could not be updated. Please refresh and verify state.',
+        error: 'Pick was saved but draft status could not be updated.',
       })
     }
-
-    // console.log('[Picks API] Pick made:', {
-    //   session: sessionId,
-    //   pick: session.current_pick_number,
-    //   team: currentTeam.team_name,
-    //   player: playerSeasonId,
-    // })
 
     return res.status(201).json({
       result: 'success',

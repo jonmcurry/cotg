@@ -4,7 +4,7 @@
  */
 
 import { Router, Request, Response } from 'express'
-import { supabase } from '../lib/supabase'
+import { pool } from '../lib/db'
 import { clearCache } from '../lib/playerPoolCache'
 
 const router = Router()
@@ -119,18 +119,13 @@ function generatePickOrder(
  */
 router.get('/', async (_req: Request, res: Response) => {
   try {
-    const { data, error } = await supabase
-      .from('draft_sessions')
-      .select('*')
-      .order('updated_at', { ascending: false })
-
-    if (error) {
-      console.error('[Draft API] Error listing sessions:', error)
-      return res.status(500).json({ error: `Failed to list sessions: ${error.message}` })
-    }
+    const result = await pool.query(`
+      SELECT * FROM draft_sessions
+      ORDER BY updated_at DESC
+    `)
 
     // Transform to API format
-    const sessions = (data || []).map(row => ({
+    const sessions = result.rows.map(row => ({
       id: row.id,
       name: row.session_name,
       status: row.status,
@@ -157,46 +152,31 @@ router.get('/:id', async (req: Request, res: Response) => {
     const { id } = req.params
 
     // Load session
-    const { data: sessionData, error: sessionError } = await supabase
-      .from('draft_sessions')
-      .select('*')
-      .eq('id', id)
-      .single()
+    const sessionResult = await pool.query(
+      'SELECT * FROM draft_sessions WHERE id = $1',
+      [id]
+    )
 
-    if (sessionError) {
-      if (sessionError.code === 'PGRST116') {
-        return res.status(404).json({ error: `Session not found: ${id}` })
-      }
-      console.error('[Draft API] Error getting session:', sessionError)
-      return res.status(500).json({ error: `Failed to get session: ${sessionError.message}` })
+    if (sessionResult.rows.length === 0) {
+      return res.status(404).json({ error: `Session not found: ${id}` })
     }
+
+    const sessionData = sessionResult.rows[0]
 
     // Load teams
-    const { data: teamsData, error: teamsError } = await supabase
-      .from('draft_teams')
-      .select('*')
-      .eq('draft_session_id', id)
-      .order('draft_order')
-
-    if (teamsError) {
-      console.error('[Draft API] Error loading teams:', teamsError)
-      return res.status(500).json({ error: `Failed to load teams: ${teamsError.message}` })
-    }
+    const teamsResult = await pool.query(
+      'SELECT * FROM draft_teams WHERE draft_session_id = $1 ORDER BY draft_order',
+      [id]
+    )
 
     // Load picks
-    const { data: picksData, error: picksError } = await supabase
-      .from('draft_picks')
-      .select('*')
-      .eq('draft_session_id', id)
-      .order('pick_number')
-
-    if (picksError) {
-      console.error('[Draft API] Error loading picks:', picksError)
-      return res.status(500).json({ error: `Failed to load picks: ${picksError.message}` })
-    }
+    const picksResult = await pool.query(
+      'SELECT * FROM draft_picks WHERE draft_session_id = $1 ORDER BY pick_number',
+      [id]
+    )
 
     // Transform teams
-    const teams: DraftTeam[] = (teamsData || []).map(row => ({
+    const teams: DraftTeam[] = teamsResult.rows.map(row => ({
       id: row.id,
       name: row.team_name,
       control: (row.control || 'cpu') as TeamControl,
@@ -206,8 +186,8 @@ router.get('/:id', async (req: Request, res: Response) => {
     }))
 
     // Fill roster from picks
-    const picksMap = new Map<string, typeof picksData[0][]>()
-    ;(picksData || []).forEach(pick => {
+    const picksMap = new Map<string, typeof picksResult.rows[0][]>()
+    picksResult.rows.forEach(pick => {
       if (pick.player_season_id) {
         const teamPicks = picksMap.get(pick.draft_team_id) || []
         teamPicks.push(pick)
@@ -224,7 +204,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       : []
 
     // Overlay completed picks from database
-    ;(picksData || []).forEach(dbPick => {
+    picksResult.rows.forEach(dbPick => {
       const pickIndex = picks.findIndex(p => p.pickNumber === dbPick.pick_number)
       if (pickIndex !== -1 && dbPick.player_season_id) {
         picks[pickIndex] = {
@@ -278,49 +258,47 @@ router.post('/', async (req: Request, res: Response) => {
       : Array.from({ length: config.numTeams }, (_, i) => i + 1)
 
     // Create session in database
-    const { data: newSession, error: sessionError } = await supabase
-      .from('draft_sessions')
-      .insert({
-        session_name: `Draft ${new Date().toLocaleDateString()}`,
-        season_year: config.selectedSeasons?.[0] || new Date().getFullYear(),
-        selected_seasons: config.selectedSeasons || [], // FIXED Issue #13: Persist selectedSeasons
-        num_teams: config.numTeams,
-        num_rounds: TOTAL_ROUNDS,
-        draft_type: 'snake',
-        current_pick_number: 1,
-        current_round: 1,
-        status: 'setup',
-      })
-      .select()
-      .single()
+    const sessionResult = await pool.query(`
+      INSERT INTO draft_sessions (
+        session_name, season_year, selected_seasons, num_teams, num_rounds,
+        draft_type, current_pick_number, current_round, status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING *
+    `, [
+      `Draft ${new Date().toLocaleDateString()}`,
+      config.selectedSeasons?.[0] || new Date().getFullYear(),
+      config.selectedSeasons || [],
+      config.numTeams,
+      TOTAL_ROUNDS,
+      'snake',
+      1,
+      1,
+      'setup'
+    ])
 
-    if (sessionError || !newSession) {
-      console.error('[Draft API] Error creating session:', sessionError)
-      return res.status(500).json({ error: `Failed to create session: ${sessionError?.message}` })
-    }
+    const newSession = sessionResult.rows[0]
 
     // Create teams in database
-    const teamsToInsert = config.teams.map((team, index) => ({
-      draft_session_id: newSession.id,
-      team_name: team.name,
-      control: team.control,
-      draft_order: teamPositions[index],
-    }))
+    const teamInserts = config.teams.map((team, index) => [
+      newSession.id,
+      team.name,
+      team.control,
+      teamPositions[index]
+    ])
 
-    const { data: newTeams, error: teamsError } = await supabase
-      .from('draft_teams')
-      .insert(teamsToInsert)
-      .select()
-
-    if (teamsError || !newTeams) {
-      console.error('[Draft API] Error creating teams:', teamsError)
-      // Rollback session
-      await supabase.from('draft_sessions').delete().eq('id', newSession.id)
-      return res.status(500).json({ error: `Failed to create teams: ${teamsError?.message}` })
-    }
+    const teamsResult = await pool.query(`
+      INSERT INTO draft_teams (draft_session_id, team_name, control, draft_order)
+      SELECT * FROM UNNEST($1::uuid[], $2::text[], $3::text[], $4::int[])
+      RETURNING *
+    `, [
+      teamInserts.map(t => t[0]),
+      teamInserts.map(t => t[1]),
+      teamInserts.map(t => t[2]),
+      teamInserts.map(t => t[3])
+    ])
 
     // Build response
-    const teams: DraftTeam[] = newTeams.map((row, index) => ({
+    const teams: DraftTeam[] = teamsResult.rows.map(row => ({
       id: row.id,
       name: row.team_name,
       control: row.control as TeamControl,
@@ -345,7 +323,6 @@ router.post('/', async (req: Request, res: Response) => {
       updatedAt: newSession.updated_at,
     }
 
-    // console.log('[Draft API] Created session:', session.id, 'with', teams.length, 'teams')
     return res.status(201).json(session)
   } catch (err) {
     console.error('[Draft API] Exception:', err)
@@ -362,37 +339,50 @@ router.put('/:id', async (req: Request, res: Response) => {
     const { id } = req.params
     const updates = req.body
 
-    const dbUpdates: Record<string, unknown> = {}
-    if (updates.status !== undefined) dbUpdates.status = updates.status
-    if (updates.currentPick !== undefined) dbUpdates.current_pick_number = updates.currentPick
-    if (updates.currentRound !== undefined) dbUpdates.current_round = updates.currentRound
-    if (updates.selectedSeasons !== undefined) dbUpdates.selected_seasons = updates.selectedSeasons // FIXED Issue #13
+    const setClauses: string[] = []
+    const values: any[] = []
+    let paramIndex = 1
 
-    if (Object.keys(dbUpdates).length === 0) {
+    if (updates.status !== undefined) {
+      setClauses.push(`status = $${paramIndex++}`)
+      values.push(updates.status)
+    }
+    if (updates.currentPick !== undefined) {
+      setClauses.push(`current_pick_number = $${paramIndex++}`)
+      values.push(updates.currentPick)
+    }
+    if (updates.currentRound !== undefined) {
+      setClauses.push(`current_round = $${paramIndex++}`)
+      values.push(updates.currentRound)
+    }
+    if (updates.selectedSeasons !== undefined) {
+      setClauses.push(`selected_seasons = $${paramIndex++}`)
+      values.push(updates.selectedSeasons)
+    }
+
+    if (setClauses.length === 0) {
       return res.status(400).json({ error: 'No valid fields to update' })
     }
 
-    const { data, error } = await supabase
-      .from('draft_sessions')
-      .update(dbUpdates)
-      .eq('id', id)
-      .select()
-      .single()
+    values.push(id)
+    const result = await pool.query(`
+      UPDATE draft_sessions
+      SET ${setClauses.join(', ')}, updated_at = NOW()
+      WHERE id = $${paramIndex}
+      RETURNING *
+    `, values)
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return res.status(404).json({ error: `Session not found: ${id}` })
-      }
-      console.error('[Draft API] Error updating session:', error)
-      return res.status(500).json({ error: `Failed to update session: ${error.message}` })
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: `Session not found: ${id}` })
     }
+
+    const data = result.rows[0]
 
     // Clear player pool cache when draft finishes or is abandoned
     if (data.status === 'completed' || data.status === 'abandoned') {
       clearCache(id)
     }
 
-    // console.log('[Draft API] Updated session:', id, Object.keys(dbUpdates))
     return res.json({
       id: data.id,
       name: data.session_name,
@@ -418,23 +408,17 @@ router.delete('/:id', async (req: Request, res: Response) => {
     const { id } = req.params
 
     // Delete picks first (foreign key constraint)
-    await supabase.from('draft_picks').delete().eq('draft_session_id', id)
+    await pool.query('DELETE FROM draft_picks WHERE draft_session_id = $1', [id])
 
     // Delete teams
-    await supabase.from('draft_teams').delete().eq('draft_session_id', id)
+    await pool.query('DELETE FROM draft_teams WHERE draft_session_id = $1', [id])
 
     // Delete session
-    const { error } = await supabase.from('draft_sessions').delete().eq('id', id)
-
-    if (error) {
-      console.error('[Draft API] Error deleting session:', error)
-      return res.status(500).json({ error: `Failed to delete session: ${error.message}` })
-    }
+    await pool.query('DELETE FROM draft_sessions WHERE id = $1', [id])
 
     // Clear player pool cache for this session
     clearCache(id)
 
-    // console.log('[Draft API] Deleted session:', id)
     return res.status(204).send()
   } catch (err) {
     console.error('[Draft API] Exception:', err)

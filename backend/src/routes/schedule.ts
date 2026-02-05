@@ -4,7 +4,7 @@
  */
 
 import { Router, Request, Response } from 'express'
-import { supabase } from '../lib/supabase'
+import { pool } from '../lib/db'
 
 const router = Router()
 
@@ -232,28 +232,26 @@ router.post('/:sessionId/schedule', async (req: Request, res: Response) => {
     const { gamesPerTeam = 162, startDate } = req.body
 
     // Load session to verify it exists
-    const { data: session, error: sessionError } = await supabase
-      .from('draft_sessions')
-      .select('id')
-      .eq('id', sessionId)
-      .single()
+    const sessionResult = await pool.query(
+      'SELECT id FROM draft_sessions WHERE id = $1',
+      [sessionId]
+    )
 
-    if (sessionError || !session) {
+    if (sessionResult.rows.length === 0) {
       return res.status(404).json({ error: `Session not found: ${sessionId}` })
     }
 
     // Load teams
-    const { data: teamsData, error: teamsError } = await supabase
-      .from('draft_teams')
-      .select('id, team_name')
-      .eq('draft_session_id', sessionId)
-      .order('draft_order')
+    const teamsResult = await pool.query(
+      'SELECT id, team_name FROM draft_teams WHERE draft_session_id = $1 ORDER BY draft_order',
+      [sessionId]
+    )
 
-    if (teamsError || !teamsData || teamsData.length < 2) {
+    if (teamsResult.rows.length < 2) {
       return res.status(400).json({ error: 'Need at least 2 teams to generate a schedule' })
     }
 
-    const teams: TeamBasic[] = teamsData.map(t => ({
+    const teams: TeamBasic[] = teamsResult.rows.map(t => ({
       id: t.id,
       name: t.team_name
     }))

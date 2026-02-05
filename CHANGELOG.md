@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - 2026-02-05 (Database Migration: Supabase to Neon PostgreSQL)
+- **MIGRATION**: Complete database migration from Supabase to Neon PostgreSQL
+  - **Motivation**: Move to serverless PostgreSQL with better connection pooling
+  - **Backend Changes**:
+    - Created new database client (`backend/src/lib/db.ts`) using pg driver with connection pooling
+    - Rewrote all route files to use raw SQL with parameterized queries instead of Supabase query builder:
+      - players.ts, draft.ts, picks.ts, cpu.ts, lineup.ts, schedule.ts, leagues.ts
+    - Updated playerPoolCache.ts to use new pg pool
+    - Updated index.ts health check to use pg pool
+    - Removed @supabase/supabase-js dependency from backend
+  - **Frontend Changes**:
+    - Updated StatMaster.tsx to use backend API instead of direct Supabase calls
+    - Deleted src/lib/supabaseClient.ts
+    - Removed @supabase/supabase-js from package.json dependencies
+  - **Scripts Changes**:
+    - Updated scripts/calculate-apba-ratings.ts to use pg driver
+  - **Environment Changes**:
+    - Added DATABASE_URL for Neon PostgreSQL connection string
+    - Removed VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY from frontend
+  - **Documentation**:
+    - Updated CLAUDE.md architecture section
+    - Created docs/PLAN-supabase-to-neon-migration.md
+  - **Key Technical Details**:
+    - All queries now use raw SQL with $1, $2, etc. parameterized inputs
+    - Array filtering uses PostgreSQL ANY($1) syntax
+    - Upserts use ON CONFLICT DO UPDATE clause
+    - JOIN queries replace Supabase's nested selection (e.g., `players!inner`)
+    - Connection pooling configured with max 20 connections
+
 ### Fixed - 2026-02-05 (Player Rating Formula Overhaul)
 - **CRITICAL FIX**: Fixed APBA player rating formula issues identified in evaluation
   - **Problem 1**: Small sample size players (1-7 AB) got 100 ratings

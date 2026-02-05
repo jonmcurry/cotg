@@ -6,7 +6,7 @@
 import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
-import { supabase } from './lib/supabase'
+import { pool } from './lib/db'
 
 // Route imports
 import leaguesRouter from './routes/leagues'
@@ -30,9 +30,8 @@ app.use(express.json())
 // Health check endpoint
 app.get('/api/health', async (_req, res) => {
   try {
-    // Verify Supabase connection
-    const { error } = await supabase.from('players').select('id').limit(1)
-    if (error) throw error
+    // Verify database connection
+    await pool.query('SELECT 1')
 
     res.json({
       status: 'healthy',

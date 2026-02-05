@@ -4,7 +4,7 @@
  */
 
 import { Router, Request, Response } from 'express'
-import { supabase } from '../lib/supabase'
+import { pool } from '../lib/db'
 import { getOrLoadPlayerPool, clearCache, type PlayerSeason } from '../lib/playerPoolCache'
 
 const router = Router()
@@ -131,24 +131,16 @@ function getUnfilledPositions(team: DraftTeam): PositionCode[] {
 
 // Check if player qualifies for a position
 function playerQualifiesForPosition(playerPosition: string, rosterPosition: PositionCode): boolean {
-  // Handle null/undefined/empty positions gracefully
-  if (!playerPosition) {
-    return false
-  }
-
+  if (!playerPosition) return false
   const eligiblePositions = POSITION_ELIGIBILITY[rosterPosition] || []
-  // Case-insensitive comparison to handle database variations (SS vs ss vs Ss)
   const normalizedPlayerPosition = playerPosition.toUpperCase()
   return eligiblePositions.some(pos => pos.toUpperCase() === normalizedPlayerPosition)
 }
 
 // Check playing time requirements
-// useRelaxed: When true, uses lower thresholds (100 AB / 45 IP) as fallback
 function meetsPlayingTimeRequirements(player: PlayerSeason, rosterPosition: PositionCode, useRelaxed: boolean = false): boolean {
   const atBats = player.at_bats || 0
   const inningsPitchedOuts = player.innings_pitched_outs || 0
-
-  // Relaxed thresholds for fallback when no candidates found
   const minAtBats = useRelaxed ? 100 : 200
   const minInningsPitchedOuts = useRelaxed ? 45 : 90
 
@@ -204,216 +196,97 @@ function selectBestPlayer(
   excludePlayerSeasonIds: Set<string> = new Set(),
   currentRound: number = 1
 ): { player: PlayerSeason; position: PositionCode; slotNumber: number } | null {
-  console.log('[selectBestPlayer] Starting selection:', {
-    totalPlayers: availablePlayers.length,
-    draftedCount: draftedPlayerIds.size,
-    excludedCount: excludePlayerSeasonIds.size,
-    teamId: team.id,
-    round: currentRound
-  })
-
-  // FIXED Issue #6: Filter out both drafted players and blacklisted player seasons
   const undraftedPlayers = availablePlayers.filter(p =>
-    !draftedPlayerIds.has(p.player_id) &&
-    !excludePlayerSeasonIds.has(p.id)
+    !draftedPlayerIds.has(p.player_id) && !excludePlayerSeasonIds.has(p.id)
   )
 
-  console.log('[selectBestPlayer] After filtering:', {
-    undraftedCount: undraftedPlayers.length
-  })
-
-  // DIAGNOSTIC: Check specifically for 2B and SS players
-  const all2BPlayers = availablePlayers.filter(p => p.primary_position?.toUpperCase() === '2B')
-  const allSSPlayers = availablePlayers.filter(p => p.primary_position?.toUpperCase() === 'SS')
-  const undrafted2B = undraftedPlayers.filter(p => p.primary_position?.toUpperCase() === '2B')
-  const undraftedSS = undraftedPlayers.filter(p => p.primary_position?.toUpperCase() === 'SS')
-  console.log('[selectBestPlayer] 2B/SS DIAGNOSTIC:', {
-    total2B: all2BPlayers.length,
-    totalSS: allSSPlayers.length,
-    undrafted2B: undrafted2B.length,
-    undraftedSS: undraftedSS.length,
-    sample2B: undrafted2B.slice(0, 3).map(p => ({ id: p.id, name: p.display_name, ab: p.at_bats, pos: p.primary_position })),
-    sampleSS: undraftedSS.slice(0, 3).map(p => ({ id: p.id, name: p.display_name, ab: p.at_bats, pos: p.primary_position }))
-  })
-
-  if (undraftedPlayers.length === 0) {
-    console.error('[selectBestPlayer] FAIL: No undrafted players available')
-    return null
-  }
+  if (undraftedPlayers.length === 0) return null
 
   const unfilledPositions = getUnfilledPositions(team)
   const uniqueUnfilledPositions = [...new Set(unfilledPositions)]
 
-  console.log('[selectBestPlayer] Unfilled positions:', {
-    positions: uniqueUnfilledPositions,
-    count: uniqueUnfilledPositions.length
-  })
-
   if (uniqueUnfilledPositions.length === 0) {
     const benchSlotsAvailable = team.roster.filter(slot => slot.position === 'BN' && !slot.isFilled).length
-    // console.log('[selectBestPlayer] No unfilled positions, checking bench:', {
-    //   benchSlots: benchSlotsAvailable
-    // })
     if (benchSlotsAvailable > 0) {
       uniqueUnfilledPositions.push('BN')
     } else {
-      console.error('[selectBestPlayer] FAIL: No unfilled positions and no bench slots')
       return null
     }
   }
 
-  interface ScoredCandidate {
-    player: PlayerSeason
-    position: PositionCode
-    score: number
-  }
-
+  interface ScoredCandidate { player: PlayerSeason; position: PositionCode; score: number }
   const allScoredCandidates: ScoredCandidate[] = []
 
   for (const position of uniqueUnfilledPositions) {
     const baseWeight = POSITION_SCARCITY[position] || 1.0
     const adjustedWeight = adjustScarcityByRound(baseWeight, currentRound)
-
     const eligible = undraftedPlayers.filter(player =>
       playerQualifiesForPosition(player.primary_position, position) &&
       meetsPlayingTimeRequirements(player, position)
     )
-
-    console.log(`[selectBestPlayer] Position ${position}:`, {
-      eligibleCount: eligible.length,
-      weight: adjustedWeight
-    })
-
-    if (eligible.length === 0) continue
-
     for (const player of eligible) {
       const score = calculateWeightedScore(player, position, team, 0.1, adjustedWeight, currentRound)
       allScoredCandidates.push({ player, position, score })
     }
   }
 
-  // console.log('[selectBestPlayer] Total candidates:', {
-  //   candidateCount: allScoredCandidates.length
-  // })
-
   if (allScoredCandidates.length === 0) {
-    // FALLBACK 1: Try with relaxed playing time requirements (100 AB instead of 200)
-    // This ensures draft can complete when high-AB players are exhausted
-    console.log('[selectBestPlayer] No candidates with strict requirements, trying relaxed thresholds...')
+    // FALLBACK: Try with relaxed playing time requirements
     for (const position of uniqueUnfilledPositions) {
       const baseWeight = POSITION_SCARCITY[position] || 1.0
       const adjustedWeight = adjustScarcityByRound(baseWeight, currentRound)
-
       const eligible = undraftedPlayers.filter(player =>
         playerQualifiesForPosition(player.primary_position, position) &&
-        meetsPlayingTimeRequirements(player, position, true)  // useRelaxed = true
+        meetsPlayingTimeRequirements(player, position, true)
       )
-
-      if (eligible.length === 0) continue
-
       for (const player of eligible) {
         const score = calculateWeightedScore(player, position, team, 0.1, adjustedWeight, currentRound)
         allScoredCandidates.push({ player, position, score })
       }
     }
-    console.log(`[selectBestPlayer] Found ${allScoredCandidates.length} candidates with relaxed requirements`)
   }
 
-  if (allScoredCandidates.length === 0) {
-    // FALLBACK 2: Try bench positions
-    if (!uniqueUnfilledPositions.includes('BN')) {
-      const benchSlotsAvailable = team.roster.filter(slot => slot.position === 'BN' && !slot.isFilled).length
-      if (benchSlotsAvailable > 0) {
-        const benchWeight = adjustScarcityByRound(POSITION_SCARCITY['BN'] || 0.5, currentRound)
-        // Try strict first, then relaxed for bench
-        let benchCandidates = undraftedPlayers.filter(player => meetsPlayingTimeRequirements(player, 'BN'))
-        if (benchCandidates.length === 0) {
-          benchCandidates = undraftedPlayers.filter(player => meetsPlayingTimeRequirements(player, 'BN', true))
-        }
-        for (const player of benchCandidates) {
-          const score = calculateWeightedScore(player, 'BN', team, 0.1, benchWeight, currentRound)
-          allScoredCandidates.push({ player, position: 'BN', score })
-        }
-      }
-    }
-    if (allScoredCandidates.length === 0) {
-      console.error('[selectBestPlayer] FAIL: No candidates found after all filtering (including relaxed)')
-      return null
-    }
-  }
+  if (allScoredCandidates.length === 0) return null
 
   allScoredCandidates.sort((a, b) => b.score - a.score)
-
   const topCount = Math.min(5, allScoredCandidates.length)
   const topCandidates = allScoredCandidates.slice(0, topCount)
-  const selectedIndex = Math.floor(Math.random() * topCandidates.length)
-  const selected = topCandidates[selectedIndex]
+  const selected = topCandidates[Math.floor(Math.random() * topCandidates.length)]
 
   if (!selected) return null
 
   const availableSlot = team.roster.find(slot => slot.position === selected.position && !slot.isFilled)
-  if (!availableSlot) {
-    console.error(`[CPU API] No available slot found for position: ${selected.position}`)
-    return null
-  }
+  if (!availableSlot) return null
 
-  return {
-    player: selected.player,
-    position: selected.position,
-    slotNumber: availableSlot.slotNumber,
-  }
+  return { player: selected.player, position: selected.position, slotNumber: availableSlot.slotNumber }
 }
 
 /**
  * POST /api/draft/sessions/:sessionId/cpu-pick
  * Calculate and execute a CPU draft pick
- *
- * Request body:
- *   - seasons: number[] (optional, defaults to current year)
- *
- * Returns:
- *   - result: 'success' | 'not_cpu_turn' | 'draft_complete' | 'error'
- *   - pick?: { pickNumber, round, teamId, playerSeasonId, playerId, position, slotNumber, playerName, year }
- *   - session?: { currentPick, currentRound, status }
  */
 router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
   try {
     const { sessionId } = req.params
-    // FIXED Issue #6: Accept excludePlayerSeasonIds to prevent infinite retry loop
     const { seasons, excludePlayerSeasonIds = [] } = req.body
 
-    console.log('[CPU API] Received request:', {
-      sessionId,
-      seasons,
-      seasonsType: typeof seasons,
-      seasonsLength: seasons?.length,
-      excludedCount: excludePlayerSeasonIds.length
-    })
-
     // Load session
-    const { data: session, error: sessionError } = await supabase
-      .from('draft_sessions')
-      .select('*')
-      .eq('id', sessionId)
-      .single()
-
-    if (sessionError || !session) {
+    const sessionResult = await pool.query('SELECT * FROM draft_sessions WHERE id = $1', [sessionId])
+    if (sessionResult.rows.length === 0) {
       return res.status(404).json({ result: 'error', error: `Session not found: ${sessionId}` })
     }
+    const session = sessionResult.rows[0]
 
-    // Check if draft is in progress
     if (session.status !== 'in_progress') {
       return res.json({ result: 'error', error: `Draft is not in progress (status: ${session.status})` })
     }
 
     // Load teams
-    const { data: teamsData, error: teamsError } = await supabase
-      .from('draft_teams')
-      .select('*')
-      .eq('draft_session_id', sessionId)
-      .order('draft_order')
-
-    if (teamsError || !teamsData || teamsData.length === 0) {
+    const teamsResult = await pool.query(
+      'SELECT * FROM draft_teams WHERE draft_session_id = $1 ORDER BY draft_order',
+      [sessionId]
+    )
+    if (teamsResult.rows.length === 0) {
       return res.status(500).json({ result: 'error', error: 'Failed to load teams' })
     }
 
@@ -421,31 +294,23 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
     const round = session.current_round
     const pickInRound = ((session.current_pick_number - 1) % session.num_teams) + 1
     const sortedTeams = round % 2 === 0
-      ? [...teamsData].sort((a, b) => b.draft_order - a.draft_order)
-      : [...teamsData].sort((a, b) => a.draft_order - b.draft_order)
+      ? [...teamsResult.rows].sort((a, b) => b.draft_order - a.draft_order)
+      : [...teamsResult.rows].sort((a, b) => a.draft_order - b.draft_order)
 
     const currentTeamData = sortedTeams[pickInRound - 1]
     if (!currentTeamData) {
       return res.status(500).json({ result: 'error', error: 'Could not determine current picking team' })
     }
 
-    // Check if it's a CPU team's turn
     if (currentTeamData.control !== 'cpu') {
       return res.json({ result: 'not_cpu_turn', teamId: currentTeamData.id, teamName: currentTeamData.team_name })
     }
 
-    // Load existing picks to build roster and dedup sets
-    const { data: picksData, error: picksError } = await supabase
-      .from('draft_picks')
-      .select('*')
-      .eq('draft_session_id', sessionId)
+    // Load existing picks
+    const picksResult = await pool.query('SELECT * FROM draft_picks WHERE draft_session_id = $1', [sessionId])
 
-    if (picksError) {
-      return res.status(500).json({ result: 'error', error: 'Failed to load picks' })
-    }
-
-    // Build team rosters from picks
-    const teams: DraftTeam[] = teamsData.map(t => ({
+    // Build team rosters
+    const teams: DraftTeam[] = teamsResult.rows.map((t: any) => ({
       id: t.id,
       name: t.team_name,
       control: t.control as TeamControl,
@@ -454,24 +319,12 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
       draftSessionId: sessionId,
     }))
 
-    // Build deduplication sets and fill rosters
     const draftedPlayerIds = new Set<string>()
-    const draftedSeasonIds = new Set<string>()
-
-    for (const pick of (picksData || [])) {
-      if (pick.player_season_id) {
-        draftedSeasonIds.add(pick.player_season_id)
-      }
-      if (pick.player_id) {
-        draftedPlayerIds.add(pick.player_id)
-      }
-
-      // Fill roster slot for the team using position and slot_number
+    for (const pick of picksResult.rows) {
+      if (pick.player_id) draftedPlayerIds.add(pick.player_id)
       const team = teams.find(t => t.id === pick.draft_team_id)
       if (team && pick.player_season_id && pick.position && pick.slot_number) {
-        const rosterSlot = team.roster.find(
-          s => s.position === pick.position && s.slotNumber === pick.slot_number
-        )
+        const rosterSlot = team.roster.find(s => s.position === pick.position && s.slotNumber === pick.slot_number)
         if (rosterSlot) {
           rosterSlot.playerSeasonId = pick.player_season_id
           rosterSlot.isFilled = true
@@ -484,28 +337,8 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
       return res.status(500).json({ result: 'error', error: 'Could not find current team' })
     }
 
-    // Load available players (top undrafted by APBA rating)
-    // Use seasons from request or default to session's year
-    const yearList = seasons && seasons.length > 0
-      ? seasons
-      : [session.season_year || new Date().getFullYear()]
-
-    console.log('[CPU API] Loading player pool:', {
-      requestSeasons: seasons,
-      sessionSeasonYear: session.season_year,
-      sessionSelectedSeasons: session.selected_seasons,
-      finalYearList: yearList,
-      yearListLength: yearList.length
-    })
-
-    // DIAGNOSTIC: Warn if seasons array is suspicious
-    if (!seasons || seasons.length === 0) {
-      console.warn('[CPU API] WARNING: No seasons provided in request, falling back to single season!')
-      console.warn('[CPU API] This may indicate selectedSeasons not loaded from database correctly')
-      console.warn('[CPU API] Session selected_seasons from DB:', session.selected_seasons)
-    }
-
-    // PERFORMANCE: Use cached player pool (30-60x faster for subsequent picks)
+    // Load player pool
+    const yearList = seasons && seasons.length > 0 ? seasons : [session.season_year || new Date().getFullYear()]
     let allPlayers: PlayerSeason[]
     try {
       allPlayers = await getOrLoadPlayerPool(sessionId, yearList)
@@ -518,109 +351,44 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
       return res.status(500).json({ result: 'error', error: 'No players available in pool' })
     }
 
-    console.log('[CPU API] Player pool ready:', {
-      totalPlayers: allPlayers.length,
-      draftedPlayers: draftedPlayerIds.size,
-      excludedPlayers: excludePlayerSeasonIds.length,
-      currentTeam: currentTeam.name,
-      round,
-      pickNumber: session.current_pick_number,
-    })
-
-    // Run CPU selection algorithm
-    // FIXED Issue #6: Pass excludePlayerSeasonIds to prevent duplicate retries
+    // Run CPU selection
     const excludeSet = new Set<string>(excludePlayerSeasonIds)
     const selection = selectBestPlayer(allPlayers, currentTeam, draftedPlayerIds, excludeSet, round)
 
     if (!selection) {
-      console.error('[CPU API] FAILED TO SELECT PLAYER - Diagnostic info:', {
-        playerPoolSize: allPlayers.length,
-        draftedCount: draftedPlayerIds.size,
-        excludedCount: excludeSet.size,
-        availableAfterFilter: allPlayers.filter(p => !draftedPlayerIds.has(p.player_id) && !excludeSet.has(p.id)).length,
-        teamRoster: currentTeam.roster.map(s => ({
-          position: s.position,
-          slotNumber: s.slotNumber,
-          filled: s.isFilled,
-          playerSeasonId: s.playerSeasonId
-        }))
-      })
       return res.json({ result: 'error', error: 'CPU could not find a player to draft' })
     }
 
-    // Make the pick (upsert for idempotency)
-    const { error: pickError } = await supabase
-      .from('draft_picks')
-      .upsert({
-        draft_session_id: sessionId,
-        draft_team_id: currentTeam.id,
-        player_id: selection.player.player_id,
-        player_season_id: selection.player.id,
-        pick_number: session.current_pick_number,
-        round: round,
-        pick_in_round: pickInRound,
-        position: selection.position,
-        slot_number: selection.slotNumber,
-      }, {
-        onConflict: 'draft_session_id,pick_number',
-      })
-
-    if (pickError) {
+    // Make the pick
+    try {
+      await pool.query(`
+        INSERT INTO draft_picks (draft_session_id, draft_team_id, player_id, player_season_id, pick_number, round, pick_in_round, position, slot_number)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        ON CONFLICT (draft_session_id, pick_number) DO UPDATE SET
+          player_id = EXCLUDED.player_id, player_season_id = EXCLUDED.player_season_id,
+          position = EXCLUDED.position, slot_number = EXCLUDED.slot_number
+      `, [sessionId, currentTeam.id, selection.player.player_id, selection.player.id,
+          session.current_pick_number, round, pickInRound, selection.position, selection.slotNumber])
+    } catch (pickError: any) {
       if (pickError.code === '23505' && pickError.message?.includes('player_season_id')) {
-        console.warn('[CPU API] DUPLICATE PLAYER:', selection.player.id)
-        return res.status(409).json({
-          result: 'duplicate',
-          error: 'Player already drafted in this session',
-          playerSeasonId: selection.player.id,
-        })
+        return res.status(409).json({ result: 'duplicate', error: 'Player already drafted', playerSeasonId: selection.player.id })
       }
-      console.error('[CPU API] Error saving pick:', pickError)
       return res.status(500).json({ result: 'error', error: pickError.message })
     }
 
-    // Calculate next pick
+    // Update session
     const totalPicks = session.num_teams * TOTAL_ROUNDS
     const nextPickNumber = session.current_pick_number + 1
     const isComplete = nextPickNumber > totalPicks
     const nextRound = isComplete ? round : Math.floor((nextPickNumber - 1) / session.num_teams) + 1
     const newStatus = isComplete ? 'completed' : session.status
 
-    // Update session
-    const { error: updateError } = await supabase
-      .from('draft_sessions')
-      .update({
-        current_pick_number: nextPickNumber,
-        current_round: nextRound,
-        status: newStatus,
-      })
-      .eq('id', sessionId)
+    await pool.query(
+      'UPDATE draft_sessions SET current_pick_number = $1, current_round = $2, status = $3, updated_at = NOW() WHERE id = $4',
+      [nextPickNumber, nextRound, newStatus, sessionId]
+    )
 
-    // FIXED Issue #7: Return error if session update fails after pick saved
-    if (updateError) {
-      console.error('[CPU API] CRITICAL: Pick saved but session update failed!', {
-        sessionId,
-        pickNumber: session.current_pick_number,
-        updateError,
-      })
-      return res.status(500).json({
-        result: 'error',
-        error: 'Pick was saved but draft status could not be updated. Please refresh and verify state.',
-      })
-    }
-
-    // Clear cache when draft completes to free memory
-    if (isComplete) {
-      clearCache(sessionId)
-      console.log(`[CPU API] Draft completed, cache cleared for session ${sessionId}`)
-    }
-
-    // console.log('[CPU API] CPU pick made:', {
-    //   session: sessionId,
-    //   pick: session.current_pick_number,
-    //   team: currentTeam.name,
-    //   player: selection.player.display_name,
-    //   position: selection.position,
-    // })
+    if (isComplete) clearCache(sessionId)
 
     return res.status(201).json({
       result: 'success',
@@ -637,11 +405,7 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
         year: selection.player.year,
         bats: selection.player.bats,
       },
-      session: {
-        currentPick: nextPickNumber,
-        currentRound: nextRound,
-        status: newStatus,
-      },
+      session: { currentPick: nextPickNumber, currentRound: nextRound, status: newStatus },
     })
   } catch (err) {
     console.error('[CPU API] Exception:', err)
@@ -651,7 +415,6 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
 
 export default router
 
-// Export types and functions for testing
 export {
   selectBestPlayer,
   meetsPlayingTimeRequirements,
