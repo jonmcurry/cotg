@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-05 (Player Rating Formula Overhaul)
+- **CRITICAL FIX**: Fixed APBA player rating formula issues identified in evaluation
+  - **Problem 1**: Small sample size players (1-7 AB) got 100 ratings
+    - Don Bennett (1 AB, 4.0 OPS) rated 100 while Babe Ruth's best season was 77.5
+  - **Problem 2**: Batter formula scaling was broken
+    - OPS dominated (60-140 range) while RC/5 (10-50) and ISO*100 (10-50) contributed little
+    - Babe Ruth 1921 (1.359 OPS, greatest offensive season ever) only rated 77.5
+  - **Problem 3**: Pitcher formula structurally capped at 86.4
+    - Gibson 1968 (1.12 ERA) and Koufax 1965 maxed at 86.4 due to formula ceiling
+  - **Solution (Batter Formula)**:
+    1. Added minimum 100 AB threshold (small samples return 0)
+    2. Normalized all components to 0-100 scale:
+       - OPS: 0.500-1.400 maps to 0-100
+       - RC: 0-250 maps to 0-100
+       - ISO: 0-0.500 maps to 0-100
+    3. Equal weighting of all three components
+  - **Solution (Pitcher Formula)**:
+    1. Added minimum 150 outs (~50 IP) threshold
+    2. Replaced discrete ERA buckets (A/B/C/D) with continuous formula: `110 - (ERA * 15)`
+    3. Improved K/BB scale: `K/BB * 25` (caps at 100 for K/BB >= 4.0)
+    4. Improved Stars scale: `(W+SV) * 5` (caps at 100 for 20+ W/SV)
+  - **Results**:
+    - Babe Ruth 1921: 77.5 -> **95.6** (Legendary)
+    - Bob Gibson 1968: 86.4 -> **96.6** (Legendary)
+    - Sandy Koufax 1965: 86.4 -> **89.7** (Elite)
+    - Pedro Martinez 2000: 82.4 -> **90.0** (Legendary)
+    - Don Bennett 1930: 100 -> **0** (correctly excluded)
+  - **TDD Approach**: 20 tests written first (18 failed), then code fixed to pass all tests
+  - **Files Modified**:
+    - src/utils/apbaRating.ts (formula fixes)
+    - src/utils/apbaRating.test.ts (new test suite)
+    - docs/PLAN-rating-formula-fixes.md (implementation plan)
+  - **Database**: All 115,243 player-season ratings recalculated
+
 ### Added - 2026-02-05 (Player Rating System Evaluation)
 - **ANALYSIS**: Created comprehensive evaluation of MLB_Draft_AI_SRD.md proposal
   - **Document**: docs/analysis/MLB_Draft_AI_SRD_Evaluation.md

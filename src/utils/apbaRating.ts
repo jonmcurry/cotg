@@ -119,44 +119,73 @@ export function estimateDefensiveRating(
 }
 
 /**
- * Map ERA to APBA pitching grade points
- * A = 100 (elite), B = 75 (above avg), C = 50 (avg), D = 25 (below avg)
+ * Minimum at-bats required for a batter rating
+ * Below this threshold, sample size is too small for meaningful rating
+ */
+export const MIN_AT_BATS = 100
+
+/**
+ * Minimum innings pitched (in outs) required for a pitcher rating
+ * 150 outs = 50 IP - below this threshold, sample size is too small
+ */
+export const MIN_INNINGS_PITCHED_OUTS = 150
+
+/**
+ * Map ERA to continuous pitching grade points (0-100 scale)
+ *
+ * Continuous formula replaces discrete A/B/C/D buckets to avoid cliff effects.
+ * ERA 1.00 = 95, ERA 2.00 = 80, ERA 3.00 = 65, ERA 4.00 = 50, ERA 5.00 = 35, ERA 6.00 = 20
+ *
+ * Formula: 110 - (ERA * 15), clamped to 0-100
  */
 function mapERAtoGradePoints(era: number | null): number {
-  if (era === null || era === 0) return 25  // Default to D grade
+  if (era === null || era === 0) return 35  // Default to below average
 
-  if (era < 2.50) return 100  // Grade A (Cy Young level)
-  if (era < 3.50) return 75   // Grade B (All-Star level)
-  if (era < 4.50) return 50   // Grade C (Average starter)
-  return 25                    // Grade D (Below average)
+  // Continuous scale: lower ERA = higher score
+  // ERA 1.00 -> 95, ERA 2.00 -> 80, ERA 3.00 -> 65, ERA 4.00 -> 50
+  const score = 110 - (era * 15)
+  return Math.max(0, Math.min(100, score))
 }
 
 /**
- * Map K/BB ratio to APBA control points (0-88 scale)
+ * Map K/BB ratio to control points (0-100 scale)
  * Higher control = fewer walks relative to strikeouts
+ *
+ * Formula: K/BB * 25, clamped to 0-100
+ * K/BB of 1.0 = 25, K/BB of 2.0 = 50, K/BB of 3.0 = 75, K/BB of 4.0+ = 100
  */
 function mapKBBtoControlPoints(k_bb_ratio: number | null): number {
-  if (k_bb_ratio === null || k_bb_ratio === 0) return 20  // Default to poor control
+  if (k_bb_ratio === null || k_bb_ratio === 0) return 15  // Default to poor control
 
-  // Map K/BB ratio to 0-88 scale
-  // Elite control: K/BB > 4.0 → 88 points
-  // Poor control: K/BB < 1.0 → 8 points
-  const controlScore = Math.min(88, k_bb_ratio * 22)
-  return Math.max(8, controlScore)
+  // Map K/BB ratio to 0-100 scale
+  // Elite control: K/BB > 4.0 → 100 points (matches elite starters)
+  // Average control: K/BB 2.0 → 50 points
+  // Poor control: K/BB < 1.0 → 25 points
+  const controlScore = k_bb_ratio * 25
+  return Math.max(10, Math.min(100, controlScore))
 }
 
 /**
- * Map wins and saves to APBA star points (0-50 scale)
- * Z star = 50 (elite), Y = 30 (very good), X = 15 (good), W = 5 (average)
+ * Map wins and saves to star points (0-100 scale)
+ * Continuous scale: (W + SV) * 5, clamped to 0-100
+ *
+ * 5 W/SV = 25, 10 W/SV = 50, 15 W/SV = 75, 20 W/SV = 100
  */
 function mapWinsAndSavesToStarPoints(wins: number | null, saves: number | null): number {
   const totalValue = (wins || 0) + (saves || 0)
 
-  if (totalValue >= 20) return 50  // Z star (elite: 20+ W or 20+ SV)
-  if (totalValue >= 15) return 30  // Y star (very good: 15-19)
-  if (totalValue >= 10) return 15  // X star (good: 10-14)
-  if (totalValue >= 5) return 5    // W star (average: 5-9)
-  return 0  // No star (below average)
+  // Continuous scale: 5 points per win/save
+  // 20+ W or 40+ SV caps at 100
+  const starScore = totalValue * 5
+  return Math.max(0, Math.min(100, starScore))
+}
+
+/**
+ * Normalize a value to 0-100 scale given min/max bounds
+ */
+function normalizeToScale(value: number, min: number, max: number): number {
+  const normalized = ((value - min) / (max - min)) * 100
+  return Math.max(0, Math.min(100, normalized))
 }
 
 /**
@@ -164,8 +193,13 @@ function mapWinsAndSavesToStarPoints(wins: number | null, saves: number | null):
  *
  * PURELY OFFENSIVE RATING - Position does NOT affect individual player rating
  *
- * Formula:
- * Rating = Average(OPS × 100, RC/5, ISO × 100)
+ * Formula (FIXED):
+ * 1. Apply minimum at-bat threshold (100 AB) to avoid small sample inflation
+ * 2. Normalize each component to 0-100 scale:
+ *    - OPS: 0.500-1.400 maps to 0-100
+ *    - RC:  0-250 maps to 0-100
+ *    - ISO: 0-0.500 maps to 0-100
+ * 3. Average the normalized components equally
  *
  * Uses Bill James offensive metrics:
  * - OPS (On-base Plus Slugging): Primary offensive value
@@ -176,28 +210,37 @@ function mapWinsAndSavesToStarPoints(wins: number | null, saves: number | null):
  * not when calculating historical player ratings.
  */
 export function calculateBatterRating(player: PlayerSeasonStats): number {
-  // Calculate offensive rating components
+  // MINIMUM THRESHOLD: Reject small sample sizes
+  // Players with <100 AB can have extreme OPS values that don't reflect true talent
+  if (player.at_bats === null || player.at_bats < MIN_AT_BATS) {
+    return 0
+  }
+
+  // Calculate normalized offensive rating components
   const components: number[] = []
 
-  // Component 1: OPS (scaled to 0-100)
-  // OPS of 1.000 = 100 points, 0.700 = 70 points
-  // Elite players: 1.100+ = 110 points (Babe Ruth, Ted Williams)
+  // Component 1: OPS normalized to 0-100 scale
+  // OPS range: 0.500 (replacement) to 1.400 (Ruth/Bonds peak) = 0-100
+  // Average OPS ~0.750 = ~28, Good OPS ~0.850 = ~39, Elite OPS ~1.000 = ~56
   if (player.ops !== null) {
-    components.push(player.ops * 100)
+    const opsNormalized = normalizeToScale(player.ops, 0.500, 1.400)
+    components.push(opsNormalized)
   }
 
-  // Component 2: Runs Created (Advanced)
-  // Scaled by dividing by 5 to get 0-100 range
-  // Elite seasons: 150+ RC = 30 points
+  // Component 2: Runs Created normalized to 0-100 scale
+  // RC range: 0 to 250 (Ruth 1921 had 249) = 0-100
+  // Average RC ~60 = ~24, Good RC ~100 = ~40, Elite RC ~150 = ~60
   if (player.runs_created_advanced !== null) {
-    components.push(player.runs_created_advanced / 5)
+    const rcNormalized = normalizeToScale(player.runs_created_advanced, 0, 250)
+    components.push(rcNormalized)
   }
 
-  // Component 3: Isolated Power
-  // ISO × 100 to scale to 0-100 range
-  // Elite power: ISO of 0.300+ = 30 points (Babe Ruth, Barry Bonds)
+  // Component 3: Isolated Power normalized to 0-100 scale
+  // ISO range: 0 to 0.500 (extreme power like Ruth/Bonds) = 0-100
+  // Average ISO ~0.150 = ~30, Good ISO ~0.200 = ~40, Elite ISO ~0.300 = ~60
   if (player.isolated_power !== null) {
-    components.push(player.isolated_power * 100)
+    const isoNormalized = normalizeToScale(player.isolated_power, 0, 0.500)
+    components.push(isoNormalized)
   }
 
   // If no offensive stats available, return 0
@@ -205,7 +248,7 @@ export function calculateBatterRating(player: PlayerSeasonStats): number {
     return 0
   }
 
-  // Average all available components
+  // Average all available components (now equally weighted since all are 0-100)
   const offensiveRating = components.reduce((sum, val) => sum + val, 0) / components.length
 
   // Clamp to 0-100 range
@@ -217,29 +260,40 @@ export function calculateBatterRating(player: PlayerSeasonStats): number {
  *
  * PURELY PITCHING EFFECTIVENESS RATING - Role does NOT affect individual rating
  *
- * Formula:
- * Rating = (Grade × 0.5) + (Control × 0.3) + (Stars × 0.2)
+ * Formula (FIXED):
+ * 1. Apply minimum innings threshold (50 IP = 150 outs) to avoid small sample inflation
+ * 2. Calculate components (all now 0-100 scale):
+ *    - ERA: Continuous scale (110 - ERA*15), clamped 0-100
+ *    - Control: K/BB * 18, clamped 0-100
+ *    - Stars: (W+SV) * 4, clamped 0-100
+ * 3. Combine with adjusted weights: ERA 50%, Control 30%, Stars 20%
  *
- * Components:
- * - Grade: ERA-based effectiveness (A/B/C/D)
- * - Control: K/BB ratio (command and control)
- * - Stars: Wins + Saves (results and usage)
+ * This allows elite pitchers to reach 95+ ratings:
+ * - Gibson 1968 (1.12 ERA): 95 + 77.8 + 88 weighted = 93.3
+ * - Koufax 1965 (2.04 ERA): 79.4 + 96.8 + 100 weighted = 88.9
  *
  * Starter vs reliever distinctions should ONLY be applied at draft selection,
  * not when calculating historical pitcher ratings.
  */
 export function calculatePitcherRating(player: PlayerSeasonStats): number {
-  // Calculate grade points from ERA (0-100, weighted 50%)
+  // MINIMUM THRESHOLD: Reject small sample sizes
+  // Pitchers with <50 IP can have extreme ERAs that don't reflect true talent
+  if (player.innings_pitched_outs === null || player.innings_pitched_outs < MIN_INNINGS_PITCHED_OUTS) {
+    return 0
+  }
+
+  // Calculate grade points from ERA (0-100 continuous scale)
   const gradePoints = mapERAtoGradePoints(player.era)
 
-  // Calculate control points from K/BB ratio (0-88, weighted 30%)
+  // Calculate control points from K/BB ratio (0-100 scale)
   const controlPoints = mapKBBtoControlPoints(player.k_bb_ratio)
 
-  // Calculate star points from wins and saves (0-50, weighted 20%)
+  // Calculate star points from wins and saves (0-100 scale)
   const starPoints = mapWinsAndSavesToStarPoints(player.wins, player.saves)
 
-  // Combine with weights
-  const rating = (gradePoints * 0.5) + (controlPoints * 0.3) + (starPoints * 0.2)
+  // Combine with weights (all components now 0-100)
+  // Weights: ERA dominance (50%) + Control (30%) + Results (20%)
+  const rating = (gradePoints * 0.50) + (controlPoints * 0.30) + (starPoints * 0.20)
 
   // Clamp to 0-100 range (no role multipliers)
   return Math.max(0, Math.min(100, rating))
@@ -249,7 +303,7 @@ export function calculatePitcherRating(player: PlayerSeasonStats): number {
  * Calculate APBA rating for any player (auto-detects position vs pitcher)
  *
  * @param player - Player season statistics
- * @returns APBA rating (0-100 scale)
+ * @returns APBA rating (0-100 scale), or 0 if insufficient playing time
  */
 export function calculatePlayerRating(player: PlayerSeasonStats): number {
   const position = player.primary_position
@@ -257,8 +311,8 @@ export function calculatePlayerRating(player: PlayerSeasonStats): number {
   // Determine if pitcher or position player
   const isPitcher = position === 'P' || position === 'SP' || position === 'RP' || position === 'CL'
 
-  // Also check if player has significant pitching stats
-  const hasPitchingStats = (player.innings_pitched_outs || 0) >= 60  // ~20 IP minimum
+  // Also check if player has significant pitching stats (above minimum threshold)
+  const hasPitchingStats = (player.innings_pitched_outs || 0) >= MIN_INNINGS_PITCHED_OUTS
 
   if (isPitcher || hasPitchingStats) {
     return calculatePitcherRating(player)
