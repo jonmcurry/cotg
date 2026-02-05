@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Debug - 2026-02-05 (CPU Batch Picks Diagnostics)
+- **DEBUG**: Added console logging to CPU batch picks useEffect
+  - **Purpose**: Identify which guard condition is blocking CPU picks from triggering
+  - **Logs**: Session existence/status, current team control, draft-in-progress guard state
+  - **Files Modified**: src/components/draft/DraftBoard.tsx
+
 ### Fixed - 2026-02-05 (CPU Batch Picks SQL Typo)
 - **BUG FIX**: Fixed typo in batch CPU picks ON CONFLICT clause
   - **Problem**: SQL referenced `EXCLUDED.player_session_id` which doesn't exist
