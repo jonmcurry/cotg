@@ -4,7 +4,7 @@
  */
 
 import 'dotenv/config'
-import express from 'express'
+import express, { Request, Response, NextFunction } from 'express'
 import cors from 'cors'
 import { pool } from './lib/db'
 
@@ -19,6 +19,10 @@ import scheduleRouter from './routes/schedule'
 
 const app = express()
 const PORT = process.env.PORT || 3001
+
+// Request timeout: 55 seconds (Render free tier has ~60s limit)
+// This returns an error BEFORE Render's proxy timeout to ensure CORS headers are sent
+const REQUEST_TIMEOUT_MS = 55000
 
 // CORS configuration - handle multiple origins for dev/prod
 const allowedOrigins = [
@@ -42,6 +46,26 @@ app.use(cors({
   credentials: true
 }))
 app.use(express.json())
+
+// Request timeout middleware - ensures CORS headers are sent even on slow requests
+// Prevents 520 errors from Render's proxy which bypass CORS middleware
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const timeout = setTimeout(() => {
+    if (!res.headersSent) {
+      console.error(`[Timeout] Request timeout after ${REQUEST_TIMEOUT_MS}ms: ${req.method} ${req.path}`)
+      res.status(504).json({
+        result: 'error',
+        error: 'Request timeout - database may be warming up. Please try again.',
+        path: req.path,
+        timeoutMs: REQUEST_TIMEOUT_MS
+      })
+    }
+  }, REQUEST_TIMEOUT_MS)
+
+  res.on('finish', () => clearTimeout(timeout))
+  res.on('close', () => clearTimeout(timeout))
+  next()
+})
 
 // Health check endpoint
 app.get('/api/health', async (_req, res) => {

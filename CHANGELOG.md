@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-05 (CORS/520 Error on CPU Batch Picks)
+- **BUG FIX**: Added request timeout middleware to prevent 520 errors
+  - **Problem**: CPU batch picks would fail with "CORS policy" error and HTTP 520
+  - **Root Cause**: When requests took longer than Render's proxy timeout (~30-60s),
+    Render returned 520 error directly, bypassing Express CORS middleware
+  - **Solution**: Added 55-second timeout middleware that returns proper error response
+    with CORS headers before Render's proxy timeout kicks in
+  - **Files Modified**: backend/src/index.ts
+
+### Debug - 2026-02-05 (CPU Batch Diagnostic Logging)
+- **DEBUG**: Added detailed logging to CPU batch endpoint
+  - Logs session state, team controls, and exit conditions
+  - Helps identify why CPU picks may not be executing
+  - Shows all team names and control types on first pick attempt
+  - **Files Modified**: backend/src/routes/cpu.ts
+
 ### Performance - 2026-02-05 (Clubhouse Lineup Generation 4-8x Faster)
 - **PERFORMANCE FIX**: Parallelized auto-lineup generation in Clubhouse
   - **Problem**: After draft completion, Clubhouse took 800-2400ms to load

@@ -487,14 +487,33 @@ router.post('/:sessionId/cpu-picks-batch', async (req: Request, res: Response) =
     let lastSession = sessionData.session
     const totalPicks = lastSession.num_teams * TOTAL_ROUNDS
 
+    console.log('[CPU Batch] Starting loop. Session:', {
+      id: sessionId,
+      status: lastSession.status,
+      currentPick: lastSession.current_pick_number,
+      numTeams: lastSession.num_teams,
+      totalPicks,
+      playersInPool: allPlayers.length
+    })
+
     while (continueLoop) {
       // Refresh session data from cache (updated in-place after each pick)
       sessionData = await getSessionData(sessionId)
-      if (!sessionData) break
+      if (!sessionData) {
+        console.log('[CPU Batch] EXIT: Session data not found in cache')
+        break
+      }
 
       const { session, teams: teamsRows, picks: picksRows } = sessionData
 
-      if (session.status !== 'in_progress' || session.current_pick_number > totalPicks) {
+      if (session.status !== 'in_progress') {
+        console.log('[CPU Batch] EXIT: Status not in_progress, status=' + session.status)
+        continueLoop = false
+        break
+      }
+
+      if (session.current_pick_number > totalPicks) {
+        console.log('[CPU Batch] EXIT: Draft complete, currentPick > totalPicks')
         continueLoop = false
         break
       }
@@ -508,12 +527,25 @@ router.post('/:sessionId/cpu-picks-batch', async (req: Request, res: Response) =
 
       const currentTeamData = sortedTeams[pickInRound - 1]
       if (!currentTeamData) {
+        console.log('[CPU Batch] EXIT: No team found at position', pickInRound - 1)
         continueLoop = false
         break
       }
 
+      // Log team info on first pick only
+      if (picks.length === 0) {
+        console.log('[CPU Batch] First pick team:', {
+          name: currentTeamData.team_name,
+          control: currentTeamData.control,
+          draftOrder: currentTeamData.draft_order,
+          teamsCount: teamsRows.length,
+          allControls: teamsRows.map((t: any) => ({ name: t.team_name, control: t.control }))
+        })
+      }
+
       // Stop if it's a human's turn
       if (currentTeamData.control !== 'cpu') {
+        console.log('[CPU Batch] EXIT: Human turn, team=' + currentTeamData.team_name + ', control=' + currentTeamData.control)
         continueLoop = false
         break
       }
