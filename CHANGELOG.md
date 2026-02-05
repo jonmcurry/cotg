@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-05 (Neon Database Connection Timeouts)
+- **BUG FIX**: Fixed database connection timeouts during CPU batch picks
+  - **Problem**: "Connection terminated due to connection timeout" errors from Neon serverless
+  - **Root Cause**: Neon serverless has cold starts that can take 5-15 seconds
+  - **Solution**:
+    - Increased connectionTimeoutMillis from 10s to 30s for cold starts
+    - Added keepAlive settings to prevent connection drops
+    - Reduced pool size to 10 (Neon has connection limits)
+    - Added retry logic with exponential backoff in sessionCache.ts
+  - **Files Modified**: backend/src/lib/db.ts, backend/src/lib/sessionCache.ts
+
 ### Fixed - 2026-02-05 (CPU Batch useEffect Re-entry Bug)
 - **BUG FIX**: Fixed useEffect cleanup causing multiple simultaneous batch API calls
   - **Problem**: Cleanup function reset `cpuDraftInProgressRef.current = false`, allowing re-entry
