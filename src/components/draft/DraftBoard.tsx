@@ -201,7 +201,21 @@ If this persists, the database may be updating. Wait a few minutes and try again
   useEffect(() => {
     let cancelled = false // StrictMode cleanup: set true on unmount to skip UI updates
 
-    if (!session) return
+    // DEBUG: Log all conditions to trace why CPU picks might not trigger
+    console.log('[CPU Batch] useEffect triggered:', {
+      hasSession: !!session,
+      sessionStatus: session?.status,
+      currentPick: session?.currentPick,
+      currentTeamId: currentTeam?.id,
+      currentTeamName: currentTeam?.name,
+      currentTeamControl: currentTeam?.control,
+      cpuDraftInProgress: cpuDraftInProgressRef.current,
+    })
+
+    if (!session) {
+      console.log('[CPU Batch] BLOCKED: No session')
+      return
+    }
 
     // Reset retry counter when session changes
     if (lastSessionIdRef.current !== session.id) {
@@ -210,13 +224,27 @@ If this persists, the database may be updating. Wait a few minutes and try again
       failedPlayerSeasonIdsRef.current = new Set<string>()
     }
 
-    if (!currentTeam) return
-    if (currentTeam.control !== 'cpu') return
+    if (!currentTeam) {
+      console.log('[CPU Batch] BLOCKED: No currentTeam')
+      return
+    }
+    if (currentTeam.control !== 'cpu') {
+      console.log('[CPU Batch] BLOCKED: currentTeam is not CPU, control=' + currentTeam.control)
+      return
+    }
 
     // Component-scoped guard: properly cleaned up on unmount
-    if (cpuDraftInProgressRef.current) return
+    if (cpuDraftInProgressRef.current) {
+      console.log('[CPU Batch] BLOCKED: CPU draft already in progress')
+      return
+    }
 
-    if (session.status !== 'in_progress') return
+    if (session.status !== 'in_progress') {
+      console.log('[CPU Batch] BLOCKED: session status is not in_progress, status=' + session.status)
+      return
+    }
+
+    console.log('[CPU Batch] All guards passed - proceeding with batch picks')
 
     // Set guard BEFORE starting async operation
     cpuDraftInProgressRef.current = true
@@ -282,6 +310,8 @@ If this persists, the database may be updating. Wait a few minutes and try again
           pauseDraft()
           return
         }
+
+        console.log('[CPU Batch] API response:', response)
 
         if (response.result === 'success' && response.picks && response.session) {
           cpuRetryCountRef.current = 0
