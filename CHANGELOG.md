@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - 2026-02-05 (Player Rating System Evaluation)
+- **ANALYSIS**: Created comprehensive evaluation of MLB_Draft_AI_SRD.md proposal
+  - **Document**: docs/analysis/MLB_Draft_AI_SRD_Evaluation.md
+  - **Finding**: SRD is designed for career-based rankings, not single-season drafts (misaligned with project)
+  - **Finding**: Current batter ratings have scaling issues - Babe Ruth 1921 (1.359 OPS) only rates 77.5
+  - **Finding**: Small sample players (1-7 AB) can get 100 ratings due to no minimum threshold
+  - **Finding**: Pitcher ratings structurally capped at 86.4 (Koufax, Gibson max out here)
+  - **Recommendation**: Do NOT implement SRD's era normalization or peak extraction
+  - **Recommendation**: Fix current formula issues (scaling, minimum AB/IP threshold, pitcher cap)
+  - **Data Validated**: Queried 115,243 player-seasons to confirm issues
+
 ### Fixed - 2026-02-05 (Clubhouse Screen Flickering/Infinite Refresh)
 - **BUG FIX**: Fixed Clubhouse screen (Roster, Lineups, Rotation tabs) constantly flickering after draft completion
   - **Problem**: Screen flickered/refreshed in an infinite loop when navigating to Clubhouse
