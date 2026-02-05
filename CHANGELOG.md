@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security - 2026-02-05 (Credential Exposure Remediation)
+- **SECURITY FIX**: Removed exposed database credentials from git history
+  - **Problem**: Neon PostgreSQL connection string was accidentally committed in docs/PLAN-supabase-to-neon-migration.md
+  - **Detection**: GitGuardian alert for exposed PostgreSQL URI
+  - **Remediation**:
+    - Removed sensitive file from repository
+    - Rewrote git history with `git filter-branch` to purge from all commits
+    - Force pushed to GitHub to remove from remote history
+    - Ran `git gc --prune=now --aggressive` to clean refs
+  - **Required Action**: Database password must be rotated in Neon console
+
 ### Fixed - 2026-02-05 (Render TypeScript Build Errors)
 - **BUG FIX**: Fixed TypeScript compilation errors on Render deployment
   - **Problem**: Render doesn't install devDependencies in production, causing @types/pg to be missing
