@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-05 (CPU Batch State Update Blocked by Cancelled Flag)
+- **BUG FIX**: Fixed CPU picks not updating frontend despite backend processing
+  - **Problem**: Browser console showed "Starting batch CPU picks..." then nothing
+  - **Root Cause**: When player loading completed mid-API-call, re-render set `cancelled=true`.
+    The `if (cancelled) return` after API response caused silent exit without state update.
+  - **Symptoms**:
+    - Backend Render logs showed picks being made (273-276)
+    - Frontend state never updated - UI stayed stuck at pick 1
+  - **Solution**: Remove early return after API call. State updates must happen regardless
+    of cancellation. The `cancelled` flag should only prevent UI updates (ticker).
+  - **Files Modified**: src/components/draft/DraftBoard.tsx
+
 ### Fixed - 2026-02-05 (Neon Database Connection Timeouts)
 - **BUG FIX**: Fixed database connection timeouts during CPU batch picks
   - **Problem**: "Connection terminated due to connection timeout" errors from Neon serverless
