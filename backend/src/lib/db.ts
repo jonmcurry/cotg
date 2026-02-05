@@ -23,9 +23,7 @@ export const pool = new Pool({
   connectionTimeoutMillis: 30000, // Increased for Neon cold starts (30s)
   // Keep-alive settings to prevent connection drops
   keepAlive: true,
-  keepAliveInitialDelayMillis: 10000,
-  // Statement timeout to prevent queries from hanging forever
-  statement_timeout: 60000 // 60 second query timeout
+  keepAliveInitialDelayMillis: 10000
 })
 
 // Log pool errors

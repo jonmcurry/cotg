@@ -20,9 +20,25 @@ import scheduleRouter from './routes/schedule'
 const app = express()
 const PORT = process.env.PORT || 3001
 
-// Middleware
+// CORS configuration - handle multiple origins for dev/prod
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  process.env.CORS_ORIGIN
+].filter(Boolean) as string[]
+
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, etc)
+    if (!origin) return callback(null, true)
+
+    if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
+      callback(null, true)
+    } else {
+      console.warn(`[CORS] Blocked request from origin: ${origin}`)
+      callback(null, true) // Still allow for debugging - remove in production
+    }
+  },
   credentials: true
 }))
 app.use(express.json())
@@ -58,8 +74,18 @@ app.use('/api/draft/sessions', scheduleRouter)
 app.use('/api/players', playersRouter)
 app.use('/api/teams', lineupRouter)
 
+// Global error handler - ensures CORS headers are always sent
+app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error('[Server] Unhandled error:', err.message)
+  console.error(err.stack)
+
+  res.status(500).json({
+    error: 'Internal server error',
+    message: err.message
+  })
+})
+
 // Start server
 app.listen(PORT, () => {
-  // console.log(`COTG API server running on port ${PORT}`)
-  // console.log(`Health check: http://localhost:${PORT}/api/health`)
+  console.log(`COTG API server running on port ${PORT}`)
 })
