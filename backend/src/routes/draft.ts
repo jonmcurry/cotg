@@ -5,6 +5,7 @@
 
 import { Router, Request, Response } from 'express'
 import { supabase } from '../lib/supabase'
+import { clearCache } from '../lib/playerPoolCache'
 
 const router = Router()
 
@@ -386,6 +387,11 @@ router.put('/:id', async (req: Request, res: Response) => {
       return res.status(500).json({ error: `Failed to update session: ${error.message}` })
     }
 
+    // Clear player pool cache when draft finishes or is abandoned
+    if (data.status === 'completed' || data.status === 'abandoned') {
+      clearCache(id)
+    }
+
     // console.log('[Draft API] Updated session:', id, Object.keys(dbUpdates))
     return res.json({
       id: data.id,
@@ -424,6 +430,9 @@ router.delete('/:id', async (req: Request, res: Response) => {
       console.error('[Draft API] Error deleting session:', error)
       return res.status(500).json({ error: `Failed to delete session: ${error.message}` })
     }
+
+    // Clear player pool cache for this session
+    clearCache(id)
 
     // console.log('[Draft API] Deleted session:', id)
     return res.status(204).send()

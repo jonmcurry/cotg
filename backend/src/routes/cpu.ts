@@ -5,52 +5,13 @@
 
 import { Router, Request, Response } from 'express'
 import { supabase } from '../lib/supabase'
+import { getOrLoadPlayerPool, clearCache, type PlayerSeason } from '../lib/playerPoolCache'
 
 const router = Router()
-
-// Helper: Check if years are consecutive (for range query optimization)
-function areYearsConsecutive(years: number[]): boolean {
-  if (years.length <= 1) return true
-  const sorted = [...years].sort((a, b) => a - b)
-  for (let i = 1; i < sorted.length; i++) {
-    if (sorted[i] !== sorted[i - 1] + 1) return false
-  }
-  return true
-}
 
 // Types matching frontend
 type PositionCode = 'C' | '1B' | '2B' | 'SS' | '3B' | 'OF' | 'SP' | 'RP' | 'CL' | 'DH' | 'BN'
 type TeamControl = 'human' | 'cpu'
-
-interface PlayerSeason {
-  id: string
-  player_id: string
-  year: number
-  team_id: string
-  primary_position: string
-  apba_rating: number | null
-  war: number | null
-  at_bats: number | null
-  batting_avg: number | null
-  hits: number | null
-  home_runs: number | null
-  rbi: number | null
-  stolen_bases: number | null
-  on_base_pct: number | null
-  slugging_pct: number | null
-  innings_pitched_outs: number | null
-  wins: number | null
-  losses: number | null
-  era: number | null
-  strikeouts_pitched: number | null
-  saves: number | null
-  shutouts: number | null
-  whip: number | null
-  display_name?: string
-  first_name?: string
-  last_name?: string
-  bats?: 'L' | 'R' | 'B' | null
-}
 
 interface RosterSlot {
   position: PositionCode
@@ -403,39 +364,6 @@ function selectBestPlayer(
   }
 }
 
-// Transform database row to PlayerSeason
-function transformPlayerRow(row: any): PlayerSeason {
-  return {
-    id: row.id,
-    player_id: row.player_id,
-    year: row.year,
-    team_id: row.team_id,
-    primary_position: row.primary_position,
-    apba_rating: row.apba_rating,
-    war: row.war,
-    at_bats: Number(row.at_bats) || 0,
-    batting_avg: row.batting_avg,
-    hits: row.hits,
-    home_runs: row.home_runs,
-    rbi: row.rbi,
-    stolen_bases: row.stolen_bases,
-    on_base_pct: row.on_base_pct,
-    slugging_pct: row.slugging_pct,
-    innings_pitched_outs: Number(row.innings_pitched_outs) || 0,
-    wins: row.wins,
-    losses: row.losses,
-    era: row.era,
-    strikeouts_pitched: row.strikeouts_pitched,
-    saves: row.saves,
-    shutouts: row.shutouts,
-    whip: row.whip,
-    display_name: row.players?.display_name,
-    first_name: row.players?.first_name,
-    last_name: row.players?.last_name,
-    bats: row.players?.bats,
-  }
-}
-
 /**
  * POST /api/draft/sessions/:sessionId/cpu-pick
  * Calculate and execute a CPU draft pick
@@ -577,145 +505,26 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
       console.warn('[CPU API] Session selected_seasons from DB:', session.selected_seasons)
     }
 
-    // FIXED: Load pool with RELAXED thresholds (100 AB / 45 IP) to support fallback
-    const RELAXED_AB_THRESHOLD = 100
-    const RELAXED_IP_THRESHOLD = 45
-
-    // PERFORMANCE FIX: Use parallel batch fetching (like frontend does)
-    // Instead of sequential: fetch 0-999, wait, fetch 1000-1999, wait...
-    // Do parallel: fetch [0-999, 1000-1999, 2000-2999] simultaneously
-    const BATCH_SIZE = 1000
-    const PARALLEL_BATCHES = 5  // Fetch 5 batches at once
-    const playerSelect = `
-      id, player_id, year, team_id, primary_position, apba_rating, war,
-      at_bats, batting_avg, hits, home_runs, rbi, stolen_bases,
-      on_base_pct, slugging_pct, innings_pitched_outs, wins, losses,
-      era, strikeouts_pitched, saves, shutouts, whip,
-      players!inner (display_name, first_name, last_name, bats)
-    `
-
-    // Use range query if years are consecutive (MUCH faster for 100+ years)
-    const useRangeQuery = areYearsConsecutive(yearList)
-    const minYear = Math.min(...yearList)
-    const maxYear = Math.max(...yearList)
-
-    if (useRangeQuery && yearList.length > 10) {
-      console.log(`[CPU API] Using range query optimization: ${minYear}-${maxYear}`)
-    }
-
-    // Helper to apply year filter
-    const applyYearFilter = (query: any) => {
-      if (useRangeQuery) {
-        return query.gte('year', minYear).lte('year', maxYear)
-      }
-      return query.in('year', yearList)
-    }
-
-    // Helper to fetch a batch
-    const fetchBatch = async (type: 'hitters' | 'pitchers', offset: number) => {
-      if (type === 'hitters') {
-        let query = supabase
-          .from('player_seasons')
-          .select(playerSelect)
-        query = applyYearFilter(query)
-        return query
-          .gte('at_bats', RELAXED_AB_THRESHOLD)
-          .order('apba_rating', { ascending: false, nullsFirst: false })
-          .range(offset, offset + BATCH_SIZE - 1)
-      } else {
-        let query = supabase
-          .from('player_seasons')
-          .select(playerSelect)
-        query = applyYearFilter(query)
-        return query
-          .gte('innings_pitched_outs', RELAXED_IP_THRESHOLD)
-          .lt('at_bats', RELAXED_AB_THRESHOLD)
-          .order('apba_rating', { ascending: false, nullsFirst: false })
-          .range(offset, offset + BATCH_SIZE - 1)
-      }
-    }
-
-    // Fetch all players using PARALLEL batch fetching
-    const fetchAllParallel = async (type: 'hitters' | 'pitchers'): Promise<{ data: any[], error: any }> => {
-      const allData: any[] = []
-      let offset = 0
-      let hasMore = true
-
-      while (hasMore) {
-        // Create batch of parallel requests
-        const batchPromises = []
-        for (let i = 0; i < PARALLEL_BATCHES; i++) {
-          batchPromises.push(fetchBatch(type, offset + (i * BATCH_SIZE)))
-        }
-
-        // Execute all in parallel
-        const results = await Promise.all(batchPromises)
-
-        // Process results
-        let batchHadData = false
-        for (const result of results) {
-          if (result.error) {
-            return { data: allData, error: result.error }
-          }
-          if (result.data && result.data.length > 0) {
-            allData.push(...result.data)
-            batchHadData = true
-            if (result.data.length < BATCH_SIZE) {
-              hasMore = false  // This batch wasn't full, we're at the end
-            }
-          } else {
-            hasMore = false  // Empty batch means we're done
-          }
-        }
-
-        if (!batchHadData) hasMore = false
-        offset += PARALLEL_BATCHES * BATCH_SIZE
-      }
-
-      return { data: allData, error: null }
-    }
-
-    console.log('[CPU API] Starting parallel player fetch...')
-    const startTime = Date.now()
-
-    // Fetch hitters and pitchers in parallel
-    const [hittersResult, pitchersResult] = await Promise.all([
-      fetchAllParallel('hitters'),
-      fetchAllParallel('pitchers')
-    ])
-
-    const loadTime = Date.now() - startTime
-    console.log(`[CPU API] Parallel fetch complete in ${loadTime}ms: ${hittersResult.data.length} hitters, ${pitchersResult.data.length} pitchers`)
-
-    if (hittersResult.error || pitchersResult.error) {
-      console.error('[CPU API] Error loading players:', hittersResult.error || pitchersResult.error)
+    // PERFORMANCE: Use cached player pool (30-60x faster for subsequent picks)
+    let allPlayers: PlayerSeason[]
+    try {
+      allPlayers = await getOrLoadPlayerPool(sessionId, yearList)
+    } catch (err) {
+      console.error('[CPU API] Error loading player pool:', err)
       return res.status(500).json({ result: 'error', error: 'Failed to load player pool' })
     }
-
-    const allPlayers = [
-      ...hittersResult.data.map(transformPlayerRow),
-      ...pitchersResult.data.map(transformPlayerRow),
-    ]
 
     if (allPlayers.length === 0) {
       return res.status(500).json({ result: 'error', error: 'No players available in pool' })
     }
 
-    // Get distinct positions in the pool for diagnostic
-    const positionCounts: Record<string, number> = {}
-    for (const player of allPlayers) {
-      const pos = player.primary_position || 'NULL'
-      positionCounts[pos] = (positionCounts[pos] || 0) + 1
-    }
-
-    console.log('[CPU API] Player pool loaded:', {
+    console.log('[CPU API] Player pool ready:', {
       totalPlayers: allPlayers.length,
       draftedPlayers: draftedPlayerIds.size,
       excludedPlayers: excludePlayerSeasonIds.length,
       currentTeam: currentTeam.name,
       round,
       pickNumber: session.current_pick_number,
-      positionBreakdown: positionCounts
     })
 
     // Run CPU selection algorithm
@@ -797,6 +606,12 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
         result: 'error',
         error: 'Pick was saved but draft status could not be updated. Please refresh and verify state.',
       })
+    }
+
+    // Clear cache when draft completes to free memory
+    if (isComplete) {
+      clearCache(sessionId)
+      console.log(`[CPU API] Draft completed, cache cleared for session ${sessionId}`)
     }
 
     // console.log('[CPU API] CPU pick made:', {

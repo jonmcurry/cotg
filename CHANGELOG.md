@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Performance - 2026-02-04 (CPU Draft Player Pool Caching)
+- **CRITICAL PERFORMANCE FIX**: Implemented server-side player pool caching for 30-60x faster CPU picks
+  - **Problem**: CPU draft was reloading 69,000+ players from Supabase for EVERY pick
+    - With 210 CPU picks (10 CPU teams x 21 rounds), each taking 30-60s, draft took hours
+  - **Solution**: In-memory cache module that loads player pool once per session
+    - First CPU pick: Cache miss, loads pool in ~30s (unchanged)
+    - Subsequent picks: Cache hit, completes in <2s (30-60x faster)
+  - **Implementation**:
+    - Created `backend/src/lib/playerPoolCache.ts` with session-keyed caching
+    - Cache auto-expires after 30 minutes (TTL)
+    - Cache cleared on draft completion, abandonment, or session deletion
+    - CPU endpoint now uses `getOrLoadPlayerPool()` instead of inline loading
+  - **Files Modified**:
+    - NEW: backend/src/lib/playerPoolCache.ts
+    - backend/src/routes/cpu.ts (use cache instead of inline loading)
+    - backend/src/routes/draft.ts (clear cache on status change/delete)
+  - **Expected Improvement**:
+    - Total draft time: 50-100 min -> 2-5 min
+    - Per-pick time: 30-60s -> <2s (after first pick)
+
 ### Fixed - 2026-02-04 (CPU Draft Supabase Row Limit Bug)
 - **CRITICAL BUG FIX**: Fixed CPU failing to find 2B/SS players due to Supabase server-side row limit
   - **Root Cause**: Supabase has a server-side `max-rows` limit (default 1000) that cannot be overridden
