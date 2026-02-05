@@ -6,6 +6,7 @@
 import { Router, Request, Response } from 'express'
 import { pool } from '../lib/db'
 import { clearCache } from '../lib/playerPoolCache'
+import { invalidateSessionCache } from '../lib/sessionCache'
 
 const router = Router()
 
@@ -408,10 +409,14 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     const data = result.rows[0]
 
-    // Clear player pool cache when draft finishes or is abandoned
+    // Clear caches when draft finishes or is abandoned
     if (data.status === 'completed' || data.status === 'abandoned') {
       clearCache(id)
+      invalidateSessionCache(id)
     }
+
+    // Invalidate session cache on any status change to ensure consistency
+    invalidateSessionCache(id)
 
     return res.json({
       id: data.id,
@@ -446,8 +451,9 @@ router.delete('/:id', async (req: Request, res: Response) => {
     // Delete session
     await pool.query('DELETE FROM draft_sessions WHERE id = $1', [id])
 
-    // Clear player pool cache for this session
+    // Clear all caches for this session
     clearCache(id)
+    invalidateSessionCache(id)
 
     return res.status(204).send()
   } catch (err) {

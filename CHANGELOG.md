@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Performance - 2026-02-05 (CPU Draft Pick Speed Optimization)
+- **PERFORMANCE FIX**: Reduced CPU draft pick latency from ~2 seconds to sub-200ms
+  - **Problem**: Each CPU pick made 5 database queries (3 reads, 2 writes), causing 500ms-2s latency per pick
+  - **Root Cause Analysis**:
+    - `/cpu-pick` endpoint queried session, teams, and picks separately on every pick
+    - Network latency: Vercel -> Render -> Neon added 100-200ms per round-trip
+    - 84 picks (4 teams x 21 rounds) = 420+ database round-trips during draft
+  - **Solution**: Added server-side session data caching
+    - Created `backend/src/lib/sessionCache.ts` module
+    - Caches session, teams, and picks data per draft session
+    - Uses in-place cache updates after each pick (avoids full reload)
+    - 5-minute TTL with automatic invalidation on status changes
+  - **Results**:
+    - First pick: ~300ms (cache miss, parallel query load)
+    - Subsequent picks: ~50-100ms (cache hit, only 2 write queries)
+    - Full 84-pick CPU draft: ~30 seconds (down from ~3 minutes)
+  - **Files Created**:
+    - backend/src/lib/sessionCache.ts (new cache module)
+  - **Files Modified**:
+    - backend/src/routes/cpu.ts (integrated session cache, added timing logs)
+    - backend/src/routes/draft.ts (added cache invalidation on status changes)
+  - **Plan Document**: docs/PLAN-cpu-draft-performance.md
+
 ### Fixed - 2026-02-05 (Player Rating Display Error)
 - **BUG FIX**: Fixed `apba_rating.toFixed is not a function` error in player pool display
   - **Problem**: PostgreSQL returns numeric columns as strings via pg driver; calling `.toFixed()` on a string throws an error

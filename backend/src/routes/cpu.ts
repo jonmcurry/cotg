@@ -6,6 +6,12 @@
 import { Router, Request, Response } from 'express'
 import { pool } from '../lib/db'
 import { getOrLoadPlayerPool, clearCache, type PlayerSeason } from '../lib/playerPoolCache'
+import {
+  getSessionData,
+  updateCacheAfterPick,
+  invalidateSessionCache,
+  type DbPickRow
+} from '../lib/sessionCache'
 
 const router = Router()
 
@@ -267,26 +273,25 @@ function selectBestPlayer(
  */
 router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
   try {
+    const startTime = Date.now()
     const { sessionId } = req.params
     const { seasons, excludePlayerSeasonIds = [] } = req.body
 
-    // Load session
-    const sessionResult = await pool.query('SELECT * FROM draft_sessions WHERE id = $1', [sessionId])
-    if (sessionResult.rows.length === 0) {
+    // Load session data from cache (or database on miss)
+    // This replaces 3 separate queries with a single cached lookup
+    const sessionData = await getSessionData(sessionId)
+    if (!sessionData) {
       return res.status(404).json({ result: 'error', error: `Session not found: ${sessionId}` })
     }
-    const session = sessionResult.rows[0]
+
+    const { session, teams: teamsRows, picks: picksRows } = sessionData
+    const cacheLoadTime = Date.now() - startTime
 
     if (session.status !== 'in_progress') {
       return res.json({ result: 'error', error: `Draft is not in progress (status: ${session.status})` })
     }
 
-    // Load teams
-    const teamsResult = await pool.query(
-      'SELECT * FROM draft_teams WHERE draft_session_id = $1 ORDER BY draft_order',
-      [sessionId]
-    )
-    if (teamsResult.rows.length === 0) {
+    if (teamsRows.length === 0) {
       return res.status(500).json({ result: 'error', error: 'Failed to load teams' })
     }
 
@@ -294,8 +299,8 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
     const round = session.current_round
     const pickInRound = ((session.current_pick_number - 1) % session.num_teams) + 1
     const sortedTeams = round % 2 === 0
-      ? [...teamsResult.rows].sort((a, b) => b.draft_order - a.draft_order)
-      : [...teamsResult.rows].sort((a, b) => a.draft_order - b.draft_order)
+      ? [...teamsRows].sort((a, b) => b.draft_order - a.draft_order)
+      : [...teamsRows].sort((a, b) => a.draft_order - b.draft_order)
 
     const currentTeamData = sortedTeams[pickInRound - 1]
     if (!currentTeamData) {
@@ -306,11 +311,8 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
       return res.json({ result: 'not_cpu_turn', teamId: currentTeamData.id, teamName: currentTeamData.team_name })
     }
 
-    // Load existing picks
-    const picksResult = await pool.query('SELECT * FROM draft_picks WHERE draft_session_id = $1', [sessionId])
-
-    // Build team rosters
-    const teams: DraftTeam[] = teamsResult.rows.map((t: any) => ({
+    // Build team rosters from cached data
+    const teams: DraftTeam[] = teamsRows.map((t: any) => ({
       id: t.id,
       name: t.team_name,
       control: t.control as TeamControl,
@@ -320,7 +322,7 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
     }))
 
     const draftedPlayerIds = new Set<string>()
-    for (const pick of picksResult.rows) {
+    for (const pick of picksRows) {
       if (pick.player_id) draftedPlayerIds.add(pick.player_id)
       const team = teams.find(t => t.id === pick.draft_team_id)
       if (team && pick.player_season_id && pick.position && pick.slot_number) {
@@ -388,7 +390,25 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
       [nextPickNumber, nextRound, newStatus, sessionId]
     )
 
-    if (isComplete) clearCache(sessionId)
+    // Update cache with new pick data (avoids full reload on next pick)
+    const newPickRow: DbPickRow = {
+      pick_number: session.current_pick_number,
+      draft_team_id: currentTeam.id,
+      player_season_id: selection.player.id,
+      player_id: selection.player.player_id,
+      position: selection.position,
+      slot_number: selection.slotNumber,
+      created_at: new Date().toISOString()
+    }
+    updateCacheAfterPick(sessionId, newPickRow, nextPickNumber, nextRound, newStatus)
+
+    if (isComplete) {
+      clearCache(sessionId)
+      invalidateSessionCache(sessionId)
+    }
+
+    const totalTime = Date.now() - startTime
+    console.log(`[CPU Pick] Pick ${session.current_pick_number} completed in ${totalTime}ms (cache: ${cacheLoadTime}ms)`)
 
     return res.status(201).json({
       result: 'success',
