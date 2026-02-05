@@ -12,41 +12,49 @@
 2. User reports "cpu isn't picking" - Frontend UI not reflecting changes
 3. No errors in console or Render - Silent failure
 
-### Likely Causes
-1. **API response format mismatch** - Frontend expects different structure than backend returns
-2. **applyCpuPicksBatch state update issue** - State not being set correctly
-3. **React re-render not triggered** - Zustand store update not causing re-render
-4. **UI not reflecting current state** - Picks made but UI showing stale data
+### Root Cause Found: useEffect Cleanup Re-entry Bug
+The useEffect cleanup function was resetting `cpuDraftInProgressRef.current = false`:
 
-## Investigation Steps
+```javascript
+return () => {
+  cancelled = true
+  cpuDraftInProgressRef.current = false  // <-- BUG: This allows re-entry!
+}
+```
 
-### Step 1: Verify API Response Format
-Check backend response matches frontend type definition:
-- Backend returns: `{ result, picks, picksCount, session: { currentPick, currentRound, status } }`
-- Frontend expects: Same structure with specific types
+When `applyCpuPicksBatch` updates the session state:
+1. Zustand state updates synchronously
+2. React schedules re-render with new dependencies
+3. Cleanup runs, setting `cpuDraftInProgressRef.current = false`
+4. New effect instance runs with guard disabled
+5. ANOTHER batch API call is made
 
-### Step 2: Add Detailed Logging
-Add console.log to trace:
-1. API response received
-2. Before applyCpuPicksBatch called
-3. Inside applyCpuPicksBatch - picks being processed
-4. After state update - verify session.currentPick updated
+This caused multiple simultaneous batch calls, explaining the rapid pick progression.
 
-### Step 3: Verify State Updates
-Check if Zustand store is correctly updating:
-- `session.currentPick` should increment
-- `session.picks` array should have playerSeasonId filled in
-- `session.teams` roster should show filled slots
+## Fix Applied
 
-## Fix Approach
-Based on investigation, likely fixes:
-1. Ensure API response is properly parsed
-2. Verify applyCpuPicksBatch updates state correctly
-3. Check if React component re-renders on state change
+Changed cleanup to only set `cancelled = true`, letting the `finally` block handle the guard:
+
+```javascript
+return () => {
+  cancelled = true
+  // NOTE: Do NOT set cpuDraftInProgressRef.current = false here!
+  // That causes multiple batch calls when state updates trigger useEffect re-run
+}
+```
+
+The `finally` block already properly resets the guard when the async operation completes:
+
+```javascript
+} finally {
+  cpuDraftInProgressRef.current = false
+  setCpuThinking(false)
+}
+```
 
 ## Status
-- [ ] Add detailed logging
-- [ ] Test and capture browser console output
-- [ ] Identify exact failure point
-- [ ] Implement fix
+- [x] Add detailed logging (commit cb89138)
+- [x] Identify root cause - useEffect cleanup re-entry bug
+- [x] Implement fix (commit 09e6eb5)
+- [ ] Test and verify fix works
 - [ ] Remove debug logging after fix confirmed

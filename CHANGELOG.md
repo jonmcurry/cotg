@@ -7,11 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Debug - 2026-02-05 (CPU Batch Picks Diagnostics)
-- **DEBUG**: Added console logging to CPU batch picks useEffect
-  - **Purpose**: Identify which guard condition is blocking CPU picks from triggering
-  - **Logs**: Session existence/status, current team control, draft-in-progress guard state
+### Fixed - 2026-02-05 (CPU Batch useEffect Re-entry Bug)
+- **BUG FIX**: Fixed useEffect cleanup causing multiple simultaneous batch API calls
+  - **Problem**: Cleanup function reset `cpuDraftInProgressRef.current = false`, allowing re-entry
+  - **Symptom**: Multiple batch calls made simultaneously when state updates triggered effect re-run
+  - **Solution**: Only set `cancelled = true` in cleanup; let `finally` block handle guard reset
   - **Files Modified**: src/components/draft/DraftBoard.tsx
+
+### Debug - 2026-02-05 (CPU Batch Picks Diagnostics)
+- **DEBUG**: Added console logging to trace CPU batch state updates
+  - **Purpose**: Identify why frontend UI not updating despite backend processing picks
+  - **Logs**: API response, applyCpuPicksBatch entry/exit, state update details
+  - **Files Modified**: src/components/draft/DraftBoard.tsx, src/stores/draftStore.ts
 
 ### Fixed - 2026-02-05 (CPU Batch Picks SQL Typo)
 - **BUG FIX**: Fixed typo in batch CPU picks ON CONFLICT clause
