@@ -561,7 +561,7 @@ router.post('/:sessionId/cpu-picks-batch', async (req: Request, res: Response) =
           INSERT INTO draft_picks (draft_session_id, draft_team_id, player_id, player_season_id, pick_number, round, pick_in_round, position, slot_number)
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
           ON CONFLICT (draft_session_id, pick_number) DO UPDATE SET
-            player_id = EXCLUDED.player_id, player_season_id = EXCLUDED.player_session_id,
+            player_id = EXCLUDED.player_id, player_season_id = EXCLUDED.player_season_id,
             position = EXCLUDED.position, slot_number = EXCLUDED.slot_number
         `, [sessionId, currentTeam.id, selection.player.player_id, selection.player.id,
             session.current_pick_number, round, pickInRound, selection.position, selection.slotNumber])
