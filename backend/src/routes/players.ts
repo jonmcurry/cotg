@@ -52,6 +52,31 @@ const PLAYER_SEASON_SELECT = `
  * - offset: pagination offset (default 0)
  * - countOnly: if "true", only return count (for progress indication)
  */
+// Helper: Check if years are consecutive (for range query optimization)
+function areYearsConsecutive(years: number[]): boolean {
+  if (years.length <= 1) return true
+  const sorted = [...years].sort((a, b) => a - b)
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] !== sorted[i - 1] + 1) return false
+  }
+  return true
+}
+
+// Helper: Apply year filter - uses range query if consecutive (MUCH faster for 100+ years)
+function applyYearFilter(query: any, yearList: number[]) {
+  if (yearList.length === 0) return query
+
+  // If years are consecutive, use range query (faster than .in() with many values)
+  if (areYearsConsecutive(yearList)) {
+    const minYear = Math.min(...yearList)
+    const maxYear = Math.max(...yearList)
+    return query.gte('year', minYear).lte('year', maxYear)
+  }
+
+  // Non-consecutive years: use .in() (slower but necessary)
+  return query.in('year', yearList)
+}
+
 router.get('/pool', async (req: Request, res: Response) => {
   try {
     const { seasons, limit = '1000', offset = '0', countOnly } = req.query
@@ -64,13 +89,19 @@ router.get('/pool', async (req: Request, res: Response) => {
     const limitNum = Math.min(Number(limit), 1000) // Cap at 1000 per request
     const offsetNum = Number(offset)
 
+    // Log if using range optimization
+    if (areYearsConsecutive(yearList) && yearList.length > 10) {
+      console.log(`[Players API] Using range query optimization: ${Math.min(...yearList)}-${Math.max(...yearList)}`)
+    }
+
     // Count-only request (for progress indication)
     if (countOnly === 'true') {
-      const { count, error } = await supabase
+      let countQuery = supabase
         .from('player_seasons')
         .select('id', { count: 'exact', head: true })
-        .in('year', yearList)
-        .or('at_bats.gte.200,innings_pitched_outs.gte.30')
+
+      countQuery = applyYearFilter(countQuery, yearList)
+      const { count, error } = await countQuery.or('at_bats.gte.200,innings_pitched_outs.gte.30')
 
       if (error) {
         console.error('[Players API] Count error:', error)
@@ -81,10 +112,12 @@ router.get('/pool', async (req: Request, res: Response) => {
     }
 
     // Full data request
-    const { data, error } = await supabase
+    let dataQuery = supabase
       .from('player_seasons')
       .select(PLAYER_SEASON_SELECT)
-      .in('year', yearList)
+
+    dataQuery = applyYearFilter(dataQuery, yearList)
+    const { data, error } = await dataQuery
       .or('at_bats.gte.200,innings_pitched_outs.gte.30')
       .order('apba_rating', { ascending: false })
       .range(offsetNum, offsetNum + limitNum - 1)

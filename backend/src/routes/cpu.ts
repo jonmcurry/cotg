@@ -8,6 +8,16 @@ import { supabase } from '../lib/supabase'
 
 const router = Router()
 
+// Helper: Check if years are consecutive (for range query optimization)
+function areYearsConsecutive(years: number[]): boolean {
+  if (years.length <= 1) return true
+  const sorted = [...years].sort((a, b) => a - b)
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] !== sorted[i - 1] + 1) return false
+  }
+  return true
+}
+
 // Types matching frontend
 type PositionCode = 'C' | '1B' | '2B' | 'SS' | '3B' | 'OF' | 'SP' | 'RP' | 'CL' | 'DH' | 'BN'
 type TeamControl = 'human' | 'cpu'
@@ -584,21 +594,40 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
       players!inner (display_name, first_name, last_name, bats)
     `
 
+    // Use range query if years are consecutive (MUCH faster for 100+ years)
+    const useRangeQuery = areYearsConsecutive(yearList)
+    const minYear = Math.min(...yearList)
+    const maxYear = Math.max(...yearList)
+
+    if (useRangeQuery && yearList.length > 10) {
+      console.log(`[CPU API] Using range query optimization: ${minYear}-${maxYear}`)
+    }
+
+    // Helper to apply year filter
+    const applyYearFilter = (query: any) => {
+      if (useRangeQuery) {
+        return query.gte('year', minYear).lte('year', maxYear)
+      }
+      return query.in('year', yearList)
+    }
+
     // Helper to fetch a batch
     const fetchBatch = async (type: 'hitters' | 'pitchers', offset: number) => {
       if (type === 'hitters') {
-        return supabase
+        let query = supabase
           .from('player_seasons')
           .select(playerSelect)
-          .in('year', yearList)
+        query = applyYearFilter(query)
+        return query
           .gte('at_bats', RELAXED_AB_THRESHOLD)
           .order('apba_rating', { ascending: false, nullsFirst: false })
           .range(offset, offset + BATCH_SIZE - 1)
       } else {
-        return supabase
+        let query = supabase
           .from('player_seasons')
           .select(playerSelect)
-          .in('year', yearList)
+        query = applyYearFilter(query)
+        return query
           .gte('innings_pitched_outs', RELAXED_IP_THRESHOLD)
           .lt('at_bats', RELAXED_AB_THRESHOLD)
           .order('apba_rating', { ascending: false, nullsFirst: false })
