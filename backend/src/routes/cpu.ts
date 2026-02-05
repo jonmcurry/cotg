@@ -574,49 +574,81 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
     const RELAXED_AB_THRESHOLD = 100  // Matches meetsPlayingTimeRequirements relaxed threshold
     const RELAXED_IP_THRESHOLD = 45   // Matches meetsPlayingTimeRequirements relaxed threshold
 
-    // CRITICAL FIX: Supabase has a default 1000 row limit!
-    // Without explicit range, only top 1000 players by rating are returned.
-    // 2B/SS players might not be in top 1000, causing "player not found" errors.
-    // Use explicit large range to get ALL players matching the criteria.
-    const MAX_POOL_SIZE = 50000  // Large enough for any multi-decade draft
+    // CRITICAL FIX: Supabase has a server-side max-rows limit (default 1000)
+    // that CANNOT be overridden by .range() - it's a hard server limit.
+    // Solution: Use pagination to fetch ALL players in batches.
+    const BATCH_SIZE = 1000
+    const playerSelect = `
+      id, player_id, year, team_id, primary_position, apba_rating, war,
+      at_bats, batting_avg, hits, home_runs, rbi, stolen_bases,
+      on_base_pct, slugging_pct, innings_pitched_outs, wins, losses,
+      era, strikeouts_pitched, saves, shutouts, whip,
+      players!inner (display_name, first_name, last_name, bats)
+    `
 
-    const { data: hittersData, error: hittersError } = await supabase
-      .from('player_seasons')
-      .select(`
-        id, player_id, year, team_id, primary_position, apba_rating, war,
-        at_bats, batting_avg, hits, home_runs, rbi, stolen_bases,
-        on_base_pct, slugging_pct, innings_pitched_outs, wins, losses,
-        era, strikeouts_pitched, saves, shutouts, whip,
-        players!inner (display_name, first_name, last_name, bats)
-      `)
-      .in('year', yearList)
-      .gte('at_bats', RELAXED_AB_THRESHOLD)
-      .order('apba_rating', { ascending: false, nullsFirst: false })
-      .range(0, MAX_POOL_SIZE - 1)  // Explicit range to override Supabase default 1000 limit
+    // Fetch ALL hitters using pagination
+    const allHitters: any[] = []
+    let hittersOffset = 0
+    let hittersError: any = null
+    while (true) {
+      const { data, error } = await supabase
+        .from('player_seasons')
+        .select(playerSelect)
+        .in('year', yearList)
+        .gte('at_bats', RELAXED_AB_THRESHOLD)
+        .order('apba_rating', { ascending: false, nullsFirst: false })
+        .range(hittersOffset, hittersOffset + BATCH_SIZE - 1)
 
-    const { data: pitchersData, error: pitchersError } = await supabase
-      .from('player_seasons')
-      .select(`
-        id, player_id, year, team_id, primary_position, apba_rating, war,
-        at_bats, batting_avg, hits, home_runs, rbi, stolen_bases,
-        on_base_pct, slugging_pct, innings_pitched_outs, wins, losses,
-        era, strikeouts_pitched, saves, shutouts, whip,
-        players!inner (display_name, first_name, last_name, bats)
-      `)
-      .in('year', yearList)
-      .gte('innings_pitched_outs', RELAXED_IP_THRESHOLD)
-      .lt('at_bats', RELAXED_AB_THRESHOLD)
-      .order('apba_rating', { ascending: false, nullsFirst: false })
-      .range(0, MAX_POOL_SIZE - 1)  // Explicit range to override Supabase default 1000 limit
+      if (error) {
+        hittersError = error
+        break
+      }
+
+      if (!data || data.length === 0) break
+      allHitters.push(...data)
+      console.log(`[CPU API] Fetched hitters batch: offset=${hittersOffset}, count=${data.length}, total=${allHitters.length}`)
+
+      if (data.length < BATCH_SIZE) break  // Last batch
+      hittersOffset += BATCH_SIZE
+    }
+
+    // Fetch ALL pitchers using pagination
+    const allPitchers: any[] = []
+    let pitchersOffset = 0
+    let pitchersError: any = null
+    while (true) {
+      const { data, error } = await supabase
+        .from('player_seasons')
+        .select(playerSelect)
+        .in('year', yearList)
+        .gte('innings_pitched_outs', RELAXED_IP_THRESHOLD)
+        .lt('at_bats', RELAXED_AB_THRESHOLD)
+        .order('apba_rating', { ascending: false, nullsFirst: false })
+        .range(pitchersOffset, pitchersOffset + BATCH_SIZE - 1)
+
+      if (error) {
+        pitchersError = error
+        break
+      }
+
+      if (!data || data.length === 0) break
+      allPitchers.push(...data)
+      console.log(`[CPU API] Fetched pitchers batch: offset=${pitchersOffset}, count=${data.length}, total=${allPitchers.length}`)
+
+      if (data.length < BATCH_SIZE) break  // Last batch
+      pitchersOffset += BATCH_SIZE
+    }
 
     if (hittersError || pitchersError) {
       console.error('[CPU API] Error loading players:', hittersError || pitchersError)
       return res.status(500).json({ result: 'error', error: 'Failed to load player pool' })
     }
 
+    console.log(`[CPU API] Pagination complete: ${allHitters.length} hitters, ${allPitchers.length} pitchers`)
+
     const allPlayers = [
-      ...(hittersData || []).map(transformPlayerRow),
-      ...(pitchersData || []).map(transformPlayerRow),
+      ...allHitters.map(transformPlayerRow),
+      ...allPitchers.map(transformPlayerRow),
     ]
 
     if (allPlayers.length === 0) {
