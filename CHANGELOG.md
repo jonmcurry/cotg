@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-04 (Undefined Player Names in Draft UI)
+- **BUG FIX**: Fixed player names showing as "undefined undefined" / "Unknown Player" in draft UI
+  - **Problem**: `/pool-full` endpoint returns flat format (`player.display_name`)
+    but frontend transformer expected nested format (`player.players.display_name`)
+  - **Root Cause**: Backend cache flattens Supabase join data for internal efficiency,
+    but frontend was built for original `/pool` endpoint's nested format
+  - **Solution**: Updated `transformPlayerSeasonData()` to handle both formats:
+    - `const playerData = raw.players || raw` - use nested if available, else flat
+  - **Files Modified**:
+    - src/utils/transformPlayerData.ts (handle both data formats)
+
 ### Fixed - 2026-02-04 (Frontend Player Pool 502 Bad Gateway)
 - **CRITICAL FIX**: Fixed 502 Bad Gateway when loading player pool on draft screen
   - **Problem**: Frontend made 70+ paginated requests to `/api/players/pool`
