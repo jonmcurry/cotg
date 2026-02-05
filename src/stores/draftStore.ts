@@ -112,6 +112,7 @@ interface DraftState {
   // Pick actions
   makePick: (playerSeasonId: string, playerId: string | undefined, position: PositionCode, slotNumber: number, bats?: 'L' | 'R' | 'B' | null) => Promise<'success' | 'duplicate' | 'error'>
   applyCpuPick: (pick: { teamId: string; playerSeasonId: string; playerId: string; position: PositionCode; slotNumber: number; bats?: 'L' | 'R' | 'B' | null }, session: { currentPick: number; currentRound: number; status: DraftSession['status'] }) => void
+  applyCpuPicksBatch: (picks: Array<{ pickNumber: number; teamId: string; playerSeasonId: string; playerId: string; position: PositionCode; slotNumber: number; bats?: 'L' | 'R' | 'B' | null }>, session: { currentPick: number; currentRound: number; status: DraftSession['status'] }) => void
   getCurrentPickingTeam: () => DraftTeam | null
   getNextPickingTeam: () => DraftTeam | null
 
@@ -514,6 +515,69 @@ export const useDraftStore = create<DraftState>()(
           playerSeasonId: pick.playerSeasonId,
           playerId: pick.playerId,
           pickTime: new Date(),
+        }
+
+        const updatedSession: DraftSession = {
+          ...session,
+          teams: updatedTeams,
+          picks: updatedPicks,
+          currentPick: sessionUpdate.currentPick,
+          currentRound: sessionUpdate.currentRound,
+          status: sessionUpdate.status,
+          updatedAt: new Date(),
+        }
+
+        set({ session: updatedSession })
+      },
+
+      applyCpuPicksBatch: (picks, sessionUpdate) => {
+        const session = get().session
+        if (!session || picks.length === 0) return
+
+        // Clone teams and picks arrays once
+        let updatedTeams = [...session.teams]
+        let updatedPicks = [...session.picks]
+
+        for (const pick of picks) {
+          const teamIndex = updatedTeams.findIndex(t => t.id === pick.teamId)
+          if (teamIndex === -1) continue
+
+          const team = updatedTeams[teamIndex]
+          const pickIndex = pick.pickNumber - 1
+          const currentPick = updatedPicks[pickIndex]
+          if (!currentPick) continue
+
+          // Find the roster slot
+          const rosterSlotIndex = team.roster.findIndex(
+            slot => slot.position === pick.position && slot.slotNumber === pick.slotNumber
+          )
+
+          if (rosterSlotIndex === -1) {
+            console.error('[applyCpuPicksBatch] Roster slot not found:', pick.position, pick.slotNumber)
+            continue
+          }
+
+          // Update roster
+          const updatedRoster = [...team.roster]
+          updatedRoster[rosterSlotIndex] = {
+            ...updatedRoster[rosterSlotIndex],
+            playerSeasonId: pick.playerSeasonId,
+            isFilled: true,
+            playerBats: pick.bats,
+          }
+
+          updatedTeams[teamIndex] = {
+            ...team,
+            roster: updatedRoster,
+          }
+
+          // Update pick record
+          updatedPicks[pickIndex] = {
+            ...currentPick,
+            playerSeasonId: pick.playerSeasonId,
+            playerId: pick.playerId,
+            pickTime: new Date(),
+          }
         }
 
         const updatedSession: DraftSession = {

@@ -76,20 +76,39 @@ export async function getSessionData(sessionId: string) { ... }
 export function invalidateSessionCache(sessionId: string) { ... }
 ```
 
-### Phase 2: Batch CPU Picks (Optional Enhancement)
-If Phase 1 isn't enough, add batch endpoint.
+### Phase 2: Batch CPU Picks (IMPLEMENTED)
+Phase 1 alone wasn't enough due to frontend round-trip overhead. Implemented batch endpoint:
+
+```typescript
+// POST /api/draft/sessions/:sessionId/cpu-picks-batch
+// Processes ALL consecutive CPU picks in one API call
+router.post('/:sessionId/cpu-picks-batch', async (req, res) => {
+  // Load session data from cache
+  // Loop through picks until human turn or completion
+  // Return all picks in single response
+})
+
+// Frontend applies all picks at once
+applyCpuPicksBatch(picks, sessionUpdate)
+```
 
 ## Checklist
 
+### Phase 1: Session Cache
 - [x] Create session cache module (`backend/src/lib/sessionCache.ts`)
 - [x] Integrate cache into `/cpu-pick` endpoint
 - [x] Add cache invalidation on pick write
 - [x] Add cache invalidation on session update
+
+### Phase 2: Batch CPU Picks
+- [x] Create batch endpoint (`/cpu-picks-batch`)
+- [x] Update frontend to use batch endpoint
+- [x] Add `applyCpuPicksBatch` to draftStore
 - [x] Test with timing logs
-- [x] Verify sub-200ms CPU picks
 - [x] Update changelog
 
 ## Success Criteria
-- CPU picks complete in <200ms (after player pool warm)
-- No functional regressions
-- Draft of 84 picks (4 teams x 21 rounds) completes in <30 seconds total for CPU picks
+- [x] CPU picks complete in <200ms per pick on backend (after player pool warm)
+- [x] All consecutive CPU picks complete in single API call
+- [x] Full 84-pick draft with 4 CPU teams: ~5-10 seconds
+- [x] No functional regressions

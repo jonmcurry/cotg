@@ -28,7 +28,7 @@ export default function DraftBoard({ onExit, onComplete }: Props) {
     getCurrentPickingTeam,
     getNextPickingTeam,
     makePick,
-    applyCpuPick,
+    applyCpuPicksBatch,
     pauseDraft,
     resumeDraft,
     saveSession,
@@ -196,68 +196,36 @@ If this persists, the database may be updating. Wait a few minutes and try again
   //   })
   // }, [session?.currentPick, session?.status, currentTeam?.id, applyCpuPick, pauseDraft])
 
-  // CPU auto-draft logic - uses backend API for pick selection and execution
-  // Component-scoped cpuDraftInProgress guard with proper cleanup prevents race conditions
+  // CPU auto-draft logic - uses BATCH endpoint for all consecutive CPU picks
+  // This eliminates frontend round-trip latency by processing all CPU picks in one API call
   useEffect(() => {
-    // console.log('[CPU Draft] EFFECT Effect triggered, checking conditions:', {
-    //   hasSession: !!session,
-    //   hasCurrentTeam: !!currentTeam,
-    //   currentTeamControl: currentTeam?.control,
-    //   cpuDraftInProgress: cpuDraftInProgressRef.current,
-    //   sessionStatus: session?.status,
-    //   currentPick: session?.currentPick
-    // })
-
     let cancelled = false // StrictMode cleanup: set true on unmount to skip UI updates
 
-    if (!session) {
-      // console.log('[CPU Draft] BLOCKED No session')
-      return
-    }
+    if (!session) return
 
     // Reset retry counter when session changes
     if (lastSessionIdRef.current !== session.id) {
-      // console.log('[CPU Draft] Session changed, resetting retry counter')
       cpuRetryCountRef.current = 0
       lastSessionIdRef.current = session.id
+      failedPlayerSeasonIdsRef.current = new Set<string>()
     }
 
-    if (!currentTeam) {
-      // console.log('[CPU Draft] BLOCKED No current team')
-      return
-    }
-    if (currentTeam.control !== 'cpu') {
-      // console.log('[CPU Draft] BLOCKED Current team is not CPU (control=' + currentTeam.control + ')')
-      return
-    }
+    if (!currentTeam) return
+    if (currentTeam.control !== 'cpu') return
 
     // Component-scoped guard: properly cleaned up on unmount
-    if (cpuDraftInProgressRef.current) {
-      // console.log('[CPU Draft] BLOCKED CPU draft already in progress')
-      return
-    }
+    if (cpuDraftInProgressRef.current) return
 
-    if (session.status !== 'in_progress') {
-      // console.log('[CPU Draft] BLOCKED Session status is not in_progress (status=' + session.status + ')')
-      return
-    }
-
-    // console.log('[CPU Draft] SUCCESS All guards passed - starting CPU draft pick')
-
-    // Clear the failed-player blacklist when starting a new draft session
-    if (session.id !== lastSessionIdRef.current) {
-      failedPlayerSeasonIdsRef.current = new Set<string>()
-      lastSessionIdRef.current = session.id
-    }
+    if (session.status !== 'in_progress') return
 
     // Set guard BEFORE starting async operation
     cpuDraftInProgressRef.current = true
     setCpuThinking(true)
 
-    // CPU pick API response type
-    interface CpuPickResponse {
-      result: 'success' | 'duplicate' | 'not_cpu_turn' | 'error'
-      pick?: {
+    // CPU batch picks API response type
+    interface CpuBatchResponse {
+      result: 'success' | 'error'
+      picks?: Array<{
         pickNumber: number
         round: number
         pickInRound: number
@@ -269,113 +237,68 @@ If this persists, the database may be updating. Wait a few minutes and try again
         playerName: string
         year: number
         bats?: 'L' | 'R' | 'B' | null
-      }
+      }>
+      picksCount?: number
       session?: {
         currentPick: number
         currentRound: number
         status: 'setup' | 'in_progress' | 'paused' | 'completed' | 'abandoned' | 'clubhouse'
       }
       error?: string
-      playerSeasonId?: string
     }
 
-    // Async IIFE - checks cancelled flag before side effects
+    // Async IIFE - processes all consecutive CPU picks in one batch
     ;(async () => {
       try {
-        // console.log('[CPU Draft] START Async IIFE started, cancelled=' + cancelled)
+        if (cancelled) return
 
-        // Check if this effect instance was cancelled (StrictMode unmount)
-        if (cancelled) {
-          // console.log('[CPU Draft] BLOCKED Async IIFE blocked by cancelled flag')
-          return
-        }
+        console.log('[CPU Batch] Starting batch CPU picks...')
+        const startTime = Date.now()
 
-        // console.log('[CPU Draft] API Calling CPU pick API:', `/draft/sessions/${session.id}/cpu-pick`)
-
-        // FIXED Issue #6: Send blacklisted player IDs to prevent infinite retry loop
-        const response = await api.post<CpuPickResponse>(
-          `/draft/sessions/${session.id}/cpu-pick`,
+        // Call batch endpoint - processes ALL consecutive CPU picks
+        const response = await api.post<CpuBatchResponse>(
+          `/draft/sessions/${session.id}/cpu-picks-batch`,
           {
             seasons: session.selectedSeasons,
             excludePlayerSeasonIds: Array.from(failedPlayerSeasonIdsRef.current)
           }
         )
 
-        // console.log('[CPU Draft] RESPONSE API response received:', response.result)
-        // console.log('[CPU Draft] DETAILS Response details:', {
-        //   result: response.result,
-        //   hasPick: !!response.pick,
-        //   hasSession: !!response.session,
-        //   error: response.error,
-        //   fullResponse: response
-        // })
-
-        // Final cancelled check before updating state
         if (cancelled) return
 
-        if (response.result === 'not_cpu_turn') {
-          // Shouldn't happen since we check currentTeam.control, but handle gracefully
-          console.warn('[CPU Draft] API says not CPU turn')
-          return
-        }
-
-        if (response.result === 'duplicate') {
-          // Player already in DB - blacklist and retry
-          if (response.playerSeasonId) {
-            failedPlayerSeasonIdsRef.current.add(response.playerSeasonId)
-          }
-          console.warn('[CPU Draft] Duplicate player - will auto-retry')
-          return
-        }
-
         if (response.result === 'error') {
-          console.error('[CPU Draft] API error:', response.error)
+          console.error('[CPU Batch] API error:', response.error)
 
-          // Automatic retry with exponential backoff
           cpuRetryCountRef.current += 1
-          // console.log(`[CPU Draft] RETRY Attempt ${cpuRetryCountRef.current}/${maxRetries}`)
-
           if (cpuRetryCountRef.current < maxRetries) {
-            // Exponential backoff: 1s, 2s, 4s
             const delayMs = Math.pow(2, cpuRetryCountRef.current - 1) * 1000
-            // console.log(`[CPU Draft] RETRY Waiting ${delayMs}ms before retry...`)
-
-            // Don't pause draft, just wait and let effect retry
             setTimeout(() => {
-              // console.log('[CPU Draft] RETRY Triggering retry by resetting guard')
               cpuDraftInProgressRef.current = false
             }, delayMs)
             return
           }
 
-          // Max retries exhausted - show error to user
-          console.error('[CPU Draft] RETRY Max retries exhausted, showing error to user')
           setCpuError(response.error || 'Unknown error during CPU draft')
           pauseDraft()
           return
         }
 
-        if (response.result === 'success' && response.pick && response.session) {
-          // Reset retry counter on success
+        if (response.result === 'success' && response.picks && response.session) {
           cpuRetryCountRef.current = 0
-          // console.log('[CPU Draft] SUCCESS CPU pick successful:', {
-          //   pick: response.pick.pickNumber,
-          //   player: response.pick.playerName,
-          //   currentPickBefore: session.currentPick,
-          //   currentPickFromAPI: response.session.currentPick
-          // })
+          const batchTime = Date.now() - startTime
+          console.log(`[CPU Batch] Completed ${response.picks.length} picks in ${batchTime}ms`)
 
-          // Update session with pick data - don't reload entire session to avoid
-          // triggering player reload (loadSession doesn't preserve selectedSeasons)
-          applyCpuPick(
-            {
-              teamId: response.pick.teamId,
-              playerSeasonId: response.pick.playerSeasonId,
-              playerId: response.pick.playerId,
-              position: response.pick.position,
-              slotNumber: response.pick.slotNumber,
-              bats: response.pick.bats,
-            },
+          // Apply all picks at once using batch function
+          applyCpuPicksBatch(
+            response.picks.map(pick => ({
+              pickNumber: pick.pickNumber,
+              teamId: pick.teamId,
+              playerSeasonId: pick.playerSeasonId,
+              playerId: pick.playerId,
+              position: pick.position,
+              slotNumber: pick.slotNumber,
+              bats: pick.bats,
+            })),
             {
               currentPick: response.session.currentPick,
               currentRound: response.session.currentRound,
@@ -383,60 +306,48 @@ If this persists, the database may be updating. Wait a few minutes and try again
             }
           )
 
-          // Show inline ticker for this pick (clears after 3 seconds)
-          if (!cancelled) {
+          // Show ticker for the last pick in the batch
+          if (!cancelled && response.picks.length > 0) {
+            const lastPick = response.picks[response.picks.length - 1]
+            const pickingTeam = session.teams.find(t => t.id === lastPick.teamId)
             if (lastCpuPickTimer.current) clearTimeout(lastCpuPickTimer.current)
             setLastCpuPick({
-              teamName: currentTeam.name,
-              playerName: response.pick.playerName,
-              position: response.pick.position,
-              year: response.pick.year,
+              teamName: pickingTeam?.name || 'CPU',
+              playerName: lastPick.playerName,
+              position: lastPick.position,
+              year: lastPick.year,
             })
             lastCpuPickTimer.current = setTimeout(() => setLastCpuPick(null), 3000)
           }
         }
       } catch (error) {
-        console.error('[CPU Draft] ERROR during API call:', error)
+        console.error('[CPU Batch] ERROR during API call:', error)
 
-        // Automatic retry with exponential backoff
         cpuRetryCountRef.current += 1
-        // console.log(`[CPU Draft] RETRY (Exception) Attempt ${cpuRetryCountRef.current}/${maxRetries}`)
-
         if (cpuRetryCountRef.current < maxRetries) {
-          // Exponential backoff: 1s, 2s, 4s
           const delayMs = Math.pow(2, cpuRetryCountRef.current - 1) * 1000
-          // console.log(`[CPU Draft] RETRY Waiting ${delayMs}ms before retry...`)
-
-          // Don't pause draft, just wait and let effect retry
           setTimeout(() => {
-            // console.log('[CPU Draft] RETRY Triggering retry by resetting guard')
             cpuDraftInProgressRef.current = false
           }, delayMs)
           return
         }
 
-        // Max retries exhausted - show error to user
-        console.error('[CPU Draft] RETRY Max retries exhausted, showing error to user')
         setCpuError(`CPU draft failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
         pauseDraft()
       } finally {
-        // Always reset guards so the next effect run can proceed
         cpuDraftInProgressRef.current = false
         setCpuThinking(false)
       }
     })()
 
     // Cleanup: mark this instance as cancelled and reset guards
-    // This properly cleans up on StrictMode unmount, preventing permanent hangs
     return () => {
       cancelled = true
       cpuDraftInProgressRef.current = false
-      // Keep failedPlayerSeasonIds across same session, only clear on new session
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.currentPick, session?.status, currentTeam?.id, applyCpuPick, pauseDraft])
+  }, [session?.currentPick, session?.status, currentTeam?.id, applyCpuPicksBatch, pauseDraft])
   // Note: cpuThinking is intentionally NOT in dependencies to avoid cancelling the async operation
-  // when setCpuThinking(true) is called
 
   const handlePlayerSelect = useCallback((player: PlayerSeason) => {
     if (!currentTeam || currentTeam.control !== 'human') {

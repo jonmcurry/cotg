@@ -433,6 +433,211 @@ router.post('/:sessionId/cpu-pick', async (req: Request, res: Response) => {
   }
 })
 
+/**
+ * POST /api/draft/sessions/:sessionId/cpu-picks-batch
+ * Process ALL consecutive CPU picks until human turn or draft completion
+ * Returns all picks made in a single response - eliminates frontend round-trip latency
+ */
+router.post('/:sessionId/cpu-picks-batch', async (req: Request, res: Response) => {
+  try {
+    const batchStartTime = Date.now()
+    const { sessionId } = req.params
+    const { seasons, excludePlayerSeasonIds = [] } = req.body
+
+    // Load session data from cache
+    let sessionData = await getSessionData(sessionId)
+    if (!sessionData) {
+      return res.status(404).json({ result: 'error', error: `Session not found: ${sessionId}` })
+    }
+
+    if (sessionData.session.status !== 'in_progress') {
+      return res.json({ result: 'error', error: `Draft is not in progress (status: ${sessionData.session.status})` })
+    }
+
+    // Load player pool once for all picks
+    const yearList = seasons && seasons.length > 0 ? seasons : [sessionData.session.season_year || new Date().getFullYear()]
+    let allPlayers: PlayerSeason[]
+    try {
+      allPlayers = await getOrLoadPlayerPool(sessionId, yearList)
+    } catch (err) {
+      console.error('[CPU Batch] Error loading player pool:', err)
+      return res.status(500).json({ result: 'error', error: 'Failed to load player pool' })
+    }
+
+    if (allPlayers.length === 0) {
+      return res.status(500).json({ result: 'error', error: 'No players available in pool' })
+    }
+
+    const excludeSet = new Set<string>(excludePlayerSeasonIds)
+    const picks: Array<{
+      pickNumber: number
+      round: number
+      pickInRound: number
+      teamId: string
+      playerSeasonId: string
+      playerId: string
+      position: PositionCode
+      slotNumber: number
+      playerName: string
+      year: number
+      bats?: 'L' | 'R' | 'B' | null
+    }> = []
+
+    let continueLoop = true
+    let lastSession = sessionData.session
+    const totalPicks = lastSession.num_teams * TOTAL_ROUNDS
+
+    while (continueLoop) {
+      // Refresh session data from cache (updated in-place after each pick)
+      sessionData = await getSessionData(sessionId)
+      if (!sessionData) break
+
+      const { session, teams: teamsRows, picks: picksRows } = sessionData
+
+      if (session.status !== 'in_progress' || session.current_pick_number > totalPicks) {
+        continueLoop = false
+        break
+      }
+
+      // Calculate current picking team (snake draft)
+      const round = session.current_round
+      const pickInRound = ((session.current_pick_number - 1) % session.num_teams) + 1
+      const sortedTeams = round % 2 === 0
+        ? [...teamsRows].sort((a, b) => b.draft_order - a.draft_order)
+        : [...teamsRows].sort((a, b) => a.draft_order - b.draft_order)
+
+      const currentTeamData = sortedTeams[pickInRound - 1]
+      if (!currentTeamData) {
+        continueLoop = false
+        break
+      }
+
+      // Stop if it's a human's turn
+      if (currentTeamData.control !== 'cpu') {
+        continueLoop = false
+        break
+      }
+
+      // Build team rosters
+      const teams: DraftTeam[] = teamsRows.map((t: any) => ({
+        id: t.id,
+        name: t.team_name,
+        control: t.control as TeamControl,
+        draftPosition: t.draft_order,
+        roster: createRosterSlots(),
+        draftSessionId: sessionId,
+      }))
+
+      const draftedPlayerIds = new Set<string>()
+      for (const pick of picksRows) {
+        if (pick.player_id) draftedPlayerIds.add(pick.player_id)
+        const team = teams.find(t => t.id === pick.draft_team_id)
+        if (team && pick.player_season_id && pick.position && pick.slot_number) {
+          const rosterSlot = team.roster.find(s => s.position === pick.position && s.slotNumber === pick.slot_number)
+          if (rosterSlot) {
+            rosterSlot.playerSeasonId = pick.player_season_id
+            rosterSlot.isFilled = true
+          }
+        }
+      }
+
+      const currentTeam = teams.find(t => t.id === currentTeamData.id)
+      if (!currentTeam) {
+        continueLoop = false
+        break
+      }
+
+      // Run CPU selection
+      const selection = selectBestPlayer(allPlayers, currentTeam, draftedPlayerIds, excludeSet, round)
+      if (!selection) {
+        console.warn('[CPU Batch] Could not find player for pick', session.current_pick_number)
+        continueLoop = false
+        break
+      }
+
+      // Make the pick
+      try {
+        await pool.query(`
+          INSERT INTO draft_picks (draft_session_id, draft_team_id, player_id, player_season_id, pick_number, round, pick_in_round, position, slot_number)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          ON CONFLICT (draft_session_id, pick_number) DO UPDATE SET
+            player_id = EXCLUDED.player_id, player_season_id = EXCLUDED.player_session_id,
+            position = EXCLUDED.position, slot_number = EXCLUDED.slot_number
+        `, [sessionId, currentTeam.id, selection.player.player_id, selection.player.id,
+            session.current_pick_number, round, pickInRound, selection.position, selection.slotNumber])
+      } catch (pickError: any) {
+        console.error('[CPU Batch] Pick insert error:', pickError)
+        // Add to exclude list and continue
+        excludeSet.add(selection.player.id)
+        continue
+      }
+
+      // Update session
+      const nextPickNumber = session.current_pick_number + 1
+      const isComplete = nextPickNumber > totalPicks
+      const nextRound = isComplete ? round : Math.floor((nextPickNumber - 1) / session.num_teams) + 1
+      const newStatus = isComplete ? 'completed' : session.status
+
+      await pool.query(
+        'UPDATE draft_sessions SET current_pick_number = $1, current_round = $2, status = $3, updated_at = NOW() WHERE id = $4',
+        [nextPickNumber, nextRound, newStatus, sessionId]
+      )
+
+      // Update cache
+      const newPickRow: DbPickRow = {
+        pick_number: session.current_pick_number,
+        draft_team_id: currentTeam.id,
+        player_season_id: selection.player.id,
+        player_id: selection.player.player_id,
+        position: selection.position,
+        slot_number: selection.slotNumber,
+        created_at: new Date().toISOString()
+      }
+      updateCacheAfterPick(sessionId, newPickRow, nextPickNumber, nextRound, newStatus)
+
+      // Record the pick
+      picks.push({
+        pickNumber: session.current_pick_number,
+        round,
+        pickInRound,
+        teamId: currentTeam.id,
+        playerSeasonId: selection.player.id,
+        playerId: selection.player.player_id,
+        position: selection.position,
+        slotNumber: selection.slotNumber,
+        playerName: selection.player.display_name || 'Unknown',
+        year: selection.player.year,
+        bats: selection.player.bats,
+      })
+
+      lastSession = { ...session, current_pick_number: nextPickNumber, current_round: nextRound, status: newStatus }
+
+      if (isComplete) {
+        clearCache(sessionId)
+        invalidateSessionCache(sessionId)
+        continueLoop = false
+      }
+    }
+
+    const batchTime = Date.now() - batchStartTime
+    console.log(`[CPU Batch] Completed ${picks.length} picks in ${batchTime}ms (${picks.length > 0 ? Math.round(batchTime / picks.length) : 0}ms/pick)`)
+
+    return res.status(201).json({
+      result: 'success',
+      picks,
+      picksCount: picks.length,
+      session: {
+        currentPick: lastSession.current_pick_number,
+        currentRound: lastSession.current_round,
+        status: lastSession.status
+      }
+    })
+  } catch (err) {
+    console.error('[CPU Batch] Exception:', err)
+    return res.status(500).json({ result: 'error', error: 'Internal server error' })
+  }
+})
+
 export default router
 
 export {

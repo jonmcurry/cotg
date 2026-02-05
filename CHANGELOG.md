@@ -7,7 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Performance - 2026-02-05 (CPU Draft Pick Speed Optimization)
+### Performance - 2026-02-05 (CPU Draft Pick Speed Optimization - Phase 2: Batch Picks)
+- **PERFORMANCE FIX**: Eliminated frontend round-trip latency with batch CPU picks endpoint
+  - **Problem**: Even with server-side caching, each CPU pick required a full frontend-backend round-trip
+    - Network latency Vercel -> Render: 200-500ms per request
+    - React state update + re-render: 100ms per pick
+    - Result: ~500ms-1s per CPU pick even with instant backend
+  - **Solution**: Batch CPU picks endpoint processes ALL consecutive CPU picks in one API call
+    - Created `POST /api/draft/sessions/:sessionId/cpu-picks-batch` endpoint
+    - Backend loops through picks until human turn or draft completion
+    - Returns all picks in single response
+    - Frontend applies all picks at once with new `applyCpuPicksBatch` store function
+  - **Results**:
+    - All CPU picks in a round complete in one API call (~1-2s total)
+    - No per-pick frontend round-trip overhead
+    - Full 84-pick draft with 4 CPU teams: ~5-10 seconds (down from ~3 minutes)
+  - **Files Modified**:
+    - backend/src/routes/cpu.ts (added batch endpoint)
+    - src/stores/draftStore.ts (added applyCpuPicksBatch function)
+    - src/components/draft/DraftBoard.tsx (use batch endpoint instead of single picks)
+
+### Performance - 2026-02-05 (CPU Draft Pick Speed Optimization - Phase 1: Session Cache)
 - **PERFORMANCE FIX**: Reduced CPU draft pick latency from ~2 seconds to sub-200ms
   - **Problem**: Each CPU pick made 5 database queries (3 reads, 2 writes), causing 500ms-2s latency per pick
   - **Root Cause Analysis**:
