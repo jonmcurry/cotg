@@ -7,7 +7,8 @@ import { useState, useEffect, useRef } from 'react'
 import type { DraftSession, DraftTeam, LeagueType } from '../../types/draft.types'
 import type { PlayerSeason } from '../../types/player'
 import { useDraftStore } from '../../stores/draftStore'
-import { simulateGames, getTeamRecord, getNextGame } from '../../utils/statMaster'
+import { simulateGames, getTeamRecord, getNextGame, type BoxScore } from '../../utils/statMaster'
+import { accumulateBoxScore, createEmptySessionStats } from '../../utils/simulationStats'
 import { calculateStandings } from '../../utils/scheduleGenerator'
 import { transformPlayerSeasonData } from '../../utils/transformPlayerData'
 import { selectAllStarRosters, simulateAllStarGame, findAllStarGame } from '../../utils/allStarGame'
@@ -91,9 +92,18 @@ export default function StatMaster({ session, onExit }: Props) {
     const gamesPlayed = schedule?.games.filter((g: ScheduledGame) => g.result && !g.isAllStarGame).length || 0
     const totalGames = schedule?.games.filter((g: ScheduledGame) => !g.isAllStarGame).length || 0
 
-    const updateScheduleInStore = (updatedGames: ScheduledGame[], gamesSimmed: number) => {
+    const updateScheduleInStore = (updatedGames: ScheduledGame[], gamesSimmed: number, boxScores?: BoxScore[]) => {
         const store = useDraftStore.getState()
         if (store.session && schedule) {
+            // Accumulate simulation stats from box scores
+            let simulationStats = store.session.simulationStats || createEmptySessionStats()
+
+            if (boxScores && boxScores.length > 0) {
+                for (const boxScore of boxScores) {
+                    accumulateBoxScore(simulationStats, boxScore)
+                }
+            }
+
             const updatedSession = {
                 ...store.session,
                 schedule: {
@@ -101,6 +111,7 @@ export default function StatMaster({ session, onExit }: Props) {
                     games: updatedGames,
                     currentGameIndex: schedule.currentGameIndex + gamesSimmed
                 },
+                simulationStats,
                 updatedAt: new Date()
             }
             useDraftStore.setState({ session: updatedSession })
@@ -111,14 +122,14 @@ export default function StatMaster({ session, onExit }: Props) {
         if (!schedule || simulating) return
         setSimulating(true)
 
-        const updatedGames = simulateGames(
+        const { games: updatedGames, boxScores } = simulateGames(
             schedule.games,
             currentSession.teams,
             players,
             1
         )
 
-        updateScheduleInStore(updatedGames, 1)
+        updateScheduleInStore(updatedGames, 1, boxScores)
         setSimulating(false)
     }
 
@@ -126,14 +137,14 @@ export default function StatMaster({ session, onExit }: Props) {
         if (!schedule || simulating) return
         setSimulating(true)
 
-        const updatedGames = simulateGames(
+        const { games: updatedGames, boxScores } = simulateGames(
             schedule.games,
             currentSession.teams,
             players,
             7
         )
 
-        updateScheduleInStore(updatedGames, 7)
+        updateScheduleInStore(updatedGames, boxScores.length, boxScores)
         setSimulating(false)
     }
 
@@ -389,6 +400,7 @@ export default function StatMaster({ session, onExit }: Props) {
                             <TeamStatsDetail
                                 team={selectedTeam}
                                 players={players}
+                                simulationStats={currentSession.simulationStats}
                                 onBack={handleBackToOverview}
                             />
                         </div>
@@ -399,6 +411,7 @@ export default function StatMaster({ session, onExit }: Props) {
                         <div className="bg-white border border-charcoal/10 rounded-sm p-6">
                             <LeagueLeaders
                                 players={players}
+                                simulationStats={currentSession.simulationStats}
                                 onPlayerClick={(player) => {
                                     // Find the team that has this player and show team detail
                                     const teamWithPlayer = currentSession.teams.find(t =>

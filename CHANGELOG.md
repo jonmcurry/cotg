@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - 2026-02-06 (Simulation Stats for League Leaders & Team Stats)
+- **FEATURE**: StatMaster now shows simulation stats from simulated games
+  - **Problem**: League leaders and team stats showed historical MLB stats, not simulation results
+  - **Solution**: Track individual player stats during game simulation and display them
+  - **Implementation**:
+    - Added `PlayerSimulationStats` and `SessionSimulationStats` types to track accumulated stats
+    - Modified `simulateGame()` to track individual at-bat outcomes per player
+    - Created `simulationStats.ts` utility for stat accumulation and calculations
+    - Updated LeagueLeaders to prioritize simulation stats over historical
+    - Updated TeamStatsDetail to show simulation stats with visual indicator
+  - **Display Changes**:
+    - "Simulation Stats" / "Historical Stats" badge shows data source
+    - Players with sim data highlighted with `*` and burgundy background
+    - Qualification thresholds: 50 PA for batting, 10 IP for pitching
+    - Falls back to historical stats when no simulation data exists
+  - **Files Modified**:
+    - src/types/schedule.types.ts (added PlayerSimulationStats, SessionSimulationStats)
+    - src/types/draft.types.ts (added simulationStats to DraftSession)
+    - src/utils/statMaster.ts (track player stats during simulation)
+    - src/utils/simulationStats.ts (new utility for stat accumulation)
+    - src/components/statmaster/StatMaster.tsx (pass simulationStats, accumulate box scores)
+    - src/components/statmaster/LeagueLeaders.tsx (use simulation stats when available)
+    - src/components/statmaster/TeamStatsDetail.tsx (display simulation stats)
+  - **Tests Added**: tests/simulationStats.test.ts (TDD tests for stat tracking)
+  - **Plan**: docs/plans/simulation-player-stats.md
+
 ### Added - 2026-02-06 (StatMaster League Leaders & Team Stats)
 - **FEATURE**: League Leaders display in StatMaster
   - Top 5 batting leaders: AVG, HR, RBI, Hits, Stolen Bases

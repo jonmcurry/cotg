@@ -52,3 +52,50 @@ export interface TeamStanding {
     league?: 'AL' | 'NL'
     division?: 'East' | 'West' | 'North' | 'South'
 }
+
+/**
+ * Individual player simulation stats (accumulated from simulated games)
+ */
+export interface PlayerSimulationStats {
+    playerSeasonId: string
+    displayName: string
+    teamId: string
+    gamesPlayed: number
+
+    // Batting
+    atBats: number
+    hits: number
+    doubles: number
+    triples: number
+    homeRuns: number
+    rbi: number
+    runs: number
+    walks: number
+    strikeouts: number
+    stolenBases: number
+
+    // Pitching
+    inningsPitchedOuts: number // in outs (3 per inning)
+    earnedRuns: number
+    strikeoutsThrown: number
+    walksAllowed: number
+    hitsAllowed: number
+    wins: number
+    losses: number
+    saves: number
+
+    // Calculated (derived from above)
+    battingAvg?: number
+    onBasePct?: number
+    sluggingPct?: number
+    era?: number
+    whip?: number
+}
+
+/**
+ * Session-level simulation stats storage
+ */
+export interface SessionSimulationStats {
+    playerStats: Map<string, PlayerSimulationStats>
+    lastUpdated: Date
+}

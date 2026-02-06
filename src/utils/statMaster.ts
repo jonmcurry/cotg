@@ -17,6 +17,8 @@ interface AtBatOutcome {
     type: 'out' | 'single' | 'double' | 'triple' | 'homerun' | 'walk' | 'strikeout'
     runsScored: number
     rbis: number
+    batterId?: string
+    pitcherId?: string
 }
 
 // Game state during simulation
@@ -69,6 +71,7 @@ export interface PlayerSeasonStats {
 
 /**
  * Simulates a single game between two teams
+ * Now tracks individual player stats in BoxScore
  */
 export function simulateGame(
     homeTeam: DraftTeam,
@@ -85,6 +88,87 @@ export function simulateGame(
         awayScore: 0,
         isTopOfInning: true
     }
+
+    // Initialize player stats tracking
+    const homeBattingStats = new Map<string, PlayerGameStats>()
+    const awayBattingStats = new Map<string, PlayerGameStats>()
+    const homePitchingStats = new Map<string, PlayerGameStats>()
+    const awayPitchingStats = new Map<string, PlayerGameStats>()
+
+    // Helper to get or create player stats
+    const getOrCreateBattingStats = (map: Map<string, PlayerGameStats>, player: PlayerSeason | null, teamId: string): PlayerGameStats => {
+        if (!player) {
+            // Default player stats for null players
+            const defaultId = `unknown-${teamId}-${map.size}`
+            if (!map.has(defaultId)) {
+                map.set(defaultId, {
+                    playerSeasonId: defaultId,
+                    displayName: 'Unknown Player',
+                    atBats: 0,
+                    hits: 0,
+                    doubles: 0,
+                    triples: 0,
+                    runs: 0,
+                    rbis: 0,
+                    homeRuns: 0,
+                    strikeouts: 0,
+                    walks: 0,
+                })
+            }
+            return map.get(defaultId)!
+        }
+
+        if (!map.has(player.id)) {
+            map.set(player.id, {
+                playerSeasonId: player.id,
+                displayName: player.display_name || `${player.first_name} ${player.last_name}`,
+                atBats: 0,
+                hits: 0,
+                doubles: 0,
+                triples: 0,
+                runs: 0,
+                rbis: 0,
+                homeRuns: 0,
+                strikeouts: 0,
+                walks: 0,
+            })
+        }
+        return map.get(player.id)!
+    }
+
+    const getOrCreatePitchingStats = (map: Map<string, PlayerGameStats>, player: PlayerSeason | null, teamId: string): PlayerGameStats => {
+        if (!player) {
+            const defaultId = `unknown-pitcher-${teamId}`
+            if (!map.has(defaultId)) {
+                map.set(defaultId, {
+                    playerSeasonId: defaultId,
+                    displayName: 'Unknown Pitcher',
+                    inningsPitched: 0,
+                    earnedRuns: 0,
+                    strikeoutsPitched: 0,
+                    walksPitched: 0,
+                    hitsAllowed: 0,
+                })
+            }
+            return map.get(defaultId)!
+        }
+
+        if (!map.has(player.id)) {
+            map.set(player.id, {
+                playerSeasonId: player.id,
+                displayName: player.display_name || `${player.first_name} ${player.last_name}`,
+                inningsPitched: 0,
+                earnedRuns: 0,
+                strikeoutsPitched: 0,
+                walksPitched: 0,
+                hitsAllowed: 0,
+            })
+        }
+        return map.get(player.id)!
+    }
+
+    // Track runners on base for run scoring
+    const baseRunners: (PlayerSeason | null)[] = [null, null, null]
 
     const boxScore: BoxScore = {
         gameId: game.id,
@@ -114,6 +198,8 @@ export function simulateGame(
     let awayBatterIndex = 0
     let homeInningRuns = 0
     let awayInningRuns = 0
+    let homeOuts = 0
+    let awayOuts = 0
 
     // Simulate 9 innings (or more if tied)
     while (state.inning <= 9 || state.homeScore === state.awayScore) {
@@ -121,19 +207,45 @@ export function simulateGame(
         state.isTopOfInning = true
         state.outs = 0
         state.bases = [false, false, false]
+        baseRunners[0] = baseRunners[1] = baseRunners[2] = null
         awayInningRuns = 0
+        const inningStartOuts = homeOuts
 
         while (state.outs < 3) {
             const batter = awayLineup[awayBatterIndex % awayLineup.length]
             const outcome = simulateAtBat(batter, homeStarter)
+            outcome.batterId = batter?.id
+            outcome.pitcherId = homeStarter?.id
 
-            const runs = processOutcome(outcome, state)
+            // Update batter stats
+            const batterStats = getOrCreateBattingStats(awayBattingStats, batter, awayTeam.id)
+            const pitcherStats = getOrCreatePitchingStats(homePitchingStats, homeStarter, homeTeam.id)
+
+            updateBatterStatsFromOutcome(batterStats, outcome)
+            updatePitcherStatsFromOutcome(pitcherStats, outcome)
+
+            const runs = processOutcomeWithRunners(outcome, state, baseRunners, batter, awayBattingStats, awayTeam.id, getOrCreateBattingStats)
+            outcome.runsScored = runs
+            outcome.rbis = runs
+            batterStats.rbis = (batterStats.rbis || 0) + runs // Update RBIs
+
             awayInningRuns += runs
             state.awayScore += runs
+
+            // Update earned runs for pitcher
+            pitcherStats.earnedRuns = (pitcherStats.earnedRuns || 0) + runs
+
+            if (outcome.type === 'out' || outcome.type === 'strikeout') {
+                homeOuts++
+            }
 
             awayBatterIndex++
         }
         boxScore.awayLineScore.push(awayInningRuns)
+
+        // Update pitcher innings (outs recorded this half inning)
+        const homePitcherStats = getOrCreatePitchingStats(homePitchingStats, homeStarter, homeTeam.id)
+        homePitcherStats.inningsPitched = (homePitcherStats.inningsPitched || 0) + (homeOuts - inningStartOuts)
 
         // Check for walk-off prevention (bottom 9+, home winning)
         if (state.inning >= 9 && state.homeScore > state.awayScore) {
@@ -145,15 +257,37 @@ export function simulateGame(
         state.isTopOfInning = false
         state.outs = 0
         state.bases = [false, false, false]
+        baseRunners[0] = baseRunners[1] = baseRunners[2] = null
         homeInningRuns = 0
+        const bottomInningStartOuts = awayOuts
 
         while (state.outs < 3) {
             const batter = homeLineup[homeBatterIndex % homeLineup.length]
             const outcome = simulateAtBat(batter, awayStarter)
+            outcome.batterId = batter?.id
+            outcome.pitcherId = awayStarter?.id
 
-            const runs = processOutcome(outcome, state)
+            // Update batter stats
+            const batterStats = getOrCreateBattingStats(homeBattingStats, batter, homeTeam.id)
+            const pitcherStats = getOrCreatePitchingStats(awayPitchingStats, awayStarter, awayTeam.id)
+
+            updateBatterStatsFromOutcome(batterStats, outcome)
+            updatePitcherStatsFromOutcome(pitcherStats, outcome)
+
+            const runs = processOutcomeWithRunners(outcome, state, baseRunners, batter, homeBattingStats, homeTeam.id, getOrCreateBattingStats)
+            outcome.runsScored = runs
+            outcome.rbis = runs
+            batterStats.rbis = (batterStats.rbis || 0) + runs
+
             homeInningRuns += runs
             state.homeScore += runs
+
+            // Update earned runs for pitcher
+            pitcherStats.earnedRuns = (pitcherStats.earnedRuns || 0) + runs
+
+            if (outcome.type === 'out' || outcome.type === 'strikeout') {
+                awayOuts++
+            }
 
             // Walk-off detection
             if (state.inning >= 9 && state.homeScore > state.awayScore) {
@@ -163,6 +297,10 @@ export function simulateGame(
             homeBatterIndex++
         }
         boxScore.homeLineScore.push(homeInningRuns)
+
+        // Update pitcher innings
+        const awayPitcherStats = getOrCreatePitchingStats(awayPitchingStats, awayStarter, awayTeam.id)
+        awayPitcherStats.inningsPitched = (awayPitcherStats.inningsPitched || 0) + (awayOuts - bottomInningStartOuts)
 
         // Walk-off win
         if (state.inning >= 9 && state.homeScore > state.awayScore) {
@@ -183,6 +321,12 @@ export function simulateGame(
         }
     }
 
+    // Populate boxScore arrays from maps
+    boxScore.homeBatting = Array.from(homeBattingStats.values())
+    boxScore.awayBatting = Array.from(awayBattingStats.values())
+    boxScore.homePitching = Array.from(homePitchingStats.values())
+    boxScore.awayPitching = Array.from(awayPitchingStats.values())
+
     const result: GameResult = {
         homeScore: state.homeScore,
         awayScore: state.awayScore,
@@ -192,6 +336,179 @@ export function simulateGame(
     }
 
     return { result, boxScore }
+}
+
+/**
+ * Update batter stats from at-bat outcome
+ */
+function updateBatterStatsFromOutcome(stats: PlayerGameStats, outcome: AtBatOutcome): void {
+    // Walks don't count as at-bats
+    if (outcome.type !== 'walk') {
+        stats.atBats = (stats.atBats || 0) + 1
+    }
+
+    switch (outcome.type) {
+        case 'single':
+            stats.hits = (stats.hits || 0) + 1
+            break
+        case 'double':
+            stats.hits = (stats.hits || 0) + 1
+            stats.doubles = (stats.doubles || 0) + 1
+            break
+        case 'triple':
+            stats.hits = (stats.hits || 0) + 1
+            stats.triples = (stats.triples || 0) + 1
+            break
+        case 'homerun':
+            stats.hits = (stats.hits || 0) + 1
+            stats.homeRuns = (stats.homeRuns || 0) + 1
+            stats.runs = (stats.runs || 0) + 1 // Batter scores
+            break
+        case 'walk':
+            stats.walks = (stats.walks || 0) + 1
+            break
+        case 'strikeout':
+            stats.strikeouts = (stats.strikeouts || 0) + 1
+            break
+    }
+}
+
+/**
+ * Update pitcher stats from at-bat outcome
+ */
+function updatePitcherStatsFromOutcome(stats: PlayerGameStats, outcome: AtBatOutcome): void {
+    switch (outcome.type) {
+        case 'single':
+        case 'double':
+        case 'triple':
+        case 'homerun':
+            stats.hitsAllowed = (stats.hitsAllowed || 0) + 1
+            break
+        case 'walk':
+            stats.walksPitched = (stats.walksPitched || 0) + 1
+            break
+        case 'strikeout':
+            stats.strikeoutsPitched = (stats.strikeoutsPitched || 0) + 1
+            break
+    }
+}
+
+/**
+ * Process outcome and track runner scoring
+ */
+function processOutcomeWithRunners(
+    outcome: AtBatOutcome,
+    state: GameState,
+    baseRunners: (PlayerSeason | null)[],
+    batter: PlayerSeason | null,
+    battingStatsMap: Map<string, PlayerGameStats>,
+    teamId: string,
+    getOrCreateFn: (map: Map<string, PlayerGameStats>, player: PlayerSeason | null, teamId: string) => PlayerGameStats
+): number {
+    let runsScored = 0
+
+    const scoreRunner = (baseIndex: number) => {
+        const runner = baseRunners[baseIndex]
+        if (runner) {
+            const runnerStats = getOrCreateFn(battingStatsMap, runner, teamId)
+            runnerStats.runs = (runnerStats.runs || 0) + 1
+        }
+        baseRunners[baseIndex] = null
+        runsScored++
+    }
+
+    switch (outcome.type) {
+        case 'strikeout':
+        case 'out':
+            state.outs++
+            break
+
+        case 'walk':
+            // Force runners if bases loaded
+            if (state.bases[0] && state.bases[1] && state.bases[2]) {
+                scoreRunner(2)
+            }
+            // Advance runners where forced
+            if (state.bases[0] && state.bases[1]) {
+                baseRunners[2] = baseRunners[1]
+                state.bases[2] = true
+            }
+            if (state.bases[0]) {
+                baseRunners[1] = baseRunners[0]
+                state.bases[1] = true
+            }
+            baseRunners[0] = batter
+            state.bases[0] = true
+            break
+
+        case 'single':
+            // Score from 3rd, sometimes 2nd
+            if (state.bases[2]) {
+                scoreRunner(2)
+                state.bases[2] = false
+            }
+            if (state.bases[1] && Math.random() > 0.3) {
+                scoreRunner(1)
+                state.bases[1] = false
+            } else if (state.bases[1]) {
+                baseRunners[2] = baseRunners[1]
+                state.bases[2] = true
+                state.bases[1] = false
+            }
+            if (state.bases[0]) {
+                baseRunners[1] = baseRunners[0]
+                state.bases[1] = true
+            }
+            baseRunners[0] = batter
+            state.bases[0] = true
+            break
+
+        case 'double':
+            // Score from 2nd and 3rd
+            if (state.bases[2]) {
+                scoreRunner(2)
+                state.bases[2] = false
+            }
+            if (state.bases[1]) {
+                scoreRunner(1)
+                state.bases[1] = false
+            }
+            if (state.bases[0]) {
+                baseRunners[2] = baseRunners[0]
+                state.bases[2] = true
+                state.bases[0] = false
+            }
+            baseRunners[1] = batter
+            state.bases[1] = true
+            break
+
+        case 'triple':
+            // Score all runners
+            for (let i = 0; i < 3; i++) {
+                if (state.bases[i]) {
+                    scoreRunner(i)
+                    state.bases[i] = false
+                }
+            }
+            baseRunners[2] = batter
+            state.bases[2] = true
+            break
+
+        case 'homerun':
+            // Score all runners + batter
+            for (let i = 0; i < 3; i++) {
+                if (state.bases[i]) {
+                    scoreRunner(i)
+                    state.bases[i] = false
+                }
+            }
+            // Batter run is tracked in updateBatterStatsFromOutcome
+            runsScored++ // Batter scores
+            state.bases = [false, false, false]
+            break
+    }
+
+    return runsScored
 }
 
 /**
@@ -252,85 +569,6 @@ function simulateAtBat(batter: PlayerSeason | null, pitcher: PlayerSeason | null
 
     // Regular out
     return { type: 'out', runsScored: 0, rbis: 0 }
-}
-
-/**
- * Processes an at-bat outcome and updates game state
- */
-function processOutcome(outcome: AtBatOutcome, state: GameState): number {
-    let runsScored = 0
-
-    switch (outcome.type) {
-        case 'strikeout':
-        case 'out':
-            state.outs++
-            break
-
-        case 'walk':
-            // Force runners if bases loaded
-            if (state.bases[0] && state.bases[1] && state.bases[2]) {
-                runsScored = 1
-            }
-            // Advance runners where forced
-            if (state.bases[0] && state.bases[1]) {
-                state.bases[2] = true
-            }
-            if (state.bases[0]) {
-                state.bases[1] = true
-            }
-            state.bases[0] = true
-            break
-
-        case 'single':
-            // Score from 3rd, sometimes 2nd
-            if (state.bases[2]) {
-                runsScored++
-                state.bases[2] = false
-            }
-            if (state.bases[1] && Math.random() > 0.3) {
-                runsScored++
-                state.bases[1] = false
-            } else if (state.bases[1]) {
-                state.bases[2] = true
-                state.bases[1] = false
-            }
-            if (state.bases[0]) {
-                state.bases[1] = true
-            }
-            state.bases[0] = true
-            break
-
-        case 'double':
-            // Score from 2nd and 3rd
-            if (state.bases[2]) {
-                runsScored++
-                state.bases[2] = false
-            }
-            if (state.bases[1]) {
-                runsScored++
-                state.bases[1] = false
-            }
-            if (state.bases[0]) {
-                state.bases[2] = true
-                state.bases[0] = false
-            }
-            state.bases[1] = true
-            break
-
-        case 'triple':
-            // Score all runners
-            runsScored += state.bases.filter(b => b).length
-            state.bases = [false, false, true]
-            break
-
-        case 'homerun':
-            // Score all runners + batter
-            runsScored = 1 + state.bases.filter(b => b).length
-            state.bases = [false, false, false]
-            break
-    }
-
-    return runsScored
 }
 
 /**
@@ -400,29 +638,43 @@ export interface BoxScore {
 
 export interface PlayerGameStats {
     playerSeasonId: string
+    displayName?: string
     atBats?: number
     hits?: number
+    doubles?: number
+    triples?: number
     runs?: number
     rbis?: number
     homeRuns?: number
     strikeouts?: number
     walks?: number
-    inningsPitched?: number
+    inningsPitched?: number  // in outs (3 per inning)
     earnedRuns?: number
     strikeoutsPitched?: number
     walksPitched?: number
+    hitsAllowed?: number
+}
+
+/**
+ * Result of simulating multiple games
+ */
+export interface SimulationResult {
+    games: ScheduledGame[]
+    boxScores: BoxScore[]
 }
 
 /**
  * Simulates multiple games and updates the schedule
+ * Returns both updated games and box scores for stat accumulation
  */
 export function simulateGames(
     games: ScheduledGame[],
     teams: DraftTeam[],
     allPlayers: PlayerSeason[],
     count: number = 1
-): ScheduledGame[] {
+): SimulationResult {
     const updatedGames = [...games]
+    const boxScores: BoxScore[] = []
     let simulated = 0
 
     for (let i = 0; i < updatedGames.length && simulated < count; i++) {
@@ -448,15 +700,16 @@ export function simulateGames(
             awayTeam.roster.some(s => s.playerSeasonId === p.id)
         )
 
-        const { result } = simulateGame(homeTeam, awayTeam, homePlayers, awayPlayers, game)
+        const { result, boxScore } = simulateGame(homeTeam, awayTeam, homePlayers, awayPlayers, game)
 
         updatedGames[i] = { ...game, result }
+        boxScores.push(boxScore)
         simulated++
 
         // console.log(`[StatMaster] ${awayTeam.name} ${result.awayScore} @ ${homeTeam.name} ${result.homeScore}`)
     }
 
-    return updatedGames
+    return { games: updatedGames, boxScores }
 }
 
 /**

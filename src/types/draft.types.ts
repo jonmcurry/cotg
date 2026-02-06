@@ -52,6 +52,7 @@ export interface DraftSession {
   createdAt: Date
   updatedAt: Date
   schedule?: import('./schedule.types').SeasonSchedule
+  simulationStats?: import('./schedule.types').SessionSimulationStats
 }
 
 export interface DraftConfig {
