@@ -57,7 +57,9 @@
       "Bash(./test-frontend-build.sh:*)",
       "Bash(npm test:*)",
       "Bash(npm uninstall:*)",
-      "Bash(git filter-branch:*)"
+      "Bash(git filter-branch:*)",
+      "Bash(git stash:*)",
+      "Bash(npm run calculate:ratings:*)"
     ]
   }
 }
