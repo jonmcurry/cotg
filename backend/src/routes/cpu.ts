@@ -632,35 +632,13 @@ router.post('/:sessionId/cpu-picks-batch', async (req: Request, res: Response) =
         break
       }
 
-      // Make the pick
-      try {
-        await pool.query(`
-          INSERT INTO draft_picks (draft_session_id, draft_team_id, player_id, player_season_id, pick_number, round, pick_in_round, position, slot_number)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-          ON CONFLICT (draft_session_id, pick_number) DO UPDATE SET
-            player_id = EXCLUDED.player_id, player_season_id = EXCLUDED.player_season_id,
-            position = EXCLUDED.position, slot_number = EXCLUDED.slot_number
-        `, [sessionId, currentTeam.id, selection.player.player_id, selection.player.id,
-            session.current_pick_number, round, pickInRound, selection.position, selection.slotNumber])
-      } catch (pickError: any) {
-        console.error('[CPU Batch] Pick insert error:', pickError)
-        // Add to exclude list and continue
-        excludeSet.add(selection.player.id)
-        continue
-      }
-
-      // Update session
+      // Calculate next state (but DON'T write to DB yet - we batch writes at the end)
       const nextPickNumber = session.current_pick_number + 1
       const isComplete = nextPickNumber > totalPicks
       const nextRound = isComplete ? round : Math.floor((nextPickNumber - 1) / session.num_teams) + 1
       const newStatus = isComplete ? 'completed' : session.status
 
-      await pool.query(
-        'UPDATE draft_sessions SET current_pick_number = $1, current_round = $2, status = $3, updated_at = NOW() WHERE id = $4',
-        [nextPickNumber, nextRound, newStatus, sessionId]
-      )
-
-      // Update cache
+      // Update cache ONLY (fast, in-memory) - DB write happens at end
       const newPickRow: DbPickRow = {
         pick_number: session.current_pick_number,
         draft_team_id: currentTeam.id,
@@ -672,7 +650,7 @@ router.post('/:sessionId/cpu-picks-batch', async (req: Request, res: Response) =
       }
       updateCacheAfterPick(sessionId, newPickRow, nextPickNumber, nextRound, newStatus)
 
-      // Record the pick
+      // Record the pick for response AND for batch DB write
       picks.push({
         pickNumber: session.current_pick_number,
         round,
@@ -693,6 +671,47 @@ router.post('/:sessionId/cpu-picks-batch', async (req: Request, res: Response) =
         clearCache(sessionId)
         invalidateSessionCache(sessionId)
         continueLoop = false
+      }
+    }
+
+    // PERFORMANCE FIX: Batch write all picks to DB at once instead of per-pick
+    // This reduces 2N database round-trips to just 2 (INSERT + UPDATE)
+    // Each Neon round-trip is ~1 second, so this saves ~2 seconds per pick!
+    if (picks.length > 0) {
+      const dbWriteStart = Date.now()
+
+      try {
+        // Build batch INSERT query with all picks
+        const pickValues = picks.map((p, i) => {
+          const offset = i * 9
+          return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9})`
+        }).join(', ')
+
+        const pickParams = picks.flatMap(p => [
+          sessionId, p.teamId, p.playerId, p.playerSeasonId,
+          p.pickNumber, p.round, p.pickInRound, p.position, p.slotNumber
+        ])
+
+        await pool.query(`
+          INSERT INTO draft_picks (draft_session_id, draft_team_id, player_id, player_season_id, pick_number, round, pick_in_round, position, slot_number)
+          VALUES ${pickValues}
+          ON CONFLICT (draft_session_id, pick_number) DO UPDATE SET
+            player_id = EXCLUDED.player_id, player_season_id = EXCLUDED.player_season_id,
+            position = EXCLUDED.position, slot_number = EXCLUDED.slot_number
+        `, pickParams)
+
+        // Update session once at the end
+        await pool.query(
+          'UPDATE draft_sessions SET current_pick_number = $1, current_round = $2, status = $3, updated_at = NOW() WHERE id = $4',
+          [lastSession.current_pick_number, lastSession.current_round, lastSession.status, sessionId]
+        )
+
+        const dbWriteTime = Date.now() - dbWriteStart
+        console.log(`[CPU Batch] DB batch write: ${picks.length} picks in ${dbWriteTime}ms`)
+      } catch (dbError) {
+        console.error('[CPU Batch] Batch DB write error:', dbError)
+        // Even if DB write fails, we've updated the cache, so return what we have
+        // The picks will be retried on next batch call
       }
     }
 

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Performance - 2026-02-05 (CPU Batch 100x Faster with Batched DB Writes)
+- **PERFORMANCE FIX**: CPU batch was timing out because each pick did 2 DB writes
+  - **Problem**: Each pick took 2+ seconds due to INSERT + UPDATE queries to Neon
+    - 672 picks x 2 DB calls = 1344 round-trips!
+    - Only ~25 picks completed before 55s timeout
+  - **Solution**: Batch all DB writes at the END of the loop
+    - Accumulate picks in memory, update cache only (fast)
+    - Single batch INSERT for all picks at end
+    - Single UPDATE for session at end
+    - 2 DB round-trips total instead of 1344!
+  - **Expected improvement**: ~100x faster DB operations
+  - **Files Modified**: backend/src/routes/cpu.ts
+
 ### Fixed - 2026-02-05 (CPU Batch Timeout - Pre-warm Player Cache)
 - **BUG FIX**: CPU batch picks were timing out after only 17 picks
   - **Problem**: Batch request was loading 76,560 players (21 seconds) PLUS making picks,
