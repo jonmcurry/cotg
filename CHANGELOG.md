@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-06 (Loading Hang Race Condition)
+- **BUG FIX**: Fixed UI hanging on "Loading Players..." screen
+  - **Problem**: Draft would hang indefinitely after cache warmed (76560 players in 18884ms)
+  - **Root Cause**: Race condition between player loading and CPU batch effects
+    - Both effects fired in parallel on component mount
+    - Player loading: `/players/pool-full` (takes ~19s to load cache)
+    - CPU batch: `/warmup` then `/cpu-picks-batch` (also loads cache)
+    - Redundant parallel cache loading consumed timeout budget
+    - UI stayed on loading screen while CPU batch ran in background
+  - **Solution**: Added `loading` guard to CPU batch effect
+    ```typescript
+    if (loading) {
+      console.log('[CPU Batch] BLOCKED: Still loading players')
+      return
+    }
+    ```
+    - CPU batch now waits for player loading to complete
+    - Eliminates redundant parallel cache requests
+    - Proper sequential flow: load players -> warmup (cache already warm) -> batch picks
+  - **Files Modified**: src/components/draft/DraftBoard.tsx
+  - **Test Added**: tests/DraftBoard.cpuBatch.test.ts
+  - **Plan**: docs/plans/loading-hang-fix.md
+
 ### Chore - 2026-02-06 (Project Organization)
 - **REFACTOR**: Reorganized project folder structure for better clarity
   - **Renamed** `supabase/` to `database/` (project uses Neon PostgreSQL, not Supabase)

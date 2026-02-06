@@ -212,10 +212,18 @@ If this persists, the database may be updating. Wait a few minutes and try again
       currentTeamName: currentTeam?.name,
       currentTeamControl: currentTeam?.control,
       cpuDraftInProgress: cpuDraftInProgressRef.current,
+      loading, // NEW: Track loading state
     })
 
     if (!session) {
       console.log('[CPU Batch] BLOCKED: No session')
+      return
+    }
+
+    // FIXED: Wait for player loading to complete before starting CPU batch
+    // This prevents race condition where warmup and player loading both try to load cache
+    if (loading) {
+      console.log('[CPU Batch] BLOCKED: Still loading players')
       return
     }
 
@@ -408,8 +416,9 @@ If this persists, the database may be updating. Wait a few minutes and try again
       // That causes multiple batch calls when state updates trigger useEffect re-run
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.currentPick, session?.status, currentTeam?.id, applyCpuPicksBatch, pauseDraft])
+  }, [session?.currentPick, session?.status, currentTeam?.id, applyCpuPicksBatch, pauseDraft, loading])
   // Note: cpuThinking is intentionally NOT in dependencies to avoid cancelling the async operation
+  // Note: loading IS in dependencies - CPU batch must wait for player loading to complete
 
   const handlePlayerSelect = useCallback((player: PlayerSeason) => {
     if (!currentTeam || currentTeam.control !== 'human') {
