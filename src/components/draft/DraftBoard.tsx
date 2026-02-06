@@ -285,7 +285,21 @@ If this persists, the database may be updating. Wait a few minutes and try again
         console.log('[CPU Batch] Starting batch CPU picks...')
         const startTime = Date.now()
 
-        // Call batch endpoint - processes ALL consecutive CPU picks
+        // STEP 1: Pre-warm the player cache (separates slow load from batch picks)
+        // This prevents timeout by loading players before the batch request
+        console.log('[CPU Batch] Warming player cache...')
+        try {
+          const warmupResponse = await api.post<{ result: string; playersLoaded: number; loadTimeMs: number }>(
+            `/draft/sessions/${session.id}/warmup`,
+            { seasons: session.selectedSeasons }
+          )
+          console.log(`[CPU Batch] Cache warmed: ${warmupResponse.playersLoaded} players in ${warmupResponse.loadTimeMs}ms`)
+        } catch (warmupErr) {
+          console.warn('[CPU Batch] Warmup failed, continuing anyway:', warmupErr)
+          // Continue anyway - batch endpoint will load cache if needed
+        }
+
+        // STEP 2: Call batch endpoint - players already cached, only picks happen
         const response = await api.post<CpuBatchResponse>(
           `/draft/sessions/${session.id}/cpu-picks-batch`,
           {
@@ -481,18 +495,22 @@ If this persists, the database may be updating. Wait a few minutes and try again
 
           {/* Progress Info */}
           <div className="mb-3">
-            {loadingProgress.total > 0 ? (
+            {loadingProgress.total > 1 && loadingProgress.loaded > 0 ? (
               <>
                 <p className="text-lg font-display text-gold">
-                  {loadingProgress.loaded.toLocaleString()} of {loadingProgress.total.toLocaleString()} players
+                  {loadingProgress.loaded.toLocaleString()} players loaded
                 </p>
                 <p className="text-sm text-cream/60 font-serif mt-1">
-                  {Math.round((loadingProgress.loaded / loadingProgress.total) * 100)}% complete
+                  Ready to draft!
                 </p>
               </>
+            ) : loadingProgress.total === 1 ? (
+              <p className="text-lg font-display text-gold animate-pulse">
+                Connecting to database...
+              </p>
             ) : (
               <p className="text-lg font-display text-gold">
-                Calculating total players...
+                Initializing...
               </p>
             )}
           </div>

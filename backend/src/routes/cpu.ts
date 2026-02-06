@@ -268,6 +268,51 @@ function selectBestPlayer(
 }
 
 /**
+ * POST /api/draft/sessions/:sessionId/warmup
+ * Pre-warm the player pool cache before starting batch picks
+ * This separates the slow cache loading from the batch picks request
+ */
+router.post('/:sessionId/warmup', async (req: Request, res: Response) => {
+  try {
+    const startTime = Date.now()
+    const { sessionId } = req.params
+    const { seasons } = req.body
+
+    console.log(`[Warmup] Starting cache warmup for session ${sessionId}`)
+
+    // Load session to get season info
+    const sessionData = await getSessionData(sessionId)
+    if (!sessionData) {
+      return res.status(404).json({ result: 'error', error: 'Session not found' })
+    }
+
+    // Determine years to load
+    const yearList = seasons && seasons.length > 0
+      ? seasons
+      : [sessionData.session.season_year || new Date().getFullYear()]
+
+    // Pre-load the player pool into cache
+    const players = await getOrLoadPlayerPool(sessionId, yearList)
+
+    const elapsed = Date.now() - startTime
+    console.log(`[Warmup] Cache warmed: ${players.length} players loaded in ${elapsed}ms`)
+
+    return res.json({
+      result: 'success',
+      playersLoaded: players.length,
+      loadTimeMs: elapsed,
+      cached: true
+    })
+  } catch (err) {
+    console.error('[Warmup] Error:', err)
+    return res.status(500).json({
+      result: 'error',
+      error: err instanceof Error ? err.message : 'Warmup failed'
+    })
+  }
+})
+
+/**
  * POST /api/draft/sessions/:sessionId/cpu-pick
  * Calculate and execute a CPU draft pick
  */

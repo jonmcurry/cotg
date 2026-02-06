@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-05 (CPU Batch Timeout - Pre-warm Player Cache)
+- **BUG FIX**: CPU batch picks were timing out after only 17 picks
+  - **Problem**: Batch request was loading 76,560 players (21 seconds) PLUS making picks,
+    exceeding the 55-second timeout. Only ~17 picks completed before timeout.
+  - **Root Cause**: Player cache loading happened INSIDE the batch request, consuming
+    most of the timeout budget before picks could start
+  - **Solution**:
+    1. Added `/warmup` endpoint to pre-load player cache before batch picks
+    2. Frontend calls warmup first, then batch picks with cache already warm
+    3. Now 55 seconds is available entirely for picks (~20-27 picks per batch)
+  - **Files Modified**:
+    - backend/src/routes/cpu.ts (added warmup endpoint)
+    - src/components/draft/DraftBoard.tsx (calls warmup before batch)
+  - **Also Fixed**: Loading screen now shows "Connecting to database..." instead of
+    misleading "0 of 1 players" progress
+
 ### Fixed - 2026-02-05 (CORS/520 Error on CPU Batch Picks)
 - **BUG FIX**: Added request timeout middleware to prevent 520 errors
   - **Problem**: CPU batch picks would fail with "CORS policy" error and HTTP 520
