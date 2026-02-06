@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-06 (Session Persistence)
+- **BUG FIX**: Session data now correctly persists with Map types
+  - **Problem**: `simulationStats.playerStats` used JavaScript `Map` type which doesn't serialize correctly with JSON
+    - When session was loaded from localStorage, Map became empty object `{}`
+    - Any code calling `.get()` or `.set()` on it would fail with TypeError
+  - **Solution**: Added custom storage handlers to zustand-persist middleware
+    - `getItem`: Converts plain objects back to Map, rehydrates Date objects
+    - `setItem`: Converts Map to plain object for JSON serialization
+  - **Files Modified**: src/stores/draftStore.ts
+  - **Tests Added**: tests/autoLineup.test.ts (TDD approach)
+  - **Plan**: docs/plans/auto-lineup-fix.md
+
 ### Added - 2026-02-06 (Schedule and Season Features)
 - **NEW FEATURE**: Daily Schedule Format
   - **Problem**: Teams played same opponent for 3 consecutive games (series format)

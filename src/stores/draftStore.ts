@@ -675,6 +675,66 @@ export const useDraftStore = create<DraftState>()(
     {
       name: 'draft-session-storage',
       partialize: (state) => ({ session: state.session }),
+      // Custom storage to handle Map serialization in simulationStats
+      storage: {
+        getItem: (name) => {
+          const str = localStorage.getItem(name)
+          if (!str) return null
+
+          const parsed = JSON.parse(str)
+
+          // Rehydrate simulationStats.playerStats from object back to Map
+          if (parsed?.state?.session?.simulationStats?.playerStats) {
+            const playerStatsObj = parsed.state.session.simulationStats.playerStats
+            // Convert plain object entries back to Map
+            if (!(playerStatsObj instanceof Map)) {
+              parsed.state.session.simulationStats.playerStats = new Map(
+                Object.entries(playerStatsObj)
+              )
+            }
+          }
+
+          // Rehydrate dates
+          if (parsed?.state?.session) {
+            const session = parsed.state.session
+            if (session.createdAt) session.createdAt = new Date(session.createdAt)
+            if (session.updatedAt) session.updatedAt = new Date(session.updatedAt)
+            if (session.simulationStats?.lastUpdated) {
+              session.simulationStats.lastUpdated = new Date(session.simulationStats.lastUpdated)
+            }
+            // Rehydrate pick dates
+            if (session.picks) {
+              session.picks = session.picks.map((pick: any) => ({
+                ...pick,
+                pickTime: pick.pickTime ? new Date(pick.pickTime) : null,
+              }))
+            }
+            // Rehydrate schedule dates
+            if (session.schedule) {
+              session.schedule.allStarGameDate = new Date(session.schedule.allStarGameDate)
+              session.schedule.seasonStartDate = new Date(session.schedule.seasonStartDate)
+              session.schedule.seasonEndDate = new Date(session.schedule.seasonEndDate)
+              session.schedule.games = session.schedule.games.map((g: any) => ({
+                ...g,
+                date: new Date(g.date),
+              }))
+            }
+          }
+
+          return parsed
+        },
+        setItem: (name, value) => {
+          // Convert Map to object for JSON serialization
+          const toStore = JSON.parse(JSON.stringify(value, (_key, val) => {
+            if (val instanceof Map) {
+              return Object.fromEntries(val)
+            }
+            return val
+          }))
+          localStorage.setItem(name, JSON.stringify(toStore))
+        },
+        removeItem: (name) => localStorage.removeItem(name),
+      },
     }
   )
 )
