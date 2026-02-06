@@ -44,9 +44,9 @@ const ROSTER_REQUIREMENTS: Record<PositionCode, number> = {
 
 const TOTAL_ROUNDS = 21
 
-// Maximum picks per batch request - prevents timeout with all-CPU drafts
-// Frontend will re-trigger for more picks, allowing UI to update progressively
-const MAX_BATCH_SIZE = 50
+// Maximum picks per batch request - set to 1 for immediate UI updates per pick
+// Frontend will re-trigger useEffect after each pick for real-time feedback
+const MAX_BATCH_SIZE = 1
 
 // Position eligibility mapping
 const POSITION_ELIGIBILITY: Record<PositionCode, string[]> = {
