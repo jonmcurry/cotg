@@ -437,12 +437,17 @@ export function simulateGame(
     boxScore.homePitching = Array.from(homePitchingStats.values())
     boxScore.awayPitching = Array.from(awayPitchingStats.values())
 
+    // FIXED: Get pitcher IDs from the actual pitching stats, not the player objects
+    // This ensures consistency when the pitcher is null (uses default ID)
+    const homePitcherId = boxScore.homePitching[0]?.playerSeasonId
+    const awayPitcherId = boxScore.awayPitching[0]?.playerSeasonId
+
     const result: GameResult = {
         homeScore: state.homeScore,
         awayScore: state.awayScore,
         innings: state.inning,
-        winningPitcherId: state.homeScore > state.awayScore ? homeStarter?.id : awayStarter?.id,
-        losingPitcherId: state.homeScore > state.awayScore ? awayStarter?.id : homeStarter?.id
+        winningPitcherId: state.homeScore > state.awayScore ? homePitcherId : awayPitcherId,
+        losingPitcherId: state.homeScore > state.awayScore ? awayPitcherId : homePitcherId
     }
 
     return { result, boxScore }
@@ -624,56 +629,95 @@ function processOutcomeWithRunners(
 /**
  * Simulates a single at-bat
  * Uses actual player stats for realistic outcomes
+ *
+ * APBA-inspired approach:
+ * - Uses actual batting averages directly (not inflated by pitcher ERA)
+ * - Pitcher quality affects outcome type, not hit probability
+ * - HR probability is based on HRs per AB, not HRs per hit
  */
 function simulateAtBat(batter: PlayerSeason | null, pitcher: PlayerSeason | null): AtBatOutcome {
     // Default stats if player not found
     const battingAvg = batter?.batting_avg ?? 0.250
     const onBasePct = batter?.on_base_pct ?? 0.320
+    const sluggingPct = batter?.slugging_pct ?? 0.400
+    const atBats = batter?.at_bats ?? 500
+    const homeRuns = batter?.home_runs ?? 15
+
+    // APBA-style: Use actual stats directly, minimal adjustment for pitcher quality
+    // Pitcher ERA modifier is subtle (+/- 5% max, not +/- 30%)
     const pitcherEra = pitcher?.era ?? 4.50
+    const LEAGUE_AVG_ERA = 4.50
+    // A pitcher with 6.0 ERA gives batter a ~3% boost, not 30%
+    const eraMod = 1 + Math.max(-0.05, Math.min(0.05, (pitcherEra - LEAGUE_AVG_ERA) / 50))
 
-    // Calculate probabilities
-    // Lower ERA = harder to hit
-    const eraMod = Math.max(0.7, Math.min(1.3, (pitcherEra / 4.5)))
-    const adjustedAvg = battingAvg * eraMod
-    const adjustedObp = onBasePct * eraMod
+    const adjustedAvg = Math.min(0.400, battingAvg * eraMod) // Cap at .400
+    const adjustedObp = Math.min(0.500, onBasePct * eraMod) // Cap at .500
 
-    // Walk probability
-    const walkChance = Math.max(0, adjustedObp - adjustedAvg) // OBP minus AVG ≈ walk rate
+    // Walk probability = OBP - AVG (roughly)
+    const walkChance = Math.max(0, adjustedObp - adjustedAvg)
 
-    // Hit probability
-    const hitChance = adjustedAvg
+    // APBA-style: Calculate HR rate directly from AB, not from hits
+    // This prevents inflated HR rates when players get extra hits
+    const hrPerAB = atBats > 0 ? Math.min(0.10, homeRuns / atBats) : 0.03
 
-    // Get hit type distribution from actual player stats (FIXED!)
-    const hitDist = calculateHitDistribution(batter)
+    // Calculate XBH rate from ISO
+    const iso = Math.max(0, sluggingPct - battingAvg)
+    const hrExtraBases = homeRuns * 3 / Math.max(1, atBats)
+    const nonHrIso = Math.max(0, iso - hrExtraBases)
+
+    // Doubles and triples as rate per AB (not per hit)
+    const doublesPerAB = Math.min(0.06, (nonHrIso * 0.85))
+    const triplesPerAB = Math.min(0.01, (nonHrIso * 0.15))
+    const singlesPerAB = Math.max(0, adjustedAvg - hrPerAB - doublesPerAB - triplesPerAB)
 
     const roll = Math.random()
 
+    // Outcome probability order (APBA-style, per AB not per hit):
+    // 1. Walk
+    // 2. Strikeout
+    // 3. Home Run
+    // 4. Triple
+    // 5. Double
+    // 6. Single
+    // 7. Out
+
+    let cumulative = 0
+
     // Walk
-    if (roll < walkChance) {
+    cumulative += walkChance
+    if (roll < cumulative) {
         return { type: 'walk', runsScored: 0, rbis: 0 }
     }
 
-    // Hit - use actual hit type distribution
-    if (roll < walkChance + hitChance) {
-        const hitRoll = Math.random()
-
-        // Use cumulative distribution from actual stats
-        if (hitRoll < hitDist.homeRunRate) {
-            return { type: 'homerun', runsScored: 0, rbis: 0 }
-        }
-        if (hitRoll < hitDist.homeRunRate + hitDist.tripleRate) {
-            return { type: 'triple', runsScored: 0, rbis: 0 }
-        }
-        if (hitRoll < hitDist.homeRunRate + hitDist.tripleRate + hitDist.doubleRate) {
-            return { type: 'double', runsScored: 0, rbis: 0 }
-        }
-        return { type: 'single', runsScored: 0, rbis: 0 }
+    // Strikeout (before hits, like APBA)
+    const strikeoutRate = calculateStrikeoutRate(batter, pitcher)
+    cumulative += strikeoutRate * (1 - walkChance) // Apply to non-walks
+    if (roll < cumulative) {
+        return { type: 'strikeout', runsScored: 0, rbis: 0 }
     }
 
-    // Strikeout - use player-specific rate (FIXED!)
-    const strikeoutRate = calculateStrikeoutRate(batter, pitcher)
-    if (Math.random() < strikeoutRate) {
-        return { type: 'strikeout', runsScored: 0, rbis: 0 }
+    // Home Run (direct rate per AB)
+    cumulative += hrPerAB * eraMod
+    if (roll < cumulative) {
+        return { type: 'homerun', runsScored: 0, rbis: 0 }
+    }
+
+    // Triple
+    cumulative += triplesPerAB * eraMod
+    if (roll < cumulative) {
+        return { type: 'triple', runsScored: 0, rbis: 0 }
+    }
+
+    // Double
+    cumulative += doublesPerAB * eraMod
+    if (roll < cumulative) {
+        return { type: 'double', runsScored: 0, rbis: 0 }
+    }
+
+    // Single
+    cumulative += singlesPerAB * eraMod
+    if (roll < cumulative) {
+        return { type: 'single', runsScored: 0, rbis: 0 }
     }
 
     // Regular out

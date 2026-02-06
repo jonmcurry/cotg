@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-06 (APBA-Inspired Simulation Improvements)
+- **BUG FIX**: Simulation now produces realistic stats based on APBA for Windows v3.0 analysis
+  - **Problem #1**: Barry Bonds producing 134 HRs due to inflated hit probabilities
+    - Old formula calculated HR rate as `HRs/hits` (~23%) and applied to every hit
+    - ERA modifier was too strong (+/- 30%), inflating batting averages
+  - **Problem #2**: Pitcher wins/losses not tracking due to ID mismatch
+    - GameResult used `pitcher?.id` which was undefined when pitcher was null
+    - BoxScore used a default ID like `unknown-pitcher-{teamId}`
+  - **Solution** (APBA-inspired approach):
+    - Calculate outcome probabilities per AT-BAT, not per hit
+    - HR rate: `HRs/ABs` capped at 10% (real-world max)
+    - ERA modifier reduced to +/- 5% (subtle pitcher impact)
+    - GameResult now uses pitcher ID from boxScore for consistency
+  - **Files Modified**:
+    - src/utils/statMaster.ts (rewrote simulateAtBat, fixed GameResult pitcher IDs)
+  - **Plan**: docs/apba-reverse-engineering.md
+
 ### Fixed - 2026-02-06 (Pitcher Stats Not Tracking Wins/Losses/Saves)
 - **BUG FIX**: Pitching leaders now correctly track wins, losses, and saves
   - **Problem**: Pitching leaders showed 0 wins, 0 saves for all pitchers even after simulation
