@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react'
-import type { DraftSession } from '../../types/draft.types'
+import type { DraftSession, LeagueType } from '../../types/draft.types'
 import type { PlayerSeason } from '../../types/player'
 import { useDraftStore } from '../../stores/draftStore'
 import { simulateGames, getTeamRecord, getNextGame } from '../../utils/statMaster'
@@ -12,7 +12,7 @@ import { calculateStandings } from '../../utils/scheduleGenerator'
 import { transformPlayerSeasonData } from '../../utils/transformPlayerData'
 import { selectAllStarRosters, simulateAllStarGame, findAllStarGame } from '../../utils/allStarGame'
 import type { AllStarRoster } from '../../utils/allStarGame'
-import type { ScheduledGame } from '../../types/schedule.types'
+import type { ScheduledGame, TeamStanding } from '../../types/schedule.types'
 
 interface Props {
     session: DraftSession
@@ -26,6 +26,7 @@ export default function StatMaster({ session, onExit }: Props) {
     const [simulating, setSimulating] = useState(false)
     const [allStarRosters, setAllStarRosters] = useState<{ home: AllStarRoster; away: AllStarRoster } | null>(null)
     const [allStarResult, setAllStarResult] = useState<{ homeScore: number; awayScore: number } | null>(null)
+    const [selectedLeague, setSelectedLeague] = useState<LeagueType>('AL')
     const loadedRef = useRef(false)
 
     // Use store session to get latest schedule updates
@@ -224,37 +225,100 @@ export default function StatMaster({ session, onExit }: Props) {
                             Standings
                         </h2>
                     </div>
+                    {/* League Tabs */}
+                    <div className="flex border-b border-charcoal/10">
+                        <button
+                            onClick={() => setSelectedLeague('AL')}
+                            className={`flex-1 py-2 font-display font-bold text-sm uppercase tracking-wider transition-colors ${
+                                selectedLeague === 'AL'
+                                    ? 'bg-burgundy text-white'
+                                    : 'bg-charcoal/5 text-charcoal/60 hover:bg-charcoal/10'
+                            }`}
+                        >
+                            American
+                        </button>
+                        <button
+                            onClick={() => setSelectedLeague('NL')}
+                            className={`flex-1 py-2 font-display font-bold text-sm uppercase tracking-wider transition-colors ${
+                                selectedLeague === 'NL'
+                                    ? 'bg-burgundy text-white'
+                                    : 'bg-charcoal/5 text-charcoal/60 hover:bg-charcoal/10'
+                            }`}
+                        >
+                            National
+                        </button>
+                    </div>
                     <div className="flex-1 overflow-y-auto">
-                        <table className="w-full text-sm">
-                            <thead className="bg-charcoal/5 sticky top-0">
-                                <tr>
-                                    <th className="text-left p-3 font-display text-charcoal/70">#</th>
-                                    <th className="text-left p-3 font-display text-charcoal/70">Team</th>
-                                    <th className="text-center p-3 font-display text-charcoal/70">W</th>
-                                    <th className="text-center p-3 font-display text-charcoal/70">L</th>
-                                    <th className="text-center p-3 font-display text-charcoal/70">PCT</th>
-                                    <th className="text-center p-3 font-display text-charcoal/70">GB</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {standings.map((standing, idx) => (
-                                    <tr key={standing.teamId} className="border-b border-charcoal/5 hover:bg-charcoal/5">
-                                        <td className="p-3 font-mono text-charcoal/50">{idx + 1}</td>
-                                        <td className="p-3 font-display font-bold text-charcoal truncate max-w-[120px]">
-                                            {standing.teamName}
-                                        </td>
-                                        <td className="p-3 text-center font-mono text-green-600">{standing.wins}</td>
-                                        <td className="p-3 text-center font-mono text-red-600">{standing.losses}</td>
-                                        <td className="p-3 text-center font-mono">
-                                            {standing.winPct.toFixed(3).slice(1)}
-                                        </td>
-                                        <td className="p-3 text-center font-mono text-charcoal/50">
-                                            {standing.gamesBack === 0 ? '-' : standing.gamesBack.toFixed(1)}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                        {/* Render divisions for selected league */}
+                        {(['East', 'West', 'North', 'South'] as const).map(division => {
+                            const divisionStandings = standings.filter(
+                                s => s.league === selectedLeague && s.division === division
+                            )
+                            if (divisionStandings.length === 0) return null
+
+                            return (
+                                <div key={`${selectedLeague}-${division}`} className="mb-2">
+                                    <div className="bg-charcoal/10 px-3 py-1.5 font-display font-bold text-xs uppercase tracking-widest text-charcoal/70">
+                                        {selectedLeague} {division}
+                                    </div>
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-charcoal/5">
+                                            <tr>
+                                                <th className="text-left p-2 font-display text-charcoal/50 text-xs">Team</th>
+                                                <th className="text-center p-2 font-display text-charcoal/50 text-xs w-10">W</th>
+                                                <th className="text-center p-2 font-display text-charcoal/50 text-xs w-10">L</th>
+                                                <th className="text-center p-2 font-display text-charcoal/50 text-xs w-12">PCT</th>
+                                                <th className="text-center p-2 font-display text-charcoal/50 text-xs w-10">GB</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {divisionStandings.map((standing) => (
+                                                <tr key={standing.teamId} className="border-b border-charcoal/5 hover:bg-charcoal/5">
+                                                    <td className="p-2 font-display font-bold text-charcoal truncate max-w-[140px]" title={standing.teamName}>
+                                                        {standing.teamName}
+                                                    </td>
+                                                    <td className="p-2 text-center font-mono text-green-600 text-xs">{standing.wins}</td>
+                                                    <td className="p-2 text-center font-mono text-red-600 text-xs">{standing.losses}</td>
+                                                    <td className="p-2 text-center font-mono text-xs">
+                                                        {standing.winPct.toFixed(3).slice(1)}
+                                                    </td>
+                                                    <td className="p-2 text-center font-mono text-charcoal/50 text-xs">
+                                                        {standing.gamesBack === 0 ? '-' : standing.gamesBack.toFixed(1)}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )
+                        })}
+                        {/* Fallback for teams without divisions */}
+                        {standings.filter(s => !s.league || !s.division).length > 0 && (
+                            <div className="mb-2">
+                                <div className="bg-charcoal/10 px-3 py-1.5 font-display font-bold text-xs uppercase tracking-widest text-charcoal/70">
+                                    Unassigned
+                                </div>
+                                <table className="w-full text-sm">
+                                    <tbody>
+                                        {standings.filter(s => !s.league || !s.division).map((standing) => (
+                                            <tr key={standing.teamId} className="border-b border-charcoal/5 hover:bg-charcoal/5">
+                                                <td className="p-2 font-display font-bold text-charcoal truncate max-w-[140px]">
+                                                    {standing.teamName}
+                                                </td>
+                                                <td className="p-2 text-center font-mono text-green-600 text-xs">{standing.wins}</td>
+                                                <td className="p-2 text-center font-mono text-red-600 text-xs">{standing.losses}</td>
+                                                <td className="p-2 text-center font-mono text-xs">
+                                                    {standing.winPct.toFixed(3).slice(1)}
+                                                </td>
+                                                <td className="p-2 text-center font-mono text-charcoal/50 text-xs">
+                                                    {standing.gamesBack === 0 ? '-' : standing.gamesBack.toFixed(1)}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
                     </div>
                 </div>
 

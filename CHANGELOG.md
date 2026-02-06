@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - 2026-02-06 (Division Auto-Assignment)
+- **FEATURE**: Auto-assign teams to divisions when creating a draft
+  - 8 divisions: AL East/West/North/South, NL East/West/North/South
+  - Teams 1-N/2 assigned to AL, teams N/2+1-N to NL
+  - Within each league, teams distributed evenly to 4 divisions
+  - StatMaster standings now grouped by division with AL/NL tabs
+  - Games Back calculated per division (not globally)
+  - **Files Modified**:
+    - src/types/draft.types.ts (added LeagueType, DivisionType, team fields)
+    - src/types/schedule.types.ts (added division to TeamStanding)
+    - src/utils/divisionAssignment.ts (new utility)
+    - src/stores/draftStore.ts (division assignment in createSession)
+    - src/utils/scheduleGenerator.ts (division-aware standings)
+    - src/components/statmaster/StatMaster.tsx (division-grouped display)
+  - **Plan**: docs/plans/division-auto-assignment.md
+
 ### Fixed - 2026-02-06 (League Save/Load Workflow)
 - **ENHANCEMENT**: Improved league and draft session persistence workflow
   - **Problem**: After creating a league and drafting, page refresh lost context

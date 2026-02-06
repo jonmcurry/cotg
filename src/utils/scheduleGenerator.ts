@@ -224,11 +224,12 @@ export function getGamesOnDate(schedule: SeasonSchedule, date: Date): ScheduledG
 
 /**
  * Calculates team standings from schedule results
+ * Includes division information and calculates games back per division
  */
 export function calculateStandings(schedule: SeasonSchedule, teams: DraftTeam[]): TeamStanding[] {
     const standings: Map<string, TeamStanding> = new Map()
 
-    // Initialize standings
+    // Initialize standings with division info
     teams.forEach(team => {
         standings.set(team.id, {
             teamId: team.id,
@@ -243,7 +244,9 @@ export function calculateStandings(schedule: SeasonSchedule, teams: DraftTeam[])
             homeRecord: { wins: 0, losses: 0 },
             awayRecord: { wins: 0, losses: 0 },
             streak: 0,
-            last10: { wins: 0, losses: 0 }
+            last10: { wins: 0, losses: 0 },
+            league: team.league,
+            division: team.division,
         })
     })
 
@@ -279,17 +282,48 @@ export function calculateStandings(schedule: SeasonSchedule, teams: DraftTeam[])
     // Calculate derived stats
     const standingsArray = Array.from(standings.values())
 
-    // Sort by wins (descending)
-    standingsArray.sort((a, b) => b.wins - a.wins || a.losses - b.losses)
-
-    // Calculate win pct, run diff, and games back
-    const leader = standingsArray[0]
-
+    // Calculate win percentage and run differential
     standingsArray.forEach(standing => {
         const totalGames = standing.wins + standing.losses
         standing.winPct = totalGames > 0 ? standing.wins / totalGames : 0
         standing.runDifferential = standing.runsScored - standing.runsAllowed
-        standing.gamesBack = ((leader.wins - standing.wins) + (standing.losses - leader.losses)) / 2
+    })
+
+    // Calculate games back per division (not global)
+    // Group by division
+    const divisions = new Map<string, TeamStanding[]>()
+    standingsArray.forEach(standing => {
+        const divKey = standing.league && standing.division
+            ? `${standing.league}-${standing.division}`
+            : 'none'
+        if (!divisions.has(divKey)) {
+            divisions.set(divKey, [])
+        }
+        divisions.get(divKey)!.push(standing)
+    })
+
+    // Sort each division and calculate GB within division
+    divisions.forEach(divStandings => {
+        divStandings.sort((a, b) => b.wins - a.wins || a.losses - b.losses)
+        const divLeader = divStandings[0]
+        divStandings.forEach(standing => {
+            standing.gamesBack = ((divLeader.wins - standing.wins) + (standing.losses - divLeader.losses)) / 2
+        })
+    })
+
+    // Sort overall by league, division, then wins
+    standingsArray.sort((a, b) => {
+        // First by league
+        if (a.league !== b.league) {
+            return (a.league || 'ZZ').localeCompare(b.league || 'ZZ')
+        }
+        // Then by division
+        if (a.division !== b.division) {
+            const divOrder = ['East', 'West', 'North', 'South']
+            return divOrder.indexOf(a.division || '') - divOrder.indexOf(b.division || '')
+        }
+        // Then by wins
+        return b.wins - a.wins || a.losses - b.losses
     })
 
     return standingsArray

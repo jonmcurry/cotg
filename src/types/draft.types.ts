@@ -6,6 +6,8 @@
 export type TeamControl = 'human' | 'cpu'
 export type DraftStatus = 'setup' | 'in_progress' | 'paused' | 'completed' | 'abandoned' | 'clubhouse'
 export type PositionCode = 'C' | '1B' | '2B' | 'SS' | '3B' | 'OF' | 'SP' | 'RP' | 'CL' | 'DH' | 'BN'
+export type LeagueType = 'AL' | 'NL'
+export type DivisionType = 'East' | 'West' | 'North' | 'South'
 
 export interface DraftTeam {
   id: string
@@ -15,6 +17,8 @@ export interface DraftTeam {
   roster: RosterSlot[]
   draftSessionId: string
   depthChart?: TeamDepthChart
+  league?: LeagueType
+  division?: DivisionType
 }
 
 export interface RosterSlot {

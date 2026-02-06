@@ -49,4 +49,6 @@ export interface TeamStanding {
     awayRecord: { wins: number; losses: number }
     streak: number
     last10: { wins: number; losses: number }
+    league?: 'AL' | 'NL'
+    division?: 'East' | 'West' | 'North' | 'South'
 }

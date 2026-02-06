@@ -16,6 +16,7 @@ import type {
 } from '../types/draft.types'
 import { ROSTER_REQUIREMENTS } from '../types/draft.types'
 import { api, ApiError } from '../lib/api'
+import { assignDivisions } from '../utils/divisionAssignment'
 
 // API response types
 interface DraftSessionApiResponse {
@@ -141,10 +142,17 @@ export const useDraftStore = create<DraftState>()(
           })
 
           // API returns teams with empty rosters, we need to populate them
-          const teamsWithRosters = data.teams.map(team => ({
-            ...team,
-            roster: createRosterSlots(),
-          }))
+          // Also assign divisions based on draft position
+          const divisionAssignments = assignDivisions(config.numTeams)
+          const teamsWithRosters = data.teams.map(team => {
+            const assignment = divisionAssignments[team.draftPosition - 1] // draftPosition is 1-based
+            return {
+              ...team,
+              roster: createRosterSlots(),
+              league: assignment?.league,
+              division: assignment?.division,
+            }
+          })
 
           const session = transformSessionResponse({
             ...data,
