@@ -197,7 +197,7 @@ export default function App() {
                 <div className="text-4xl font-display text-charcoal/20 mb-4 group-hover:text-burgundy/30 transition-colors">02</div>
                 <h3 className="text-xl font-display font-bold text-charcoal mb-2">Smart Rivals</h3>
                 <p className="font-serif text-charcoal/70 leading-relaxed">
-                  Compete against AI that drafts based on positional needs and APBA player ratings.
+                  Compete against AI that drafts based on positional needs and player ratings.
                 </p>
               </div>
 
