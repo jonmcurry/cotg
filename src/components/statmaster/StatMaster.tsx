@@ -150,6 +150,85 @@ export default function StatMaster({ session, onExit }: Props) {
         setSimulating(false)
     }
 
+    const handleSimulateSeason = async () => {
+        if (!schedule || simulating) return
+        setSimulating(true)
+
+        // Calculate remaining games (excluding All-Star game)
+        const remainingCount = schedule.games.filter(
+            (g: ScheduledGame) => !g.result && !g.isAllStarGame
+        ).length
+
+        if (remainingCount === 0) {
+            setSimulating(false)
+            return
+        }
+
+        // Simulate all remaining games in batches to avoid UI freeze
+        let currentGames = [...schedule.games]
+        let totalBoxScores: BoxScore[] = []
+        let gamesSimulated = 0
+        const batchSize = 20 // Simulate 20 games at a time
+
+        while (gamesSimulated < remainingCount) {
+            const toSimulate = Math.min(batchSize, remainingCount - gamesSimulated)
+            const { games: updatedGames, boxScores } = simulateGames(
+                currentGames,
+                currentSession.teams,
+                players,
+                toSimulate
+            )
+            currentGames = updatedGames
+            totalBoxScores = [...totalBoxScores, ...boxScores]
+            gamesSimulated += boxScores.length
+
+            // Update store periodically to show progress
+            if (gamesSimulated % 50 === 0 || gamesSimulated >= remainingCount) {
+                updateScheduleInStore(currentGames, gamesSimulated, totalBoxScores)
+            }
+        }
+
+        // Final update
+        updateScheduleInStore(currentGames, gamesSimulated, totalBoxScores)
+        setSimulating(false)
+    }
+
+    const handleResetSeason = () => {
+        if (!schedule || simulating) return
+
+        const store = useDraftStore.getState()
+        if (!store.session) return
+
+        // Clear all game results
+        const resetGames = schedule.games.map((g: ScheduledGame) => ({
+            ...g,
+            result: undefined
+        }))
+
+        // Reset the schedule and simulation stats
+        const updatedSession = {
+            ...store.session,
+            schedule: {
+                ...schedule,
+                games: resetGames,
+                currentGameIndex: 0
+            },
+            simulationStats: createEmptySessionStats(),
+            updatedAt: new Date()
+        }
+
+        useDraftStore.setState({ session: updatedSession })
+
+        // Reset local state
+        setAllStarRosters(null)
+        setAllStarResult(null)
+    }
+
+    // Check if season is complete
+    const isSeasonComplete = schedule
+        ? schedule.games.filter((g: ScheduledGame) => !g.result && !g.isAllStarGame).length === 0
+        : false
+
     const handleAllStarGame = () => {
         if (!schedule || simulating || !allStarGame || allStarGame.result) return
         setSimulating(true)
@@ -241,6 +320,22 @@ export default function StatMaster({ session, onExit }: Props) {
                             >
                                 Sim Week
                             </button>
+                            <button
+                                onClick={handleSimulateSeason}
+                                disabled={simulating || gamesPlayed >= totalGames || isNextGameAllStar}
+                                className="btn-secondary-dark"
+                            >
+                                {simulating ? 'Simulating...' : 'Sim Season'}
+                            </button>
+                            {isSeasonComplete && (
+                                <button
+                                    onClick={handleResetSeason}
+                                    disabled={simulating}
+                                    className="bg-gold text-charcoal font-display font-bold text-sm uppercase tracking-widest px-4 py-2 rounded-sm hover:bg-gold/90 transition-colors"
+                                >
+                                    Reset Season
+                                </button>
+                            )}
                             <button
                                 onClick={onExit}
                                 className="text-sm font-semibold uppercase tracking-widest text-white/50 hover:text-white transition-colors"

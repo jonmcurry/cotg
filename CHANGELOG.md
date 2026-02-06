@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - 2026-02-06 (Schedule and Season Features)
+- **NEW FEATURE**: Daily Schedule Format
+  - **Problem**: Teams played same opponent for 3 consecutive games (series format)
+  - **Solution**: New "circle method" round-robin schedule where all teams play every day
+    - All teams play every day (8 teams = 4 games per day)
+    - No team plays same opponent on consecutive days
+    - Home/away games balanced (~81 home, ~81 away)
+  - **Files Modified**: src/utils/scheduleGenerator.ts (complete rewrite)
+
+- **NEW FEATURE**: Sim Season Button
+  - **Problem**: Only "Sim Game" and "Sim Week" options existed
+  - **Solution**: Added "Sim Season" button that simulates all remaining games
+    - Processes games in batches (20 at a time) to avoid UI freeze
+    - Updates progress every 50 games
+  - **Files Modified**: src/components/statmaster/StatMaster.tsx
+
+- **NEW FEATURE**: Season Reset
+  - **Problem**: No way to restart a completed season without redrafting
+  - **Solution**: Added "Reset Season" button (visible when season is complete)
+    - Clears all game results
+    - Resets simulation stats
+    - Preserves teams and rosters
+    - Schedule ready for new season
+  - **Files Modified**: src/components/statmaster/StatMaster.tsx
+
+- **Tests Added**: tests/scheduleAndSeason.test.ts (TDD approach)
+- **Plan**: docs/plans/schedule-and-season-fixes.md
+
 ### Fixed - 2026-02-06 (APBA-Inspired Simulation Improvements)
 - **BUG FIX**: Simulation now produces realistic stats based on APBA for Windows v3.0 analysis
   - **Problem #1**: Barry Bonds producing 134 HRs due to inflated hit probabilities
