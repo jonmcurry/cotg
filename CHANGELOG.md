@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-06 (Schedule Variety)
+- **BUG FIX**: Teams no longer play consecutive series against the same opponent
+  - **Problem**: Random shuffle allowed back-to-back series between same teams (e.g., Charlotte Grizzlies vs Asheville Ospreys playing 9 games in a row across multiple series)
+  - **Solution**: Implemented constraint-based series ordering algorithm
+  - **Algorithm**:
+    - Tracks both global matchup history and per-team opponent history
+    - Enforces minimum gap between repeat matchups (no back-to-back)
+    - Uses multiple attempts (50) to find best ordering that satisfies constraints
+    - Falls back gracefully when constraints conflict, choosing least-bad option
+  - **Constraints Enforced**:
+    - No back-to-back series between same two teams (global schedule)
+    - No team plays the same opponent in consecutive series (per-team view)
+    - Minimum 2 series gap between repeat matchups
+  - **Files Modified**:
+    - src/utils/scheduleGenerator.ts (replaced shuffleArray with orderSeriesWithConstraints)
+  - **Tests Added**: tests/scheduleVariety.test.ts (TDD tests for variety constraints)
+  - **Plan**: docs/plans/schedule-variety.md
+
 ### Changed - 2026-02-06 (Simulation Stats for League Leaders & Team Stats)
 - **FEATURE**: StatMaster now shows simulation stats from simulated games
   - **Problem**: League leaders and team stats showed historical MLB stats, not simulation results

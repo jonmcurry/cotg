@@ -193,8 +193,8 @@ export function generateSchedule(
         })
     }
 
-    // Shuffle series for variety, but try to cluster home stands
-    shuffleArray(allSeries)
+    // Order series with constraints to avoid back-to-back matchups
+    const orderedSeries = orderSeriesWithConstraints(allSeries)
 
     // Convert series into individual games with dates
     const games: ScheduledGame[] = []
@@ -216,7 +216,7 @@ export function generateSchedule(
     const allStarGameNumber = Math.floor((actualGamesPerTeam * numTeams) / 4) // Midpoint of total games
     let allStarDate: Date | null = null
 
-    for (const series of allSeries) {
+    for (const series of orderedSeries) {
         const seriesId = `series-${seriesCounter++}`
 
         for (let g = 0; g < series.gameCount; g++) {
@@ -324,6 +324,259 @@ function shuffleArray<T>(array: T[]): void {
         const j = Math.floor(Math.random() * (i + 1))
         ;[array[i], array[j]] = [array[j], array[i]]
     }
+}
+
+/**
+ * Get matchup key for a series (consistent regardless of home/away)
+ */
+function getMatchupKey(series: Series): string {
+    const ids = [series.homeTeamId, series.awayTeamId].sort()
+    return `${ids[0]}-${ids[1]}`
+}
+
+/**
+ * Orders series with constraints to avoid back-to-back matchups
+ *
+ * Constraints:
+ * 1. No back-to-back series between the same two teams (global schedule)
+ * 2. Minimum gap between repeat matchups from EACH TEAM's perspective
+ * 3. A team shouldn't play consecutive series vs the same opponent
+ *
+ * Uses multiple attempts to find the best ordering.
+ */
+function orderSeriesWithConstraints(allSeries: Series[]): Series[] {
+    const MAX_ATTEMPTS = 50
+    let bestResult: Series[] = []
+    let bestScore = -Infinity
+
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+        const result = orderSeriesOnce(allSeries)
+        const score = evaluateScheduleQuality(result)
+
+        if (score > bestScore) {
+            bestScore = score
+            bestResult = result
+        }
+
+        // If we get a perfect score, stop early
+        if (score === 0) break
+    }
+
+    return bestResult
+}
+
+/**
+ * Evaluate schedule quality (lower violations = higher score, 0 = perfect)
+ */
+function evaluateScheduleQuality(scheduled: Series[]): number {
+    let violations = 0
+
+    // Check global back-to-back
+    const globalMatchupHistory: Map<string, number> = new Map()
+    for (let i = 0; i < scheduled.length; i++) {
+        const series = scheduled[i]
+        const matchupKey = getMatchupKey(series)
+        const lastIndex = globalMatchupHistory.get(matchupKey)
+
+        if (lastIndex !== undefined && i - lastIndex <= 1) {
+            violations++
+        }
+        globalMatchupHistory.set(matchupKey, i)
+    }
+
+    // Check per-team back-to-back
+    const teamOpponentHistory: Map<string, Map<string, number>> = new Map()
+    const teamSeriesCount: Map<string, number> = new Map()
+
+    for (const series of scheduled) {
+        const homeCount = teamSeriesCount.get(series.homeTeamId) || 0
+        const awayCount = teamSeriesCount.get(series.awayTeamId) || 0
+
+        // Check home team
+        const homeHistory = teamOpponentHistory.get(series.homeTeamId)
+        if (homeHistory) {
+            const lastVsAway = homeHistory.get(series.awayTeamId)
+            if (lastVsAway !== undefined && homeCount - lastVsAway <= 1) {
+                violations++
+            }
+        }
+
+        // Check away team
+        const awayHistory = teamOpponentHistory.get(series.awayTeamId)
+        if (awayHistory) {
+            const lastVsHome = awayHistory.get(series.homeTeamId)
+            if (lastVsHome !== undefined && awayCount - lastVsHome <= 1) {
+                violations++
+            }
+        }
+
+        // Update tracking
+        if (!teamOpponentHistory.has(series.homeTeamId)) {
+            teamOpponentHistory.set(series.homeTeamId, new Map())
+        }
+        teamOpponentHistory.get(series.homeTeamId)!.set(series.awayTeamId, homeCount)
+
+        if (!teamOpponentHistory.has(series.awayTeamId)) {
+            teamOpponentHistory.set(series.awayTeamId, new Map())
+        }
+        teamOpponentHistory.get(series.awayTeamId)!.set(series.homeTeamId, awayCount)
+
+        teamSeriesCount.set(series.homeTeamId, homeCount + 1)
+        teamSeriesCount.set(series.awayTeamId, awayCount + 1)
+    }
+
+    // Return negative violations (higher = better, 0 = perfect)
+    return -violations
+}
+
+/**
+ * Single attempt at ordering series
+ */
+function orderSeriesOnce(allSeries: Series[]): Series[] {
+    const MIN_GAP = 3 // Minimum series between repeat matchups (gap of 3 = 2 series in between)
+
+    // Shuffle input first for randomness
+    const pool = [...allSeries]
+    shuffleArray(pool)
+
+    const scheduled: Series[] = []
+
+    // Track global matchup history (matchup key -> last index in scheduled array)
+    const globalMatchupHistory: Map<string, number> = new Map()
+
+    // Track per-team opponent history: teamId -> opponentId -> last series index for that team
+    const teamOpponentHistory: Map<string, Map<string, number>> = new Map()
+
+    // Track how many series each team has played
+    const teamSeriesCount: Map<string, number> = new Map()
+
+    // Helper to get GLOBAL gap for a matchup
+    const getGlobalGap = (series: Series): number => {
+        const matchupKey = getMatchupKey(series)
+        const lastIndex = globalMatchupHistory.get(matchupKey)
+        if (lastIndex === undefined) return Infinity
+        return scheduled.length - lastIndex
+    }
+
+    // Helper to get gap for a team playing a specific opponent
+    const getTeamOpponentGap = (teamId: string, opponentId: string): number => {
+        const teamHistory = teamOpponentHistory.get(teamId)
+        if (!teamHistory) return Infinity
+
+        const lastIndex = teamHistory.get(opponentId)
+        if (lastIndex === undefined) return Infinity
+
+        const currentCount = teamSeriesCount.get(teamId) || 0
+        return currentCount - lastIndex
+    }
+
+    // Helper to update tracking when a series is scheduled
+    const updateTracking = (series: Series) => {
+        const matchupKey = getMatchupKey(series)
+        const homeCount = teamSeriesCount.get(series.homeTeamId) || 0
+        const awayCount = teamSeriesCount.get(series.awayTeamId) || 0
+
+        // Update global matchup history
+        globalMatchupHistory.set(matchupKey, scheduled.length)
+
+        // Update home team's opponent history
+        if (!teamOpponentHistory.has(series.homeTeamId)) {
+            teamOpponentHistory.set(series.homeTeamId, new Map())
+        }
+        teamOpponentHistory.get(series.homeTeamId)!.set(series.awayTeamId, homeCount)
+
+        // Update away team's opponent history
+        if (!teamOpponentHistory.has(series.awayTeamId)) {
+            teamOpponentHistory.set(series.awayTeamId, new Map())
+        }
+        teamOpponentHistory.get(series.awayTeamId)!.set(series.homeTeamId, awayCount)
+
+        // Increment series counts for both teams
+        teamSeriesCount.set(series.homeTeamId, homeCount + 1)
+        teamSeriesCount.set(series.awayTeamId, awayCount + 1)
+    }
+
+    while (pool.length > 0) {
+        let bestIndex = -1
+        let bestScore = -Infinity
+
+        // Find the best valid series to schedule next
+        for (let i = 0; i < pool.length; i++) {
+            const candidate = pool[i]
+
+            // Check GLOBAL gap (prevent back-to-back in overall schedule)
+            const globalGap = getGlobalGap(candidate)
+
+            // Check gap from each team's perspective
+            const homeTeamGap = getTeamOpponentGap(candidate.homeTeamId, candidate.awayTeamId)
+            const awayTeamGap = getTeamOpponentGap(candidate.awayTeamId, candidate.homeTeamId)
+
+            // HARD CONSTRAINT: No back-to-back (gap of 1 or less in ANY measure)
+            if (globalGap <= 1) continue
+            if (homeTeamGap <= 1 || awayTeamGap <= 1) continue
+
+            // Score based on how well it meets constraints
+            let score = 0
+
+            // Prefer larger global gaps
+            if (globalGap >= MIN_GAP) {
+                score += 150
+            } else {
+                score += globalGap * 30
+            }
+
+            // Prefer larger per-team gaps
+            if (homeTeamGap >= MIN_GAP && awayTeamGap >= MIN_GAP) {
+                score += 100
+            }
+            score += Math.min(homeTeamGap, 10) * 5
+            score += Math.min(awayTeamGap, 10) * 5
+
+            // Add randomness to break ties
+            score += Math.random() * 20
+
+            if (score > bestScore) {
+                bestScore = score
+                bestIndex = i
+            }
+        }
+
+        // If we found a valid series, schedule it
+        if (bestIndex >= 0) {
+            const series = pool.splice(bestIndex, 1)[0]
+            updateTracking(series)
+            scheduled.push(series)
+        } else {
+            // No valid series found - find the one with the largest minimum gap
+            let bestFallbackIndex = 0
+            let bestFallbackScore = -Infinity
+
+            for (let i = 0; i < pool.length; i++) {
+                const candidate = pool[i]
+                const globalGap = getGlobalGap(candidate)
+                const homeGap = getTeamOpponentGap(candidate.homeTeamId, candidate.awayTeamId)
+                const awayGap = getTeamOpponentGap(candidate.awayTeamId, candidate.homeTeamId)
+
+                // Calculate combined score (prefer larger gaps)
+                const gapScore = Math.min(
+                    globalGap === Infinity ? 999 : globalGap,
+                    homeGap === Infinity ? 999 : homeGap,
+                    awayGap === Infinity ? 999 : awayGap
+                )
+
+                if (gapScore > bestFallbackScore) {
+                    bestFallbackScore = gapScore
+                    bestFallbackIndex = i
+                }
+            }
+
+            const series = pool.splice(bestFallbackIndex, 1)[0]
+            updateTracking(series)
+            scheduled.push(series)
+        }
+    }
+
+    return scheduled
 }
 
 /**
