@@ -12,7 +12,7 @@ import { calculateStandings } from '../../utils/scheduleGenerator'
 import { transformPlayerSeasonData } from '../../utils/transformPlayerData'
 import { selectAllStarRosters, simulateAllStarGame, findAllStarGame } from '../../utils/allStarGame'
 import type { AllStarRoster } from '../../utils/allStarGame'
-import type { ScheduledGame, TeamStanding } from '../../types/schedule.types'
+import type { ScheduledGame } from '../../types/schedule.types'
 
 interface Props {
     session: DraftSession
