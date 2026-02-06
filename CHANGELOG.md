@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-06 (League Save/Load Workflow)
+- **ENHANCEMENT**: Improved league and draft session persistence workflow
+  - **Problem**: After creating a league and drafting, page refresh lost context
+  - **Root Cause**: Home screen didn't check for existing sessions in localStorage
+  - **Solution**:
+    - Added "Continue Draft" button on home screen when session is in_progress
+    - Added "Continue to Clubhouse" button when session is completed
+    - Auto-load draft session when loading a league with linked draftSessionId
+    - Removed TODO comment and alerts for unimplemented features
+  - **Files Modified**: src/App.tsx
+  - **Test Added**: tests/LeagueSaveLoad.test.ts
+  - **Plan**: docs/plans/league-save-load-workflow.md
+
+### Fixed - 2026-02-06 (Clubhouse DH Display)
+- **BUG FIX**: Added DH position to lineup editor
+  - **Problem**: Lineups only showed 9 generic slots, no DH position displayed
+  - **Solution**:
+    - Added defensive position badges (C, 1B, 2B, SS, 3B, OF, OF, OF, DH)
+    - Slot 9 defaults to DH position
+    - Click position badge to toggle any slot to/from DH
+    - Shows "(natural: XX)" when player plays out of position
+  - **Files Modified**: src/components/clubhouse/LineupEditor.tsx
+
+### Fixed - 2026-02-06 (WAR to APBA Rating)
+- **BUG FIX**: Changed player rating display from WAR to APBA Rating
+  - **Problem**: UI showed "WAR" but project uses APBA rating system
+  - **Solution**: Replaced all WAR references with apba_rating across draft and clubhouse
+  - **Files Modified**:
+    - src/components/draft/PlayerPool.tsx (sort, display, dropdown)
+    - src/components/draft/RosterView.tsx
+    - src/components/draft/PositionAssignmentModal.tsx
+
 ### Fixed - 2026-02-06 (All-CPU Draft Batch Timeout)
 - **BUG FIX**: Fixed UI hanging with all-CPU drafts showing "No picks yet"
   - **Problem**: With 32 CPU teams, batch endpoint tried to make ALL 672 picks in one request

@@ -86,7 +86,7 @@ export default function RosterView({ team, players }: Props) {
           </div>
           <div className="text-xs text-charcoal/60 font-serif flex gap-2">
             <span>{player.team_id} '{player.year.toString().slice(-2)}</span>
-            <span className="text-burgundy font-semibold">WAR {player.war?.toFixed(1) || '-'}</span>
+            <span className="text-burgundy font-semibold">Rating: {player.apba_rating ?? '-'}</span>
           </div>
         </div>
         <div className="ml-3 text-right">

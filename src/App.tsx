@@ -19,7 +19,7 @@ type Screen = 'home' | 'league-setup' | 'league-list' | 'config' | 'draft' | 'cl
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('home')
-  const { session, createSession, startDraft, resetSession } = useDraftStore()
+  const { session, createSession, loadSession, startDraft, resetSession } = useDraftStore()
   const { currentLeague, createLeague, setCurrentLeague, loadLeague, linkDraftSession, updateLeagueStatus } = useLeagueStore()
 
   const handleCreateLeague = async (config: LeagueConfig) => {
@@ -32,21 +32,28 @@ export default function App() {
   const handleSelectLeague = async (league: League) => {
     await loadLeague(league.id)
 
-    // Route to appropriate screen based on league status
+    // Auto-load draft session if needed
+    if (league.draftSessionId && session?.id !== league.draftSessionId) {
+      try {
+        await loadSession(league.draftSessionId)
+      } catch (err) {
+        console.error('[App] Failed to load session:', err)
+        setScreen('config')
+        return
+      }
+    }
+
+    // Get fresh session state after potential load
+    const currentSession = useDraftStore.getState().session
+
+    // Route to appropriate screen based on league status and session state
     switch (league.status) {
       case 'draft':
-        if (league.draftSessionId) {
-          // If we have a matching session in local storage, use it
-          if (session?.id === league.draftSessionId) {
-            if (session.status === 'completed' || session.status === 'clubhouse') {
-              setScreen('clubhouse')
-            } else {
-              setScreen('draft')
-            }
+        if (league.draftSessionId && currentSession) {
+          if (currentSession.status === 'completed' || currentSession.status === 'clubhouse') {
+            setScreen('clubhouse')
           } else {
-            // TODO: Implement full load draft from Supabase when loadSession is ready
-            alert('Draft session not found in local storage. Load from database is not yet implemented.')
-            setScreen('config')
+            setScreen('draft')
           }
         } else {
           setScreen('config')
@@ -54,18 +61,16 @@ export default function App() {
         break
       case 'in_season':
       case 'playoffs':
-        if (session) {
+        if (currentSession) {
           setScreen('statmaster')
         } else {
-          alert('Session data not found in local storage. Load from database is not yet implemented.')
           setScreen('config')
         }
         break
       case 'completed':
-        if (session) {
+        if (currentSession) {
           setScreen('statmaster')
         } else {
-          alert('Session data not found in local storage. Load from database is not yet implemented.')
           setScreen('home')
         }
         break
@@ -149,6 +154,21 @@ export default function App() {
             </p>
 
             <div className="flex flex-col sm:flex-row gap-6 justify-center items-center mb-24">
+              {/* Continue button - shown when there's an active session */}
+              {session && (session.status === 'in_progress' || session.status === 'completed' || session.status === 'clubhouse') && (
+                <button
+                  onClick={() => {
+                    if (session.status === 'in_progress') {
+                      setScreen('draft')
+                    } else {
+                      setScreen('clubhouse')
+                    }
+                  }}
+                  className="btn-primary text-base px-10 py-4 min-w-[200px] bg-burgundy hover:bg-burgundy/90"
+                >
+                  {session.status === 'in_progress' ? 'Continue Draft' : 'Continue to Clubhouse'}
+                </button>
+              )}
               <button
                 onClick={() => setScreen('league-setup')}
                 className="btn-primary text-base px-10 py-4 min-w-[200px]"
@@ -177,7 +197,7 @@ export default function App() {
                 <div className="text-4xl font-display text-charcoal/20 mb-4 group-hover:text-burgundy/30 transition-colors">02</div>
                 <h3 className="text-xl font-display font-bold text-charcoal mb-2">Smart Rivals</h3>
                 <p className="font-serif text-charcoal/70 leading-relaxed">
-                  Compete against AI that drafts based on positional needs and advanced WAR metrics.
+                  Compete against AI that drafts based on positional needs and APBA player ratings.
                 </p>
               </div>
 

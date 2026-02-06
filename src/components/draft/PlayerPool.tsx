@@ -14,7 +14,7 @@ interface Props {
   currentTeamControl: 'human' | 'cpu'
 }
 
-type SortField = 'name' | 'position' | 'war' | 'team' | 'year'
+type SortField = 'name' | 'position' | 'rating' | 'team' | 'year'
 type FilterPosition = 'all' | 'C' | '1B' | '2B' | 'SS' | '3B' | 'OF' | 'P'
 
 export default function PlayerPool({
@@ -24,7 +24,7 @@ export default function PlayerPool({
   currentTeamControl,
 }: Props) {
   const [searchQuery, setSearchQuery] = useState('')
-  const [sortField, setSortField] = useState<SortField>('war')
+  const [sortField, setSortField] = useState<SortField>('rating')
   const [sortDesc, setSortDesc] = useState(true)
   const [filterPosition, setFilterPosition] = useState<FilterPosition>('all')
   const [showAvailableOnly, setShowAvailableOnly] = useState(true)
@@ -72,8 +72,8 @@ export default function PlayerPool({
         case 'position':
           comparison = (a.primary_position || '').localeCompare(b.primary_position || '')
           break
-        case 'war':
-          comparison = (a.war || 0) - (b.war || 0)
+        case 'rating':
+          comparison = (a.apba_rating || 0) - (b.apba_rating || 0)
           break
         case 'team':
           comparison = (a.team_id || '').localeCompare(b.team_id || '')
@@ -137,7 +137,7 @@ export default function PlayerPool({
             onChange={(e) => handleSort(e.target.value as SortField)}
             className="input-field text-sm"
           >
-            <option value="war">WAR</option>
+            <option value="rating">Rating</option>
             <option value="name">Name</option>
             <option value="position">Position</option>
             <option value="team">Team</option>
@@ -178,7 +178,7 @@ export default function PlayerPool({
               <th className="text-left py-2 px-2 font-display text-charcoal text-xs">Pos</th>
               <th className="text-left py-2 px-3 font-display text-charcoal text-xs">Player</th>
               <th className="text-left py-2 px-2 font-display text-charcoal text-xs">Year</th>
-              <th className="text-right py-2 px-2 font-display text-charcoal text-xs">WAR</th>
+              <th className="text-right py-2 px-2 font-display text-charcoal text-xs">Rating</th>
               <th className="text-right py-2 px-2 font-display text-charcoal text-xs">AVG/ERA</th>
               <th className="text-right py-2 px-2 font-display text-charcoal text-xs">HR/K</th>
               <th className="text-center py-2 px-2 font-display text-charcoal text-xs">Draft</th>
@@ -214,7 +214,7 @@ export default function PlayerPool({
                     </td>
                     <td className="py-2 px-2 text-charcoal/70">{player.year}</td>
                     <td className="py-2 px-2 text-right font-semibold text-burgundy">
-                      {player.war?.toFixed(1) || 'N/A'}
+                      {player.apba_rating ?? 'N/A'}
                     </td>
                     <td className="py-2 px-2 text-right text-charcoal/70">
                       {isPitcher(player.primary_position)

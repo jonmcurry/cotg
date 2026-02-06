@@ -89,9 +89,9 @@ export default function PositionAssignmentModal({
               </div>
             </div>
             <div className="text-right">
-              <div className="text-xs text-charcoal/60">WAR</div>
+              <div className="text-xs text-charcoal/60">Rating</div>
               <div className="text-xl font-bold text-burgundy">
-                {player.war?.toFixed(1) || 'N/A'}
+                {player.apba_rating ?? 'N/A'}
               </div>
             </div>
           </div>
