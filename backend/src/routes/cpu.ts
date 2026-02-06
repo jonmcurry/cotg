@@ -44,6 +44,10 @@ const ROSTER_REQUIREMENTS: Record<PositionCode, number> = {
 
 const TOTAL_ROUNDS = 21
 
+// Maximum picks per batch request - prevents timeout with all-CPU drafts
+// Frontend will re-trigger for more picks, allowing UI to update progressively
+const MAX_BATCH_SIZE = 50
+
 // Position eligibility mapping
 const POSITION_ELIGIBILITY: Record<PositionCode, string[]> = {
   'C': ['C'],
@@ -541,7 +545,7 @@ router.post('/:sessionId/cpu-picks-batch', async (req: Request, res: Response) =
       playersInPool: allPlayers.length
     })
 
-    while (continueLoop) {
+    while (continueLoop && picks.length < MAX_BATCH_SIZE) {
       // Refresh session data from cache (updated in-place after each pick)
       sessionData = await getSessionData(sessionId)
       if (!sessionData) {
@@ -672,6 +676,11 @@ router.post('/:sessionId/cpu-picks-batch', async (req: Request, res: Response) =
         invalidateSessionCache(sessionId)
         continueLoop = false
       }
+    }
+
+    // Log if we hit the batch size limit (more picks available)
+    if (picks.length >= MAX_BATCH_SIZE && continueLoop) {
+      console.log(`[CPU Batch] Reached batch limit (${MAX_BATCH_SIZE} picks), returning for UI update`)
     }
 
     // PERFORMANCE FIX: Batch write all picks to DB at once instead of per-pick

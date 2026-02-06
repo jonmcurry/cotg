@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-06 (All-CPU Draft Batch Timeout)
+- **BUG FIX**: Fixed UI hanging with all-CPU drafts showing "No picks yet"
+  - **Problem**: With 32 CPU teams, batch endpoint tried to make ALL 672 picks in one request
+  - **Root Cause**: `/cpu-picks-batch` while loop only exited on human turn or completion
+    - With all CPU teams, no human turn ever happens
+    - Loop runs until draft complete (672 picks) or timeout (55s)
+    - Backend logs showed "Updated cache after pick 1, 2..." but response never returned
+  - **Solution**: Added `MAX_BATCH_SIZE = 50` limit
+    ```typescript
+    while (continueLoop && picks.length < MAX_BATCH_SIZE) {
+      // Make picks...
+    }
+    ```
+    - Returns after 50 picks to update UI
+    - Frontend re-triggers useEffect for next batch
+    - Progressive UI updates instead of waiting for entire draft
+  - **Files Modified**: backend/src/routes/cpu.ts
+  - **Plan**: docs/plans/cpu-batch-size-fix.md
+
 ### Fixed - 2026-02-06 (Loading Hang Race Condition)
 - **BUG FIX**: Fixed UI hanging on "Loading Players..." screen
   - **Problem**: Draft would hang indefinitely after cache warmed (76560 players in 18884ms)
