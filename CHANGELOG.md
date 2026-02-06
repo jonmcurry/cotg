@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - 2026-02-06 (Clubhouse Redesign)
+- **UI REDESIGN**: Replaced sidebar team list with modal-based team selector
+  - **Problem**: Cumbersome vertical sidebar took screen real estate from roster data
+  - **Solution**: Premium "Team Selector Modal" with vintage baseball aesthetic
+    - Click team name to open modal (shows chevron-down indicator)
+    - Grid layout (4 columns) for team selection
+    - Dark overlay background with fade-in animation
+    - Burgundy hover state on team buttons
+    - Shows division badge for each team
+    - Close on team select, backdrop click, or Escape key
+  - **Layout Changes**:
+    - Removed sidebar completely
+    - Main content area now full-width centered (max-w-7xl)
+    - Added "OFFICIAL ROSTER" header with team dropdown
+    - Paper card styling with shadow-lift effect
+    - Decorative gold gradient border
+    - Footer showing roster count and team control type
+  - **Files Modified**:
+    - src/components/clubhouse/Clubhouse.tsx (redesigned layout)
+    - src/components/clubhouse/TeamSelectorModal.tsx (new component)
+    - tailwind.config.js (added fadeIn/slideUp animations)
+  - **Test Added**: tests/ClubhouseRedesign.test.ts
+  - **Plan**: docs/plans/clubhouse-redesign.md
+
 ### Added - 2026-02-06 (Division Auto-Assignment)
 - **FEATURE**: Auto-assign teams to divisions when creating a draft
   - 8 divisions: AL East/West/North/South, NL East/West/North/South

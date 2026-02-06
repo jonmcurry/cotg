@@ -1,15 +1,18 @@
 /**
- * Clubhouse Screen
+ * Clubhouse Screen - Redesigned
  * Post-draft management interface for setting depth charts and rotations
+ * Premium vintage baseball aesthetic with modal-based team selection
  */
 
 import { useState, useEffect, useMemo, useRef } from 'react'
+import { ChevronDown } from 'lucide-react'
 import type { DraftSession, DraftTeam } from '../../types/draft.types'
 import type { PlayerSeason } from '../../types/player'
 import { transformPlayerSeasonData } from '../../utils/transformPlayerData'
 import RosterView from '../draft/RosterView'
 import LineupEditor from './LineupEditor'
 import RotationEditor from './RotationEditor'
+import TeamSelectorModal from './TeamSelectorModal'
 import { useDraftStore } from '../../stores/draftStore'
 import { api } from '../../lib/api'
 import type { TeamDepthChart } from '../../types/draft.types'
@@ -67,6 +70,7 @@ export default function Clubhouse({ session, onExit, onStartSeason }: Props) {
     const [loading, setLoading] = useState(true)
     const [generatingSchedule, setGeneratingSchedule] = useState(false)
     const [scheduleError, setScheduleError] = useState<string | null>(null)
+    const [isTeamModalOpen, setIsTeamModalOpen] = useState(false)
 
     // Track if lineups have been generated this session to prevent infinite loops
     const lineupsGeneratedRef = useRef(false)
@@ -219,7 +223,7 @@ export default function Clubhouse({ session, onExit, onStartSeason }: Props) {
 
     return (
         <div className="min-h-screen bg-cream flex flex-col">
-            {/* Header */}
+            {/* Header - Dark charcoal with gold accents */}
             <header className="bg-charcoal text-cream py-4 px-6 border-b-4 border-gold shadow-lg z-10">
                 <div className="container mx-auto flex justify-between items-center">
                     <div className="flex items-center gap-4">
@@ -228,7 +232,7 @@ export default function Clubhouse({ session, onExit, onStartSeason }: Props) {
                         </h1>
                         <div className="h-6 w-px bg-white/20"></div>
                         <span className="font-serif italic text-white/60">
-                            Season Prep
+                            Season Prep {session.schedule ? '| 162-Game Schedule Generated' : ''}
                         </span>
                     </div>
                     <div className="flex items-center gap-4">
@@ -238,10 +242,10 @@ export default function Clubhouse({ session, onExit, onStartSeason }: Props) {
                             className={`btn-primary ${session.schedule ? 'bg-charcoal border-charcoal text-white/50 cursor-default' : ''}`}
                         >
                             {session.schedule
-                                ? `162-Game Schedule Generated`
+                                ? 'Schedule Ready'
                                 : generatingSchedule
                                     ? 'Generating...'
-                                    : 'Generate 162-Game Schedule'
+                                    : 'Generate Schedule'
                             }
                         </button>
 
@@ -288,61 +292,73 @@ export default function Clubhouse({ session, onExit, onStartSeason }: Props) {
                 </div>
             </header>
 
-            <div className="flex-1 container mx-auto p-6 flex gap-6 overflow-hidden">
-                {/* Sidebar: Team List */}
-                <aside className="w-64 flex flex-col gap-2 overflow-y-auto pr-2">
-                    {session.teams.map(team => (
-                        <button
-                            key={team.id}
-                            onClick={() => setSelectedTeamId(team.id)}
-                            className={`text-left p-4 rounded-sm border transition-all ${selectedTeamId === team.id
-                                ? 'bg-burgundy text-white border-burgundy shadow-md'
-                                : 'bg-white text-charcoal border-charcoal/10 hover:border-burgundy/30 hover:bg-white/80'
-                                }`}
-                        >
-                            <div className="font-display font-bold truncate">{team.name}</div>
-                            <div className="text-xs opacity-70 mt-1 uppercase tracking-wide">
-                                {team.control}
-                            </div>
-                        </button>
-                    ))}
-                </aside>
+            {/* Main Content - Full width centered card */}
+            <div className="flex-1 container mx-auto p-6 flex justify-center overflow-hidden">
+                <main className="w-full max-w-7xl bg-white border border-charcoal/10 rounded-sm shadow-lift flex flex-col overflow-hidden">
+                    {/* Official Roster Header */}
+                    <div className="bg-gradient-to-b from-cream to-white px-8 py-6 border-b border-charcoal/10 text-center">
+                        <h2 className="font-display font-bold text-2xl tracking-[0.2em] uppercase text-charcoal mb-3">
+                            Official Roster
+                        </h2>
 
-                {/* Main Content Area */}
-                <main className="flex-1 card flex flex-col overflow-hidden">
-                    {/* Tabs */}
-                    <div className="flex border-b border-charcoal/10 mb-6">
+                        {/* Team Selector Dropdown */}
+                        <button
+                            onClick={() => setIsTeamModalOpen(true)}
+                            className="inline-flex items-center gap-2 px-4 py-2 bg-white border-2 border-charcoal/20 rounded-sm hover:border-burgundy hover:bg-burgundy/5 transition-all group"
+                        >
+                            <span className="font-display font-bold text-lg text-charcoal group-hover:text-burgundy transition-colors">
+                                {selectedTeam.name}
+                            </span>
+                            <ChevronDown
+                                size={20}
+                                className="text-charcoal/50 group-hover:text-burgundy transition-colors"
+                            />
+                        </button>
+
+                        {/* Division Badge */}
+                        {selectedTeam.league && selectedTeam.division && (
+                            <div className="mt-2 text-xs font-sans tracking-widest uppercase text-charcoal/50">
+                                {selectedTeam.league} {selectedTeam.division} Division
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Decorative border */}
+                    <div className="h-px bg-gradient-to-r from-transparent via-gold to-transparent"></div>
+
+                    {/* View Tabs */}
+                    <div className="flex border-b border-charcoal/10 bg-cream-light">
                         <button
                             onClick={() => setViewMode('roster')}
-                            className={`px-6 py-3 font-display font-bold text-sm tracking-widest uppercase border-b-2 transition-colors ${viewMode === 'roster'
-                                ? 'border-burgundy text-burgundy'
-                                : 'border-transparent text-charcoal/40 hover:text-charcoal/70'
+                            className={`flex-1 px-6 py-4 font-display font-bold text-sm tracking-widest uppercase border-b-2 transition-all ${viewMode === 'roster'
+                                ? 'border-burgundy text-burgundy bg-white'
+                                : 'border-transparent text-charcoal/40 hover:text-charcoal/70 hover:bg-white/50'
                                 }`}
                         >
                             Full Roster
                         </button>
                         <button
                             onClick={() => setViewMode('lineup')}
-                            className={`px-6 py-3 font-display font-bold text-sm tracking-widest uppercase border-b-2 transition-colors ${viewMode === 'lineup'
-                                ? 'border-burgundy text-burgundy'
-                                : 'border-transparent text-charcoal/40 hover:text-charcoal/70'
+                            className={`flex-1 px-6 py-4 font-display font-bold text-sm tracking-widest uppercase border-b-2 transition-all ${viewMode === 'lineup'
+                                ? 'border-burgundy text-burgundy bg-white'
+                                : 'border-transparent text-charcoal/40 hover:text-charcoal/70 hover:bg-white/50'
                                 }`}
                         >
                             Lineups
                         </button>
                         <button
                             onClick={() => setViewMode('rotation')}
-                            className={`px-6 py-3 font-display font-bold text-sm tracking-widest uppercase border-b-2 transition-colors ${viewMode === 'rotation'
-                                ? 'border-burgundy text-burgundy'
-                                : 'border-transparent text-charcoal/40 hover:text-charcoal/70'
+                            className={`flex-1 px-6 py-4 font-display font-bold text-sm tracking-widest uppercase border-b-2 transition-all ${viewMode === 'rotation'
+                                ? 'border-burgundy text-burgundy bg-white'
+                                : 'border-transparent text-charcoal/40 hover:text-charcoal/70 hover:bg-white/50'
                                 }`}
                         >
-                            Rotation
+                            Rotation & Bullpen
                         </button>
                     </div>
 
                     {/* View Content */}
-                    <div className="flex-1 overflow-y-auto">
+                    <div className="flex-1 overflow-y-auto bg-white">
                         {viewMode === 'roster' && (
                             <div className="h-full">
                                 {loading ? (
@@ -362,7 +378,10 @@ export default function Clubhouse({ session, onExit, onStartSeason }: Props) {
                             <div className="h-full">
                                 {loading ? (
                                     <div className="flex items-center justify-center h-full text-charcoal/50">
-                                        Loading Player Data...
+                                        <div className="text-center">
+                                            <div className="w-8 h-8 border-4 border-burgundy border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                                            <p className="font-serif italic">Loading Player Data...</p>
+                                        </div>
                                     </div>
                                 ) : (
                                     <LineupEditor team={selectedTeam} players={players} />
@@ -374,7 +393,10 @@ export default function Clubhouse({ session, onExit, onStartSeason }: Props) {
                             <div className="h-full">
                                 {loading ? (
                                     <div className="flex items-center justify-center h-full text-charcoal/50">
-                                        Loading Player Data...
+                                        <div className="text-center">
+                                            <div className="w-8 h-8 border-4 border-burgundy border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                                            <p className="font-serif italic">Loading Player Data...</p>
+                                        </div>
                                     </div>
                                 ) : (
                                     <RotationEditor team={selectedTeam} players={players} />
@@ -382,8 +404,27 @@ export default function Clubhouse({ session, onExit, onStartSeason }: Props) {
                             </div>
                         )}
                     </div>
+
+                    {/* Footer */}
+                    <div className="px-6 py-3 bg-cream-light border-t border-charcoal/10 flex justify-between items-center">
+                        <span className="text-xs font-serif italic text-charcoal/50">
+                            {selectedTeam.roster.filter(s => s.isFilled).length} / 21 roster spots filled
+                        </span>
+                        <span className="text-xs font-sans uppercase tracking-widest text-charcoal/40">
+                            {selectedTeam.control === 'human' ? 'Your Team' : 'CPU Managed'}
+                        </span>
+                    </div>
                 </main>
             </div>
+
+            {/* Team Selector Modal */}
+            <TeamSelectorModal
+                teams={session.teams}
+                selectedTeamId={selectedTeamId}
+                onSelectTeam={setSelectedTeamId}
+                onClose={() => setIsTeamModalOpen(false)}
+                isOpen={isTeamModalOpen}
+            />
         </div>
     )
 }
