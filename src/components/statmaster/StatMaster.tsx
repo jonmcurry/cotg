@@ -100,7 +100,9 @@ export default function StatMaster({ session, onExit }: Props) {
 
             if (boxScores && boxScores.length > 0) {
                 for (const boxScore of boxScores) {
-                    accumulateBoxScore(simulationStats, boxScore)
+                    // Find the matching game to get the result with pitcher decisions
+                    const matchingGame = updatedGames.find(g => g.id === boxScore.gameId)
+                    accumulateBoxScore(simulationStats, boxScore, matchingGame?.result)
                 }
             }
 

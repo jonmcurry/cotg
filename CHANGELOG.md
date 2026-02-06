@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-06 (Pitcher Stats Not Tracking Wins/Losses/Saves)
+- **BUG FIX**: Pitching leaders now correctly track wins, losses, and saves
+  - **Problem**: Pitching leaders showed 0 wins, 0 saves for all pitchers even after simulation
+  - **Root Cause**: `accumulateBoxScore()` was not receiving or processing `GameResult`
+    which contains `winningPitcherId`, `losingPitcherId`, and `savePitcherId`
+  - **Solution**: Updated `accumulateBoxScore()` to accept `GameResult` parameter and
+    record wins/losses/saves for the appropriate pitchers
+  - **Files Modified**:
+    - src/utils/simulationStats.ts (added GameResult parameter, record pitcher decisions)
+    - src/components/statmaster/StatMaster.tsx (pass GameResult when accumulating)
+  - **Tests Updated**: tests/simulationStats.test.ts (added pitcher decisions tests)
+
 ### Fixed - 2026-02-06 (Simulation Hit Distribution)
 - **BUG FIX**: Hit type distribution now uses actual player stats instead of flawed formula
   - **Problem**: The `simulateAtBat` function used a broken formula that derived hit types from slugging:

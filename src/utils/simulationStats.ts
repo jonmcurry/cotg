@@ -5,7 +5,7 @@
  * Stats are tracked per simulation session and displayed in StatMaster.
  */
 
-import type { PlayerSimulationStats, SessionSimulationStats } from '../types/schedule.types'
+import type { PlayerSimulationStats, SessionSimulationStats, GameResult } from '../types/schedule.types'
 import type { BoxScore } from './statMaster'
 
 /**
@@ -252,13 +252,12 @@ export function updateCalculatedStats(stats: PlayerSimulationStats): void {
 
 /**
  * Accumulate box score stats into session stats
+ * Now also tracks wins/losses/saves from GameResult
  */
 export function accumulateBoxScore(
   sessionStats: SessionSimulationStats,
   boxScore: BoxScore,
-  _homeTeamName?: string,
-  _awayTeamName?: string,
-  _homeWon?: boolean
+  gameResult?: GameResult
 ): void {
   // Process home batting
   for (const playerStats of boxScore.homeBatting) {
@@ -332,6 +331,33 @@ export function accumulateBoxScore(
     if (playerStats.strikeoutsPitched) stats.strikeoutsThrown += playerStats.strikeoutsPitched
     if (playerStats.walksPitched) stats.walksAllowed += playerStats.walksPitched
     if (playerStats.hitsAllowed) stats.hitsAllowed += playerStats.hitsAllowed
+  }
+
+  // Process pitcher decisions (wins/losses/saves) from GameResult
+  if (gameResult) {
+    // Find and update winning pitcher
+    if (gameResult.winningPitcherId) {
+      const winningPitcherStats = sessionStats.playerStats.get(gameResult.winningPitcherId)
+      if (winningPitcherStats) {
+        recordWin(winningPitcherStats)
+      }
+    }
+
+    // Find and update losing pitcher
+    if (gameResult.losingPitcherId) {
+      const losingPitcherStats = sessionStats.playerStats.get(gameResult.losingPitcherId)
+      if (losingPitcherStats) {
+        recordLoss(losingPitcherStats)
+      }
+    }
+
+    // Find and update save pitcher
+    if (gameResult.savePitcherId) {
+      const savePitcherStats = sessionStats.playerStats.get(gameResult.savePitcherId)
+      if (savePitcherStats) {
+        recordSave(savePitcherStats)
+      }
+    }
   }
 
   // Update calculated stats for all affected players
