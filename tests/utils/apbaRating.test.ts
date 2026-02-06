@@ -5,14 +5,14 @@
  * Initially, they should FAIL with the current implementation.
  * After fixes, they should PASS.
  *
- * Run with: npx ts-node src/utils/apbaRating.test.ts
+ * Run with: npx ts-node tests/utils/apbaRating.test.ts
  */
 
 import {
   calculateBatterRating,
   calculatePitcherRating,
   PlayerSeasonStats
-} from './apbaRating';
+} from '../../src/utils/apbaRating';
 
 // Simple test runner
 let passed = 0;
@@ -152,7 +152,7 @@ test('Babe Ruth 1921 (1.359 OPS, 249 RC, .469 ISO) should rate 90+', () => {
   assertRange(rating, 90, 100, 'Ruth 1921');
 });
 
-test('Babe Ruth 1927 (1.258 OPS, 217 RC, .417 ISO) should rate 83+ (Elite)', () => {
+test('Babe Ruth 1927 (1.258 OPS, 217 RC, .469 ISO) should rate 83+ (Elite)', () => {
   const player = createBatter({
     at_bats: 540,
     ops: 1.258,

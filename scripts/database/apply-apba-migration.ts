@@ -23,7 +23,7 @@ async function applyMigration() {
 
   // Read migration SQL file
   const migrationSQL = fs.readFileSync(
-    'c:\\Users\\jonmc\\dev\\cotg\\supabase\\migrations\\20260127_add_apba_rating.sql',
+    'c:\\Users\\jonmc\\dev\\cotg\\database\\migrations\\20260127_add_apba_rating.sql',
     'utf-8'
   )
 
@@ -46,11 +46,11 @@ async function applyMigration() {
       console.log('   - Go to https://supabase.com/dashboard')
       console.log('   - Select your project')
       console.log('   - Go to SQL Editor')
-      console.log('   - Paste the contents of: supabase/migrations/20260127_add_apba_rating.sql')
+      console.log('   - Paste the contents of: database/migrations/20260127_add_apba_rating.sql')
       console.log('   - Click "Run"')
       console.log('\n2. Via psql (if you have service_role key):')
       console.log('   - Use the service_role connection string from Supabase dashboard')
-      console.log('   - Run: psql [connection_string] < supabase/migrations/20260127_add_apba_rating.sql')
+      console.log('   - Run: psql [connection_string] < database/migrations/20260127_add_apba_rating.sql')
       console.log('\nMigration SQL:')
       console.log('=' * 80)
       console.log(migrationSQL)

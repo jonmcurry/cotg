@@ -24,7 +24,7 @@ logs/
 *.log
 npm-debug.log*
 
-# Supabase
+# Database local state (legacy Supabase)
 .supabase/
 
 # Data files (too large for git)

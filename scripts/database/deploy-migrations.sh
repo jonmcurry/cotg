@@ -48,7 +48,7 @@ else
 fi
 
 # Get migration files
-MIGRATIONS_DIR="supabase/migrations"
+MIGRATIONS_DIR="database/migrations"
 FILES=$(ls -1 $MIGRATIONS_DIR/*.sql 2>/dev/null | sort)
 
 if [ -z "$FILES" ]; then

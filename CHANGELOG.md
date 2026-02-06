@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Chore - 2026-02-06 (Project Organization)
+- **REFACTOR**: Reorganized project folder structure for better clarity
+  - **Renamed** `supabase/` to `database/` (project uses Neon PostgreSQL, not Supabase)
+  - **Removed** empty `src/hooks/` directory
+  - **Removed** `supabase/.temp/` leftover directory from Supabase CLI
+  - **Moved** test file from `src/utils/apbaRating.test.ts` to `tests/utils/apbaRating.test.ts`
+  - **Organized** scripts into subdirectories:
+    - `scripts/analysis/` - Python analysis scripts
+    - `scripts/database/` - Migration and import scripts
+    - `scripts/diagnostics/` - Debugging and check scripts
+    - Root `scripts/` - Frequently used APBA scripts
+  - **Updated** file path references in affected scripts
+  - **Files Modified**:
+    - scripts/database/deploy-migrations.sh
+    - scripts/database/apply-apba-migration.ts
+    - database/migrations/README.md
+    - .gitignore
+  - **Plan**: docs/plans/project-organization.md
+
 ### Performance - 2026-02-05 (CPU Batch 100x Faster with Batched DB Writes)
 - **PERFORMANCE FIX**: CPU batch was timing out because each pick did 2 DB writes
   - **Problem**: Each pick took 2+ seconds due to INSERT + UPDATE queries to Neon

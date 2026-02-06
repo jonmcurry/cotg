@@ -46,7 +46,7 @@ psql -h db.xxx.supabase.co -U postgres -d postgres -f migrations/20260203_add_co
 
 When making schema changes:
 
-1. Create a new file: `supabase/migrations/YYYYMMDD_description.sql`
+1. Create a new file: `database/migrations/YYYYMMDD_description.sql`
 2. Include:
    - Migration header comment with date and description
    - The actual SQL changes
