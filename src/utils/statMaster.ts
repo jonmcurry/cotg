@@ -25,7 +25,8 @@ export interface HitDistribution {
 
 /**
  * Calculate hit type distribution from a player's actual stats.
- * This replaces the flawed formula that derived rates from slugging.
+ * Uses available stats (hits, home_runs, slugging) to estimate distribution.
+ * Note: PlayerSeason doesn't have doubles/triples, so we estimate from ISO.
  */
 export function calculateHitDistribution(player: PlayerSeason | null): HitDistribution {
     // Fallback defaults for missing data (typical league average)
@@ -41,23 +42,40 @@ export function calculateHitDistribution(player: PlayerSeason | null): HitDistri
     }
 
     const hits = player.hits ?? 0
-    const doubles = player.doubles ?? 0
-    const triples = player.triples ?? 0
     const homeRuns = player.home_runs ?? 0
+    const battingAvg = player.batting_avg ?? 0.250
+    const sluggingPct = player.slugging_pct ?? 0.400
+    const atBats = player.at_bats ?? 0
 
     // Need at least some hits to calculate distribution
-    if (hits <= 0) {
+    if (hits <= 0 || atBats <= 0) {
         return DEFAULT_DISTRIBUTION
     }
 
-    // Calculate singles from actual data
-    const singles = Math.max(0, hits - doubles - triples - homeRuns)
+    // Calculate home run rate from actual data
+    const homeRunRate = Math.min(homeRuns / hits, 0.30) // Cap at 30%
+
+    // Estimate extra base hit rate from ISO (Isolated Power = SLG - AVG)
+    // ISO represents extra bases per at-bat
+    const iso = Math.max(0, sluggingPct - battingAvg)
+
+    // HR contributes 3 extra bases per HR
+    const hrExtraBases = atBats > 0 ? (homeRuns * 3) / atBats : 0
+    const nonHrIso = Math.max(0, iso - hrExtraBases)
+
+    // Typical split: doubles are ~85% of non-HR XBH, triples ~15%
+    // Scale by hits to get rate among hits
+    const doubleRate = Math.min(0.30, (nonHrIso * atBats * 0.85) / Math.max(1, hits))
+    const tripleRate = Math.min(0.08, (nonHrIso * atBats * 0.15) / Math.max(1, hits))
+
+    // Singles are the remainder
+    const singleRate = Math.max(0.40, 1 - homeRunRate - doubleRate - tripleRate)
 
     return {
-        singleRate: singles / hits,
-        doubleRate: doubles / hits,
-        tripleRate: triples / hits,
-        homeRunRate: homeRuns / hits,
+        singleRate,
+        doubleRate,
+        tripleRate,
+        homeRunRate,
     }
 }
 
@@ -67,35 +85,34 @@ export function calculateHitDistribution(player: PlayerSeason | null): HitDistri
 
 /**
  * Calculate strikeout probability based on batter and pitcher tendencies.
- * Replaces the fixed 20% strikeout rate.
+ * Note: PlayerSeason doesn't have batter strikeout data, so we use pitcher K rate only.
  */
 export function calculateStrikeoutRate(
-    batter: PlayerSeason | null,
+    _batter: PlayerSeason | null,
     pitcher: PlayerSeason | null
 ): number {
     // Default strikeout rate (~15% of PA)
     const DEFAULT_K_RATE = 0.15
     const LEAGUE_AVG_K_PER_9 = 8.5 // Modern MLB average
 
-    // Batter's strikeout tendency (K/PA)
-    let batterKRate = DEFAULT_K_RATE
-    if (batter) {
-        const batterK = batter.strikeouts ?? 0
-        const batterAB = batter.at_bats ?? 0
-        const batterBB = batter.walks ?? 0
-        const batterPA = batterAB + batterBB
-
-        if (batterPA > 0) {
-            batterKRate = batterK / batterPA
-        }
-    }
+    // Note: PlayerSeason type doesn't include batter strikeouts/walks
+    // Use default batter K rate
+    const batterKRate = DEFAULT_K_RATE
 
     // Pitcher's strikeout ability modifier
+    // Calculate K/9 from strikeouts_pitched and innings_pitched_outs
     let pitcherModifier = 1.0
     if (pitcher) {
-        const pitcherK9 = pitcher.strikeouts_per_9 ?? LEAGUE_AVG_K_PER_9
-        // Normalize: 8.5 K/9 = 1.0 modifier, 10 K/9 = higher, 5 K/9 = lower
-        pitcherModifier = pitcherK9 / LEAGUE_AVG_K_PER_9
+        const pitcherK = pitcher.strikeouts_pitched ?? 0
+        const pitcherOuts = pitcher.innings_pitched_outs ?? 0
+
+        if (pitcherOuts > 0) {
+            // Convert outs to innings, then calculate K/9
+            const innings = pitcherOuts / 3
+            const kPer9 = (pitcherK / innings) * 9
+            // Normalize: 8.5 K/9 = 1.0 modifier
+            pitcherModifier = kPer9 / LEAGUE_AVG_K_PER_9
+        }
     }
 
     // Combined rate: batter's tendency adjusted by pitcher's ability
