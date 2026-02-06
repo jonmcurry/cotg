@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - 2026-02-06 (StatMaster League Leaders & Team Stats)
+- **FEATURE**: League Leaders display in StatMaster
+  - Top 5 batting leaders: AVG, HR, RBI, Hits, Stolen Bases
+  - Top 5 pitching leaders: ERA, Wins, Strikeouts, Saves
+  - Minimum qualification thresholds (100 AB for batting, 50 IP for ERA)
+  - Click player name to view their team's full stats
+  - **Files Added**:
+    - src/utils/leagueLeaders.ts (calculation utility)
+    - src/components/statmaster/LeagueLeaders.tsx (display component)
+    - tests/leagueLeaders.test.ts (TDD tests)
+
+- **FEATURE**: Team Stats Detail view in StatMaster
+  - Click team name in standings to view full roster stats
+  - Split by position groups: Infield, Outfield, Pitchers
+  - Shows full batting stats (AVG, AB, H, HR, RBI, SB, OBP, SLG)
+  - Shows full pitching stats (W-L, ERA, IP, K, SV, WHIP)
+  - Back navigation to standings
+  - **Files Added**:
+    - src/components/statmaster/TeamStatsDetail.tsx (display component)
+  - **Files Modified**:
+    - src/components/statmaster/StatMaster.tsx (view integration, tabs)
+
+- **Plan**: docs/plans/statmaster-stats-and-mlb-schedule.md
+
+### Changed - 2026-02-06 (MLB-Style Schedule)
+- **IMPROVEMENT**: Schedule generator now creates division-heavy schedules
+  - Division games: ~26 games vs division rival (for 2-team divisions)
+  - League games: ~72 games vs same-league non-division teams
+  - Interleague games: ~64 games vs other league
+  - Series length varies by matchup type (division: 3-4, interleague: 2-3)
+  - Balanced home/away games
+  - **Files Modified**:
+    - src/utils/scheduleGenerator.ts (complete refactor for MLB-style)
+  - **Tests Added**: tests/scheduleBalance.test.ts (TDD contract tests)
+
 ### Changed - 2026-02-06 (Clubhouse Redesign)
 - **UI REDESIGN**: Replaced sidebar team list with modal-based team selector
   - **Problem**: Cumbersome vertical sidebar took screen real estate from roster data

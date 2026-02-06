@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react'
-import type { DraftSession, LeagueType } from '../../types/draft.types'
+import type { DraftSession, DraftTeam, LeagueType } from '../../types/draft.types'
 import type { PlayerSeason } from '../../types/player'
 import { useDraftStore } from '../../stores/draftStore'
 import { simulateGames, getTeamRecord, getNextGame } from '../../utils/statMaster'
@@ -13,6 +13,10 @@ import { transformPlayerSeasonData } from '../../utils/transformPlayerData'
 import { selectAllStarRosters, simulateAllStarGame, findAllStarGame } from '../../utils/allStarGame'
 import type { AllStarRoster } from '../../utils/allStarGame'
 import type { ScheduledGame } from '../../types/schedule.types'
+import LeagueLeaders from './LeagueLeaders'
+import TeamStatsDetail from './TeamStatsDetail'
+
+type StatMasterView = 'overview' | 'leaders' | 'team-detail'
 
 interface Props {
     session: DraftSession
@@ -27,6 +31,8 @@ export default function StatMaster({ session, onExit }: Props) {
     const [allStarRosters, setAllStarRosters] = useState<{ home: AllStarRoster; away: AllStarRoster } | null>(null)
     const [allStarResult, setAllStarResult] = useState<{ homeScore: number; awayScore: number } | null>(null)
     const [selectedLeague, setSelectedLeague] = useState<LeagueType>('AL')
+    const [currentView, setCurrentView] = useState<StatMasterView>('overview')
+    const [selectedTeam, setSelectedTeam] = useState<DraftTeam | null>(null)
     const loadedRef = useRef(false)
 
     // Use store session to get latest schedule updates
@@ -153,6 +159,19 @@ export default function StatMaster({ session, onExit }: Props) {
         setSimulating(false)
     }
 
+    const handleTeamClick = (teamId: string) => {
+        const team = currentSession.teams.find(t => t.id === teamId)
+        if (team) {
+            setSelectedTeam(team)
+            setCurrentView('team-detail')
+        }
+    }
+
+    const handleBackToOverview = () => {
+        setSelectedTeam(null)
+        setCurrentView('overview')
+    }
+
     if (loading) {
         return (
             <div className="min-h-screen bg-cream flex items-center justify-center">
@@ -181,38 +200,71 @@ export default function StatMaster({ session, onExit }: Props) {
     return (
         <div className="min-h-screen bg-cream flex flex-col">
             {/* Header */}
-            <header className="bg-charcoal text-cream py-4 px-6 border-b-4 border-gold shadow-lg">
-                <div className="container mx-auto flex justify-between items-center">
-                    <div className="flex items-center gap-4">
-                        <h1 className="text-2xl font-display font-bold tracking-wider uppercase text-gold">
-                            StatMaster
-                        </h1>
-                        <div className="h-6 w-px bg-white/20"></div>
-                        <span className="font-serif italic text-white/60">
-                            {gamesPlayed} / {totalGames} Games Played
-                        </span>
+            <header className="bg-charcoal text-cream border-b-4 border-gold shadow-lg">
+                <div className="container mx-auto">
+                    {/* Top Row */}
+                    <div className="flex justify-between items-center py-4 px-6">
+                        <div className="flex items-center gap-4">
+                            <h1 className="text-2xl font-display font-bold tracking-wider uppercase text-gold">
+                                StatMaster
+                            </h1>
+                            <div className="h-6 w-px bg-white/20"></div>
+                            <span className="font-serif italic text-white/60">
+                                {gamesPlayed} / {totalGames} Games Played
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <button
+                                onClick={handleSimulateGame}
+                                disabled={simulating || gamesPlayed >= totalGames || isNextGameAllStar}
+                                className="btn-primary"
+                            >
+                                {simulating ? 'Simulating...' : 'Sim Next Game'}
+                            </button>
+                            <button
+                                onClick={handleSimulateWeek}
+                                disabled={simulating || gamesPlayed >= totalGames || isNextGameAllStar}
+                                className="btn-secondary-dark"
+                            >
+                                Sim Week
+                            </button>
+                            <button
+                                onClick={onExit}
+                                className="text-sm font-semibold uppercase tracking-widest text-white/50 hover:text-white transition-colors"
+                            >
+                                Exit
+                            </button>
+                        </div>
                     </div>
-                    <div className="flex items-center gap-4">
+                    {/* View Tabs */}
+                    <div className="flex gap-1 px-6 pb-2">
                         <button
-                            onClick={handleSimulateGame}
-                            disabled={simulating || gamesPlayed >= totalGames || isNextGameAllStar}
-                            className="btn-primary"
+                            onClick={() => { setCurrentView('overview'); setSelectedTeam(null); }}
+                            className={`px-4 py-2 font-display font-bold text-sm uppercase tracking-wider rounded-t transition-colors ${
+                                currentView === 'overview'
+                                    ? 'bg-cream text-burgundy'
+                                    : 'bg-charcoal-light text-white/60 hover:text-white hover:bg-charcoal-light/80'
+                            }`}
                         >
-                            {simulating ? 'Simulating...' : 'Sim Next Game'}
+                            Overview
                         </button>
                         <button
-                            onClick={handleSimulateWeek}
-                            disabled={simulating || gamesPlayed >= totalGames || isNextGameAllStar}
-                            className="btn-secondary-dark"
+                            onClick={() => { setCurrentView('leaders'); setSelectedTeam(null); }}
+                            className={`px-4 py-2 font-display font-bold text-sm uppercase tracking-wider rounded-t transition-colors ${
+                                currentView === 'leaders'
+                                    ? 'bg-cream text-burgundy'
+                                    : 'bg-charcoal-light text-white/60 hover:text-white hover:bg-charcoal-light/80'
+                            }`}
                         >
-                            Sim Week
+                            League Leaders
                         </button>
-                        <button
-                            onClick={onExit}
-                            className="text-sm font-semibold uppercase tracking-widest text-white/50 hover:text-white transition-colors"
-                        >
-                            Exit
-                        </button>
+                        {selectedTeam && (
+                            <button
+                                className="px-4 py-2 font-display font-bold text-sm uppercase tracking-wider rounded-t bg-cream text-burgundy"
+                            >
+                                {selectedTeam.name}
+                            </button>
+                        )}
                     </div>
                 </div>
             </header>
@@ -274,7 +326,11 @@ export default function StatMaster({ session, onExit }: Props) {
                                         <tbody>
                                             {divisionStandings.map((standing) => (
                                                 <tr key={standing.teamId} className="border-b border-charcoal/5 hover:bg-charcoal/5">
-                                                    <td className="p-2 font-display font-bold text-charcoal truncate max-w-[140px]" title={standing.teamName}>
+                                                    <td
+                                                        className="p-2 font-display font-bold text-charcoal truncate max-w-[140px] cursor-pointer hover:text-burgundy transition-colors"
+                                                        title={standing.teamName}
+                                                        onClick={() => handleTeamClick(standing.teamId)}
+                                                    >
                                                         {standing.teamName}
                                                     </td>
                                                     <td className="p-2 text-center font-mono text-green-600 text-xs">{standing.wins}</td>
@@ -302,7 +358,10 @@ export default function StatMaster({ session, onExit }: Props) {
                                     <tbody>
                                         {standings.filter(s => !s.league || !s.division).map((standing) => (
                                             <tr key={standing.teamId} className="border-b border-charcoal/5 hover:bg-charcoal/5">
-                                                <td className="p-2 font-display font-bold text-charcoal truncate max-w-[140px]">
+                                                <td
+                                                    className="p-2 font-display font-bold text-charcoal truncate max-w-[140px] cursor-pointer hover:text-burgundy transition-colors"
+                                                    onClick={() => handleTeamClick(standing.teamId)}
+                                                >
                                                     {standing.teamName}
                                                 </td>
                                                 <td className="p-2 text-center font-mono text-green-600 text-xs">{standing.wins}</td>
@@ -323,7 +382,39 @@ export default function StatMaster({ session, onExit }: Props) {
                 </div>
 
                 {/* Main Content */}
-                <div className="flex-1 flex flex-col gap-6">
+                <div className="flex-1 flex flex-col gap-6 overflow-y-auto">
+                    {/* Team Detail View */}
+                    {currentView === 'team-detail' && selectedTeam && (
+                        <div className="bg-white border border-charcoal/10 rounded-sm p-6">
+                            <TeamStatsDetail
+                                team={selectedTeam}
+                                players={players}
+                                onBack={handleBackToOverview}
+                            />
+                        </div>
+                    )}
+
+                    {/* League Leaders View */}
+                    {currentView === 'leaders' && (
+                        <div className="bg-white border border-charcoal/10 rounded-sm p-6">
+                            <LeagueLeaders
+                                players={players}
+                                onPlayerClick={(player) => {
+                                    // Find the team that has this player and show team detail
+                                    const teamWithPlayer = currentSession.teams.find(t =>
+                                        t.roster.some(slot => slot.playerSeasonId === player.id)
+                                    )
+                                    if (teamWithPlayer) {
+                                        handleTeamClick(teamWithPlayer.id)
+                                    }
+                                }}
+                            />
+                        </div>
+                    )}
+
+                    {/* Overview View */}
+                    {currentView === 'overview' && (
+                        <>
                     {/* All-Star Game Preview */}
                     {isNextGameAllStar && !allStarGame?.result && (
                         <div className="bg-gradient-to-r from-blue-900 via-charcoal to-red-900 border-2 border-gold rounded-sm p-6 text-white">
@@ -465,6 +556,8 @@ export default function StatMaster({ session, onExit }: Props) {
                             )}
                         </div>
                     </div>
+                        </>
+                    )}
                 </div>
             </div>
         </div>

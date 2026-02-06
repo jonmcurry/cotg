@@ -1,12 +1,19 @@
 /**
  * Schedule Generator
  * Generates a balanced 162-game MLB-style schedule
- * 
+ *
  * Schedule Structure:
  * - 162 games per team
  * - Balanced home/away (81 home, 81 away)
+ * - Division-heavy scheduling (more games vs division rivals)
  * - Series-based (2-4 game series)
  * - All-Star break roughly at midpoint
+ *
+ * For a 16-team league (2 leagues x 4 divisions x 2 teams):
+ * - Division games: 26 (1 rival x 26 games) = 26
+ * - League games: 72 (6 opponents x 12 games each) = 72
+ * - Interleague: 64 (8 opponents x 8 games each) = 64
+ * - Total: 162
  */
 
 import type { DraftSession, DraftTeam } from '../types/draft.types'
@@ -16,6 +23,92 @@ interface Series {
     homeTeamId: string
     awayTeamId: string
     gameCount: number
+}
+
+interface MatchupConfig {
+    teamA: DraftTeam
+    teamB: DraftTeam
+    totalGames: number
+    type: 'division' | 'league' | 'interleague'
+}
+
+/**
+ * Check if two teams are in the same division
+ */
+function isSameDivision(a: DraftTeam, b: DraftTeam): boolean {
+    return a.league === b.league && a.division === b.division
+}
+
+/**
+ * Check if two teams are in the same league
+ */
+function isSameLeague(a: DraftTeam, b: DraftTeam): boolean {
+    return a.league === b.league
+}
+
+/**
+ * Calculate the optimal games per matchup based on team count and relationships
+ */
+function calculateMatchupGames(
+    team: DraftTeam,
+    teams: DraftTeam[],
+    gamesPerTeam: number = 162
+): Map<string, number> {
+    const gamesMap = new Map<string, number>()
+
+    // Count opponents by type
+    const divisionRivals = teams.filter(t => t.id !== team.id && isSameDivision(team, t))
+    const leagueOpponents = teams.filter(t => t.id !== team.id && isSameLeague(team, t) && !isSameDivision(team, t))
+    const interleagueOpponents = teams.filter(t => t.id !== team.id && !isSameLeague(team, t))
+
+    const totalOpponents = divisionRivals.length + leagueOpponents.length + interleagueOpponents.length
+
+    // If no divisions are set up, fall back to even distribution
+    if (divisionRivals.length === 0 && leagueOpponents.length === 0) {
+        const gamesPerOpponent = Math.floor(gamesPerTeam / totalOpponents)
+        teams.forEach(t => {
+            if (t.id !== team.id) {
+                gamesMap.set(t.id, gamesPerOpponent)
+            }
+        })
+        return gamesMap
+    }
+
+    // Calculate games per opponent type to reach 162
+    // Priority: division > league > interleague
+    let divisionGamesPerRival = 0
+    let leagueGamesPerOpponent = 0
+    let interleagueGamesPerOpponent = 0
+
+    if (divisionRivals.length > 0) {
+        // Target: division-heavy
+        // For 2-team divisions: 26 games vs single rival
+        // For 4-team divisions: ~17 games vs each (52 total / 3 rivals)
+        divisionGamesPerRival = divisionRivals.length === 1 ? 26 : Math.floor(52 / divisionRivals.length)
+    }
+
+    const divisionGamesTotal = divisionGamesPerRival * divisionRivals.length
+    const remainingAfterDivision = gamesPerTeam - divisionGamesTotal
+
+    if (leagueOpponents.length > 0) {
+        // Allocate ~60% of remaining to league, ~40% to interleague
+        const leagueAllocation = interleagueOpponents.length > 0 ? 0.6 : 1.0
+        leagueGamesPerOpponent = Math.floor((remainingAfterDivision * leagueAllocation) / leagueOpponents.length)
+    }
+
+    const leagueGamesTotal = leagueGamesPerOpponent * leagueOpponents.length
+
+    if (interleagueOpponents.length > 0) {
+        const remainingForInterleague = gamesPerTeam - divisionGamesTotal - leagueGamesTotal
+        interleagueGamesPerOpponent = Math.floor(remainingForInterleague / interleagueOpponents.length)
+    }
+
+    // Assign games to each opponent
+    divisionRivals.forEach(t => gamesMap.set(t.id, divisionGamesPerRival))
+    leagueOpponents.forEach(t => gamesMap.set(t.id, leagueGamesPerOpponent))
+    interleagueOpponents.forEach(t => gamesMap.set(t.id, interleagueGamesPerOpponent))
+
+    return gamesMap
 }
 
 /**
@@ -36,48 +129,71 @@ export function generateSchedule(
         throw new Error('Need at least 2 teams to generate a schedule')
     }
 
-    // Calculate games needed per matchup
-    // Each team plays every other team an equal number of times (home + away)
-    const gamesPerMatchup = Math.floor(gamesPerTeam / (numTeams - 1))
-    const actualGamesPerTeam = gamesPerMatchup * (numTeams - 1)
+    // Build matchup configurations
+    const matchups: MatchupConfig[] = []
+    const processedPairs = new Set<string>()
 
-    // console.log(`[ScheduleGen] Generating ${actualGamesPerTeam} games per team`)
-    // console.log(`[ScheduleGen] Each team plays each opponent ${gamesPerMatchup} times`)
+    for (const team of teams) {
+        const gamesMap = calculateMatchupGames(team, teams, gamesPerTeam)
 
-    // Generate all series (each matchup produces 2 series: home and away)
-    const allSeries: Series[] = []
+        for (const opponent of teams) {
+            if (team.id === opponent.id) continue
 
-    for (let i = 0; i < numTeams; i++) {
-        for (let j = i + 1; j < numTeams; j++) {
-            const teamA = teams[i]
-            const teamB = teams[j]
+            // Create a consistent pair key to avoid duplicates
+            const pairKey = [team.id, opponent.id].sort().join('-')
+            if (processedPairs.has(pairKey)) continue
+            processedPairs.add(pairKey)
 
-            // Split games between home/away for each team
-            const gamesEach = gamesPerMatchup / 2
+            const totalGames = gamesMap.get(opponent.id) || Math.floor(gamesPerTeam / (numTeams - 1))
 
-            // Team A hosts Team B
-            const seriesAtA = distributeIntoSeries(gamesEach)
-            seriesAtA.forEach(count => {
-                allSeries.push({
-                    homeTeamId: teamA.id,
-                    awayTeamId: teamB.id,
-                    gameCount: count
-                })
-            })
+            let type: 'division' | 'league' | 'interleague'
+            if (isSameDivision(team, opponent)) {
+                type = 'division'
+            } else if (isSameLeague(team, opponent)) {
+                type = 'league'
+            } else {
+                type = 'interleague'
+            }
 
-            // Team B hosts Team A
-            const seriesAtB = distributeIntoSeries(gamesEach)
-            seriesAtB.forEach(count => {
-                allSeries.push({
-                    homeTeamId: teamB.id,
-                    awayTeamId: teamA.id,
-                    gameCount: count
-                })
+            matchups.push({
+                teamA: team,
+                teamB: opponent,
+                totalGames,
+                type,
             })
         }
     }
 
-    // Shuffle series for variety
+    // Generate all series from matchups
+    const allSeries: Series[] = []
+
+    for (const matchup of matchups) {
+        // Split games evenly between home/away
+        const homeGamesForA = Math.ceil(matchup.totalGames / 2)
+        const homeGamesForB = matchup.totalGames - homeGamesForA
+
+        // Team A hosts Team B
+        const seriesAtA = distributeIntoSeries(homeGamesForA, matchup.type)
+        seriesAtA.forEach(count => {
+            allSeries.push({
+                homeTeamId: matchup.teamA.id,
+                awayTeamId: matchup.teamB.id,
+                gameCount: count,
+            })
+        })
+
+        // Team B hosts Team A
+        const seriesAtB = distributeIntoSeries(homeGamesForB, matchup.type)
+        seriesAtB.forEach(count => {
+            allSeries.push({
+                homeTeamId: matchup.teamB.id,
+                awayTeamId: matchup.teamA.id,
+                gameCount: count,
+            })
+        })
+    }
+
+    // Shuffle series for variety, but try to cluster home stands
     shuffleArray(allSeries)
 
     // Convert series into individual games with dates
@@ -88,10 +204,16 @@ export function generateSchedule(
 
     // Track games per team to balance the schedule
     const teamGameCounts: Record<string, number> = {}
-    teams.forEach(t => teamGameCounts[t.id] = 0)
+    teams.forEach(t => (teamGameCounts[t.id] = 0))
+
+    // Calculate actual games per team for All-Star timing
+    const actualGamesPerTeam = allSeries.reduce((sum, s) => {
+        // Each series counts for both teams
+        return sum + s.gameCount
+    }, 0) / numTeams
 
     // All-Star break at roughly 50%
-    const allStarGameNumber = Math.floor(actualGamesPerTeam * numTeams / 4) // Midpoint of total games
+    const allStarGameNumber = Math.floor((actualGamesPerTeam * numTeams) / 4) // Midpoint of total games
     let allStarDate: Date | null = null
 
     for (const series of allSeries) {
@@ -129,7 +251,7 @@ export function generateSchedule(
                 awayTeamId: series.awayTeamId,
                 date: new Date(currentDate),
                 seriesId,
-                gameInSeries: g + 1
+                gameInSeries: g + 1,
             }
 
             games.push(game)
@@ -157,38 +279,35 @@ export function generateSchedule(
         allStarGameDate: allStarDate || new Date(startDate),
         seasonStartDate: new Date(startDate),
         seasonEndDate: new Date(currentDate),
-        totalGamesPerTeam: actualGamesPerTeam,
-        currentGameIndex: 0
+        totalGamesPerTeam: Math.floor(actualGamesPerTeam),
+        currentGameIndex: 0,
     }
-
-    // console.log(`[ScheduleGen] Generated ${games.length} total games`)
-    // console.log(`[ScheduleGen] Season runs from ${schedule.seasonStartDate.toLocaleDateString()} to ${schedule.seasonEndDate.toLocaleDateString()}`)
-
-    // Log team game counts
-    // teams.forEach(t => {
-    //     const homeGames = games.filter(g => g.homeTeamId === t.id).length
-    //     const awayGames = games.filter(g => g.awayTeamId === t.id).length
-    //     console.log(`[ScheduleGen] ${t.name}: ${homeGames} home, ${awayGames} away, ${homeGames + awayGames} total`)
-    // })
 
     return schedule
 }
 
 /**
  * Distributes games into realistic series lengths (2-4 games)
+ * Division series tend to be longer (3-4 games)
+ * Interleague series tend to be shorter (2-3 games)
  */
-function distributeIntoSeries(totalGames: number): number[] {
+function distributeIntoSeries(totalGames: number, matchupType: 'division' | 'league' | 'interleague'): number[] {
     const series: number[] = []
     let remaining = totalGames
 
+    // Preferred series length based on matchup type
+    const preferredMin = matchupType === 'division' ? 3 : 2
+    const preferredMax = matchupType === 'interleague' ? 3 : 4
+
     while (remaining > 0) {
-        if (remaining <= 4) {
+        if (remaining <= preferredMax) {
             // Last series takes whatever is left
             series.push(remaining)
             remaining = 0
         } else {
-            // Random series length 2-4
-            const seriesLength = Math.min(remaining, Math.floor(Math.random() * 3) + 2)
+            // Random series length within preferred range
+            const range = preferredMax - preferredMin + 1
+            const seriesLength = Math.min(remaining, preferredMin + Math.floor(Math.random() * range))
             series.push(seriesLength)
             remaining -= seriesLength
         }
@@ -202,8 +321,8 @@ function distributeIntoSeries(totalGames: number): number[] {
  */
 function shuffleArray<T>(array: T[]): void {
     for (let i = array.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [array[i], array[j]] = [array[j], array[i]]
+        const j = Math.floor(Math.random() * (i + 1))
+        ;[array[i], array[j]] = [array[j], array[i]]
     }
 }
 
@@ -256,8 +375,10 @@ export function calculateStandings(schedule: SeasonSchedule, teams: DraftTeam[])
     for (const game of completedGames) {
         if (!game.result) continue
 
-        const homeStanding = standings.get(game.homeTeamId)!
-        const awayStanding = standings.get(game.awayTeamId)!
+        const homeStanding = standings.get(game.homeTeamId)
+        const awayStanding = standings.get(game.awayTeamId)
+
+        if (!homeStanding || !awayStanding) continue
 
         const homeWon = game.result.homeScore > game.result.awayScore
 
@@ -293,9 +414,8 @@ export function calculateStandings(schedule: SeasonSchedule, teams: DraftTeam[])
     // Group by division
     const divisions = new Map<string, TeamStanding[]>()
     standingsArray.forEach(standing => {
-        const divKey = standing.league && standing.division
-            ? `${standing.league}-${standing.division}`
-            : 'none'
+        const divKey =
+            standing.league && standing.division ? `${standing.league}-${standing.division}` : 'none'
         if (!divisions.has(divKey)) {
             divisions.set(divKey, [])
         }
@@ -307,7 +427,7 @@ export function calculateStandings(schedule: SeasonSchedule, teams: DraftTeam[])
         divStandings.sort((a, b) => b.wins - a.wins || a.losses - b.losses)
         const divLeader = divStandings[0]
         divStandings.forEach(standing => {
-            standing.gamesBack = ((divLeader.wins - standing.wins) + (standing.losses - divLeader.losses)) / 2
+            standing.gamesBack = (divLeader.wins - standing.wins + (standing.losses - divLeader.losses)) / 2
         })
     })
 
