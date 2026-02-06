@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-06 (Simulation Hit Distribution)
+- **BUG FIX**: Hit type distribution now uses actual player stats instead of flawed formula
+  - **Problem**: The `simulateAtBat` function used a broken formula that derived hit types from slugging:
+    ```typescript
+    // OLD (BROKEN): extraBaseRate = (sluggingPct - battingAvg) / battingAvg
+    // For .350 AVG / .648 SLG: extraBaseRate = 0.851 (85%!)
+    // This meant only 15% of hits were singles, 34% were HRs - way too high!
+    ```
+  - **Root Cause**: Barry Bonds showing 134 HRs because power hitters got inflated HR rates
+  - **Solution**: Use actual hit breakdown from player's real stats
+    ```typescript
+    // NEW (FIXED): Calculate distribution from actual hits
+    const singles = hits - doubles - triples - homeRuns
+    // singleRate = singles / hits, doubleRate = doubles / hits, etc.
+    ```
+  - **Additional Fix**: Strikeout rate now uses player-specific K% instead of fixed 20%
+    - Contact hitters: ~5-10% K rate
+    - Average hitters: ~15-20% K rate
+    - Power hitters: ~25-35% K rate
+    - Pitcher strikeout ability modifies batter rate
+  - **Expected Result**: Power hitter (~.350/.648) now gets ~50% singles, ~22% HRs (was 15% singles, 34% HRs)
+  - **Files Modified**:
+    - src/utils/statMaster.ts (added calculateHitDistribution, calculateStrikeoutRate, updated simulateAtBat)
+  - **Tests Added**: tests/hitDistribution.test.ts (TDD tests for realistic distributions)
+  - **Plan**: docs/plans/simulation-engine-analysis.md
+
 ### Fixed - 2026-02-06 (Schedule Variety)
 - **BUG FIX**: Teams no longer play consecutive series against the same opponent
   - **Problem**: Random shuffle allowed back-to-back series between same teams (e.g., Charlotte Grizzlies vs Asheville Ospreys playing 9 games in a row across multiple series)

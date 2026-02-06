@@ -1,7 +1,7 @@
 /**
  * StatMaster Engine
  * Simulates baseball games using player stats
- * 
+ *
  * Simulation Philosophy:
  * - Uses real player stats as probabilities
  * - Simplified but realistic outcomes
@@ -11,6 +11,99 @@
 import type { DraftTeam } from '../types/draft.types'
 import type { ScheduledGame, GameResult } from '../types/schedule.types'
 import type { PlayerSeason } from '../types/player'
+
+// ============================================================================
+// Hit Distribution - Uses actual player hit type data
+// ============================================================================
+
+export interface HitDistribution {
+    singleRate: number
+    doubleRate: number
+    tripleRate: number
+    homeRunRate: number
+}
+
+/**
+ * Calculate hit type distribution from a player's actual stats.
+ * This replaces the flawed formula that derived rates from slugging.
+ */
+export function calculateHitDistribution(player: PlayerSeason | null): HitDistribution {
+    // Fallback defaults for missing data (typical league average)
+    const DEFAULT_DISTRIBUTION: HitDistribution = {
+        singleRate: 0.70,
+        doubleRate: 0.20,
+        tripleRate: 0.03,
+        homeRunRate: 0.07,
+    }
+
+    if (!player) {
+        return DEFAULT_DISTRIBUTION
+    }
+
+    const hits = player.hits ?? 0
+    const doubles = player.doubles ?? 0
+    const triples = player.triples ?? 0
+    const homeRuns = player.home_runs ?? 0
+
+    // Need at least some hits to calculate distribution
+    if (hits <= 0) {
+        return DEFAULT_DISTRIBUTION
+    }
+
+    // Calculate singles from actual data
+    const singles = Math.max(0, hits - doubles - triples - homeRuns)
+
+    return {
+        singleRate: singles / hits,
+        doubleRate: doubles / hits,
+        tripleRate: triples / hits,
+        homeRunRate: homeRuns / hits,
+    }
+}
+
+// ============================================================================
+// Strikeout Rate - Uses player-specific K rates
+// ============================================================================
+
+/**
+ * Calculate strikeout probability based on batter and pitcher tendencies.
+ * Replaces the fixed 20% strikeout rate.
+ */
+export function calculateStrikeoutRate(
+    batter: PlayerSeason | null,
+    pitcher: PlayerSeason | null
+): number {
+    // Default strikeout rate (~15% of PA)
+    const DEFAULT_K_RATE = 0.15
+    const LEAGUE_AVG_K_PER_9 = 8.5 // Modern MLB average
+
+    // Batter's strikeout tendency (K/PA)
+    let batterKRate = DEFAULT_K_RATE
+    if (batter) {
+        const batterK = batter.strikeouts ?? 0
+        const batterAB = batter.at_bats ?? 0
+        const batterBB = batter.walks ?? 0
+        const batterPA = batterAB + batterBB
+
+        if (batterPA > 0) {
+            batterKRate = batterK / batterPA
+        }
+    }
+
+    // Pitcher's strikeout ability modifier
+    let pitcherModifier = 1.0
+    if (pitcher) {
+        const pitcherK9 = pitcher.strikeouts_per_9 ?? LEAGUE_AVG_K_PER_9
+        // Normalize: 8.5 K/9 = 1.0 modifier, 10 K/9 = higher, 5 K/9 = lower
+        pitcherModifier = pitcherK9 / LEAGUE_AVG_K_PER_9
+    }
+
+    // Combined rate: batter's tendency adjusted by pitcher's ability
+    const combinedRate = batterKRate * pitcherModifier
+
+    // Clamp to reasonable bounds (5% to 40%)
+    return Math.min(0.40, Math.max(0.05, combinedRate))
+}
 
 // Batting outcome probabilities
 interface AtBatOutcome {
@@ -513,12 +606,12 @@ function processOutcomeWithRunners(
 
 /**
  * Simulates a single at-bat
+ * Uses actual player stats for realistic outcomes
  */
 function simulateAtBat(batter: PlayerSeason | null, pitcher: PlayerSeason | null): AtBatOutcome {
     // Default stats if player not found
     const battingAvg = batter?.batting_avg ?? 0.250
     const onBasePct = batter?.on_base_pct ?? 0.320
-    const sluggingPct = batter?.slugging_pct ?? 0.400
     const pitcherEra = pitcher?.era ?? 4.50
 
     // Calculate probabilities
@@ -528,16 +621,13 @@ function simulateAtBat(batter: PlayerSeason | null, pitcher: PlayerSeason | null
     const adjustedObp = onBasePct * eraMod
 
     // Walk probability
-    const walkChance = (adjustedObp - adjustedAvg) // OBP minus AVG ≈ walk rate
+    const walkChance = Math.max(0, adjustedObp - adjustedAvg) // OBP minus AVG ≈ walk rate
 
     // Hit probability
     const hitChance = adjustedAvg
 
-    // Extra base hit distribution based on slugging
-    const extraBaseRate = (sluggingPct - battingAvg) / battingAvg
-    const homeRunRate = extraBaseRate * 0.4 // 40% of XBH are HR
-    const tripleRate = extraBaseRate * 0.1  // 10% are triples
-    const doubleRate = extraBaseRate * 0.5  // 50% are doubles
+    // Get hit type distribution from actual player stats (FIXED!)
+    const hitDist = calculateHitDistribution(batter)
 
     const roll = Math.random()
 
@@ -546,24 +636,26 @@ function simulateAtBat(batter: PlayerSeason | null, pitcher: PlayerSeason | null
         return { type: 'walk', runsScored: 0, rbis: 0 }
     }
 
-    // Hit
+    // Hit - use actual hit type distribution
     if (roll < walkChance + hitChance) {
         const hitRoll = Math.random()
 
-        if (hitRoll < homeRunRate) {
-            return { type: 'homerun', runsScored: 0, rbis: 0 } // Runs calculated in processOutcome
+        // Use cumulative distribution from actual stats
+        if (hitRoll < hitDist.homeRunRate) {
+            return { type: 'homerun', runsScored: 0, rbis: 0 }
         }
-        if (hitRoll < homeRunRate + tripleRate) {
+        if (hitRoll < hitDist.homeRunRate + hitDist.tripleRate) {
             return { type: 'triple', runsScored: 0, rbis: 0 }
         }
-        if (hitRoll < homeRunRate + tripleRate + doubleRate) {
+        if (hitRoll < hitDist.homeRunRate + hitDist.tripleRate + hitDist.doubleRate) {
             return { type: 'double', runsScored: 0, rbis: 0 }
         }
         return { type: 'single', runsScored: 0, rbis: 0 }
     }
 
-    // Strikeout (roughly 20% of outs)
-    if (Math.random() < 0.20) {
+    // Strikeout - use player-specific rate (FIXED!)
+    const strikeoutRate = calculateStrikeoutRate(batter, pitcher)
+    if (Math.random() < strikeoutRate) {
         return { type: 'strikeout', runsScored: 0, rbis: 0 }
     }
 
