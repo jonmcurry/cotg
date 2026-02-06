@@ -1,6 +1,11 @@
 /**
  * Schedule Generation API Routes
  * Server-side schedule generation for fantasy seasons
+ *
+ * Uses circle method round-robin for daily matchups:
+ * - All teams play every day
+ * - No team plays same opponent on consecutive days
+ * - Home/away games balanced
  */
 
 import { Router, Request, Response } from 'express'
@@ -36,12 +41,6 @@ interface SeasonSchedule {
   currentGameIndex: number
 }
 
-interface Series {
-  homeTeamId: string
-  awayTeamId: string
-  gameCount: number
-}
-
 interface TeamBasic {
   id: string
   name: string
@@ -54,38 +53,49 @@ interface DbTeamRow {
 }
 
 /**
- * Distributes games into realistic series lengths (2-4 games)
+ * Generate matchups for a single day using the circle method.
+ * This algorithm naturally ensures no team plays the same opponent on consecutive days.
+ *
+ * Circle method: Fix one team at position 0, rotate all others around it.
+ * Day 1: [0,1], [2,7], [3,6], [4,5]
+ * Day 2: [0,2], [3,1], [4,7], [5,6]
+ * etc.
  */
-function distributeIntoSeries(totalGames: number): number[] {
-  const series: number[] = []
-  let remaining = totalGames
+function generateDayMatchupsCircle(
+  teamIds: string[],
+  day: number
+): Array<[string, string]> {
+  const n = teamIds.length
+  const matchups: Array<[string, string]> = []
 
-  while (remaining > 0) {
-    if (remaining <= 4) {
-      series.push(remaining)
-      remaining = 0
-    } else {
-      const seriesLength = Math.min(remaining, Math.floor(Math.random() * 3) + 2)
-      series.push(seriesLength)
-      remaining -= seriesLength
-    }
+  // Fixed team at position 0
+  const fixed = teamIds[0]
+  const rotating = teamIds.slice(1)
+
+  // Rotate based on day (0-indexed rotation)
+  const rotations = (day - 1) % rotating.length
+  const rotated = [
+    ...rotating.slice(rotations),
+    ...rotating.slice(0, rotations)
+  ]
+
+  // First matchup: fixed team vs first rotated position
+  matchups.push([fixed, rotated[0]])
+
+  // Pair remaining teams from outside-in
+  const half = (n - 1) / 2
+  for (let i = 1; i <= Math.floor(half); i++) {
+    const team1 = rotated[i]
+    const team2 = rotated[rotating.length - i]
+    matchups.push([team1, team2])
   }
 
-  return series
+  return matchups
 }
 
 /**
- * Fisher-Yates shuffle
- */
-function shuffleArray<T>(array: T[]): void {
-  for (let i = array.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]]
-  }
-}
-
-/**
- * Generates a balanced 162-game MLB-style schedule
+ * Generates a balanced schedule using daily format (circle method).
+ * All teams play every day, different opponent each day.
  */
 function generateSchedule(
   sessionId: string,
@@ -99,110 +109,106 @@ function generateSchedule(
     throw new Error('Need at least 2 teams to generate a schedule')
   }
 
-  // Calculate games needed per matchup
-  const gamesPerMatchup = Math.floor(gamesPerTeam / (numTeams - 1))
-  const actualGamesPerTeam = gamesPerMatchup * (numTeams - 1)
-
-  // console.log(`[ScheduleGen] Generating ${actualGamesPerTeam} games per team`)
-  // console.log(`[ScheduleGen] Each team plays each opponent ${gamesPerMatchup} times`)
-
-  // Generate all series
-  const allSeries: Series[] = []
-
-  for (let i = 0; i < numTeams; i++) {
-    for (let j = i + 1; j < numTeams; j++) {
-      const teamA = teams[i]
-      const teamB = teams[j]
-      const gamesEach = gamesPerMatchup / 2
-
-      // Team A hosts Team B
-      distributeIntoSeries(gamesEach).forEach(count => {
-        allSeries.push({
-          homeTeamId: teamA.id,
-          awayTeamId: teamB.id,
-          gameCount: count
-        })
-      })
-
-      // Team B hosts Team A
-      distributeIntoSeries(gamesEach).forEach(count => {
-        allSeries.push({
-          homeTeamId: teamB.id,
-          awayTeamId: teamA.id,
-          gameCount: count
-        })
-      })
-    }
+  if (numTeams % 2 !== 0) {
+    throw new Error('Need an even number of teams for daily schedule')
   }
 
-  // Shuffle for variety
-  shuffleArray(allSeries)
+  const teamIds = teams.map(t => t.id)
+  const totalDays = gamesPerTeam // Each team plays once per day
 
-  // Convert to individual games with dates
+  // Track home games for balance
+  const totalHomeGames = new Map<string, number>()
+  const matchupHomeGames = new Map<string, number>() // "teamA-teamB" -> count
+
+  for (const team of teams) {
+    totalHomeGames.set(team.id, 0)
+  }
+
+  // Generate games
   const games: ScheduledGame[] = []
-  let currentDate = new Date(startDate)
-  let gameNumber = 1
-  let seriesCounter = 0
-
-  // Track games per team
-  const teamGameCounts: Record<string, number> = {}
-  teams.forEach(t => teamGameCounts[t.id] = 0)
-
-  // All-Star break at roughly 50%
-  const allStarGameNumber = Math.floor(actualGamesPerTeam * numTeams / 4)
+  const allStarDayNumber = Math.floor(gamesPerTeam / 2) // Midpoint
   let allStarDate: Date | null = null
+  let gameNumber = 1
 
-  for (const series of allSeries) {
-    const seriesId = `series-${seriesCounter++}`
+  for (let day = 1; day <= totalDays; day++) {
+    const currentDate = new Date(startDate)
+    currentDate.setDate(currentDate.getDate() + day - 1)
 
-    for (let g = 0; g < series.gameCount; g++) {
-      // Check for All-Star break
-      if (!allStarDate && gameNumber >= allStarGameNumber) {
-        allStarDate = new Date(currentDate)
-        currentDate.setDate(currentDate.getDate() + 1)
+    // Check for All-Star break insertion
+    if (!allStarDate && day >= allStarDayNumber) {
+      allStarDate = new Date(currentDate)
 
-        // All-Star Game
-        const allStarGame: ScheduledGame = {
-          id: 'all-star-game',
-          gameNumber: 0,
-          homeTeamId: 'all-star-home',
-          awayTeamId: 'all-star-away',
-          date: new Date(currentDate),
-          seriesId: 'all-star',
-          gameInSeries: 1,
-          isAllStarGame: true,
+      // Insert All-Star Game
+      const allStarGame: ScheduledGame = {
+        id: 'all-star-game',
+        gameNumber: 0,
+        homeTeamId: 'all-star-home',
+        awayTeamId: 'all-star-away',
+        date: new Date(allStarDate),
+        seriesId: 'all-star',
+        gameInSeries: 1,
+        isAllStarGame: true,
+      }
+      games.push(allStarGame)
+    }
+
+    // Generate matchups for this day using circle method
+    const matchups = generateDayMatchupsCircle(teamIds, day)
+
+    for (const [team1, team2] of matchups) {
+      // Decide home/away based on balance
+      const matchupKey1 = `${team1}-${team2}`
+      const matchupKey2 = `${team2}-${team1}`
+      const team1HostedTeam2 = matchupHomeGames.get(matchupKey1) || 0
+      const team2HostedTeam1 = matchupHomeGames.get(matchupKey2) || 0
+
+      const team1TotalHome = totalHomeGames.get(team1) || 0
+      const team2TotalHome = totalHomeGames.get(team2) || 0
+
+      let homeTeamId: string
+      let awayTeamId: string
+
+      // Primary: balance this specific matchup
+      if (team1HostedTeam2 < team2HostedTeam1) {
+        homeTeamId = team1
+        awayTeamId = team2
+      } else if (team2HostedTeam1 < team1HostedTeam2) {
+        homeTeamId = team2
+        awayTeamId = team1
+      } else {
+        // Matchup is balanced, use global home count to decide
+        if (team1TotalHome <= team2TotalHome) {
+          homeTeamId = team1
+          awayTeamId = team2
+        } else {
+          homeTeamId = team2
+          awayTeamId = team1
         }
-        games.push(allStarGame)
-        currentDate.setDate(currentDate.getDate() + 1)
-        currentDate.setDate(currentDate.getDate() + 1)
       }
 
       const game: ScheduledGame = {
         id: `game-${gameNumber}`,
-        gameNumber,
-        homeTeamId: series.homeTeamId,
-        awayTeamId: series.awayTeamId,
+        gameNumber: gameNumber,
+        homeTeamId,
+        awayTeamId,
         date: new Date(currentDate),
-        seriesId,
-        gameInSeries: g + 1
+        seriesId: `day-${day}`,
+        gameInSeries: 1, // Each game is game 1 of its "series" (the day)
       }
 
       games.push(game)
-      teamGameCounts[series.homeTeamId]++
-      teamGameCounts[series.awayTeamId]++
+
+      // Update tracking
+      const homeMatchupKey = `${homeTeamId}-${awayTeamId}`
+      matchupHomeGames.set(homeMatchupKey, (matchupHomeGames.get(homeMatchupKey) || 0) + 1)
+      totalHomeGames.set(homeTeamId, (totalHomeGames.get(homeTeamId) || 0) + 1)
       gameNumber++
-
-      currentDate.setDate(currentDate.getDate() + 1)
-
-      // Random off day
-      if (Math.random() < 0.1) {
-        currentDate.setDate(currentDate.getDate() + 1)
-      }
     }
-
-    // Day off between series
-    currentDate.setDate(currentDate.getDate() + 1)
   }
+
+  // Calculate end date
+  const endDate = new Date(startDate)
+  endDate.setDate(endDate.getDate() + gamesPerTeam)
 
   const schedule: SeasonSchedule = {
     id: `schedule-${sessionId}`,
@@ -210,13 +216,10 @@ function generateSchedule(
     games,
     allStarGameDate: allStarDate || new Date(startDate),
     seasonStartDate: new Date(startDate),
-    seasonEndDate: new Date(currentDate),
-    totalGamesPerTeam: actualGamesPerTeam,
+    seasonEndDate: endDate,
+    totalGamesPerTeam: gamesPerTeam,
     currentGameIndex: 0
   }
-
-  // console.log(`[ScheduleGen] Generated ${games.length} total games`)
-  // console.log(`[ScheduleGen] Season: ${schedule.seasonStartDate.toLocaleDateString()} to ${schedule.seasonEndDate.toLocaleDateString()}`)
 
   return schedule
 }
@@ -262,15 +265,9 @@ router.post('/:sessionId/schedule', async (req: Request, res: Response) => {
       name: t.team_name
     }))
 
-    // Generate the schedule
+    // Generate the schedule using circle method
     const scheduleStartDate = startDate ? new Date(startDate) : new Date()
     const schedule = generateSchedule(sessionId, teams, gamesPerTeam, scheduleStartDate)
-
-    // console.log('[Schedule API] Generated schedule for session:', sessionId, {
-    //   teams: teams.length,
-    //   games: schedule.games.length,
-    //   gamesPerTeam: schedule.totalGamesPerTeam
-    // })
 
     return res.status(201).json({ schedule })
   } catch (err) {

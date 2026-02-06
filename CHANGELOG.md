@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-06 (Schedule and Sim Season)
+- **BUG FIX**: Backend schedule generator now uses circle method (daily format)
+  - **Problem**: Backend was still using old series-based schedule (2-4 game series)
+    - Teams played same opponent 3 times in a row
+    - Frontend had correct circle method but backend API was used
+  - **Solution**: Updated backend/src/routes/schedule.ts to use circle method
+    - All teams play every day
+    - Different opponent each day
+    - Home/away balanced
+  - **Files Modified**: backend/src/routes/schedule.ts
+
+- **BUG FIX**: Sim Season now handles All-Star game automatically
+  - **Problem**: Sim Season stopped at All-Star game and couldn't continue
+    - Button was disabled when All-Star game was next
+    - User had to manually play All-Star game to continue
+  - **Solution**: Sim Season auto-plays All-Star game when encountered
+    - Removed All-Star blocking check from Sim Season button
+    - Function now detects and plays All-Star game automatically
+  - **Files Modified**: src/components/statmaster/StatMaster.tsx
+  - **Tests Added**: tests/scheduleIssues.test.ts (TDD approach)
+
 ### Fixed - 2026-02-06 (Session Persistence)
 - **BUG FIX**: Session data now correctly persists with Map types
   - **Problem**: `simulationStats.playerStats` used JavaScript `Map` type which doesn't serialize correctly with JSON

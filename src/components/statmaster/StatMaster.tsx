@@ -154,18 +154,39 @@ export default function StatMaster({ session, onExit }: Props) {
         if (!schedule || simulating) return
         setSimulating(true)
 
-        // Calculate remaining games (excluding All-Star game)
-        const remainingCount = schedule.games.filter(
+        let currentGames = [...schedule.games]
+
+        // Check if All-Star game is next and not played - auto-play it
+        const unplayedAllStar = currentGames.find(g => g.isAllStarGame && !g.result)
+        if (unplayedAllStar) {
+            // Auto-play All-Star game
+            const { homeSquad, awaySquad } = selectAllStarRosters(currentSession.teams, players)
+            setAllStarRosters({ home: homeSquad, away: awaySquad })
+
+            const result = simulateAllStarGame(homeSquad, awaySquad)
+            setAllStarResult({ homeScore: result.homeScore, awayScore: result.awayScore })
+
+            // Update the All-Star Game in current games
+            currentGames = currentGames.map((g: ScheduledGame) =>
+                g.isAllStarGame ? { ...g, result } : g
+            )
+        }
+
+        // Calculate remaining regular games
+        const remainingCount = currentGames.filter(
             (g: ScheduledGame) => !g.result && !g.isAllStarGame
         ).length
 
         if (remainingCount === 0) {
+            // Even if no regular games left, update store with All-Star result if played
+            if (unplayedAllStar) {
+                updateScheduleInStore(currentGames, 1)
+            }
             setSimulating(false)
             return
         }
 
-        // Simulate all remaining games in batches to avoid UI freeze
-        let currentGames = [...schedule.games]
+        // Simulate all remaining regular games in batches to avoid UI freeze
         let totalBoxScores: BoxScore[] = []
         let gamesSimulated = 0
         const batchSize = 20 // Simulate 20 games at a time
@@ -322,7 +343,7 @@ export default function StatMaster({ session, onExit }: Props) {
                             </button>
                             <button
                                 onClick={handleSimulateSeason}
-                                disabled={simulating || gamesPlayed >= totalGames || isNextGameAllStar}
+                                disabled={simulating || gamesPlayed >= totalGames}
                                 className="btn-secondary-dark"
                             >
                                 {simulating ? 'Simulating...' : 'Sim Season'}
